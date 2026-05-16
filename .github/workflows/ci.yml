@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: cargo check / fmt / clippy / test (in Nix devShell)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      # Workspace integrity check while members = []. cargo fmt/clippy/check/test
+      # error on an empty virtual workspace; cargo metadata does not. The four
+      # cargo gates below re-activate once the first crate lands.
+      - name: cargo metadata (workspace integrity)
+        run: nix develop --command cargo metadata --no-deps --format-version 1 > /dev/null
+
+      - name: cargo fmt --check
+        if: ${{ hashFiles('crates/**/Cargo.toml') != '' }}
+        run: nix develop --command cargo fmt --all -- --check
+
+      - name: cargo clippy
+        if: ${{ hashFiles('crates/**/Cargo.toml') != '' }}
+        run: nix develop --command cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo check
+        if: ${{ hashFiles('crates/**/Cargo.toml') != '' }}
+        run: nix develop --command cargo check --workspace
+
+      - name: cargo test
+        if: ${{ hashFiles('crates/**/Cargo.toml') != '' }}
+        run: nix develop --command cargo test --workspace

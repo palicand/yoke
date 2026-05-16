@@ -1,0 +1,35 @@
+# Rust
+/target/
+**/target/
+
+# Trunk / WASM bundler output
+/dist/
+**/dist/
+
+# Nix
+result
+result-*
+.direnv/
+
+# direnv local overrides (intentional, may contain machine paths)
+.envrc.local
+
+# Implementation plans are local-only working artifacts; only specs
+# are committed.
+docs/superpowers/plans/
+
+# Work-in-progress reference material (e.g. the QuadStick wire-protocol
+# document) lives in the maintainer's local notes / Obsidian vault until
+# every fact is confirmed. Promote individual sections back into the
+# repo when their status tags become `confirmed (...)`.
+docs/protocol/
+
+# macOS
+.DS_Store
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
