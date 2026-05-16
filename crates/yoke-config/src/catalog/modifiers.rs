@@ -6,7 +6,6 @@ pub enum Modifier {
     Toggle,
     DelayOn {
         ms: Option<u32>,
-        second: Option<u32>,
     },
     DelayOff {
         ms: Option<u32>,
@@ -74,7 +73,6 @@ impl Modifier {
             "toggle" => Self::Toggle,
             "delay_on" => Self::DelayOn {
                 ms: opt_u32(args.first()),
-                second: opt_u32(args.get(1)),
             },
             "delay_off" => Self::DelayOff {
                 ms: opt_u32(args.first()),
@@ -141,7 +139,7 @@ impl Modifier {
         match self {
             Self::Normal => "normal".into(),
             Self::Toggle => "toggle".into(),
-            Self::DelayOn { ms, second } => render("delay_on", &[opt_str(ms), opt_str(second)]),
+            Self::DelayOn { ms } => render("delay_on", &[opt_str(ms)]),
             Self::DelayOff { ms } => render("delay_off", &[opt_str(ms)]),
             Self::GreaterThan { pct, upper } => {
                 render("greater_than", &[opt_u8s(pct), opt_u8s(upper)])
@@ -199,26 +197,14 @@ mod tests {
     #[test]
     fn delay_on_with_arg() {
         let m = Modifier::from_csv("delay_on 1000").unwrap();
-        assert_eq!(
-            m,
-            Modifier::DelayOn {
-                ms: Some(1000),
-                second: None
-            }
-        );
+        assert_eq!(m, Modifier::DelayOn { ms: Some(1000) });
         assert_eq!(m.to_csv(), "delay_on 1000");
     }
 
     #[test]
     fn delay_on_without_arg() {
         let m = Modifier::from_csv("delay_on").unwrap();
-        assert_eq!(
-            m,
-            Modifier::DelayOn {
-                ms: None,
-                second: None
-            }
-        );
+        assert_eq!(m, Modifier::DelayOn { ms: None });
         assert_eq!(m.to_csv(), "delay_on");
     }
 

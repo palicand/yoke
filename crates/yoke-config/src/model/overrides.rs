@@ -16,7 +16,7 @@ mod tests {
     #[test]
     fn override_serde_round_trips() {
         let o = PreferenceOverride {
-            key: PreferenceKey::from_csv("joystick_dead_zone_shape").unwrap(),
+            key: PreferenceKey::from_csv("joystick_dead_zone_shape"),
             value: "1".into(),
             comment: None,
         };

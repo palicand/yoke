@@ -149,6 +149,13 @@ impl UsbHost {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SideKind {
+    Hard,
+    Soft,
+    Long,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Input {
     Mouthpiece {
@@ -158,8 +165,7 @@ pub enum Input {
     },
     Side {
         dir: SipPuff,
-        soft: bool,
-        long: bool,
+        kind: SideKind,
     },
     Lip {
         soft: bool,
@@ -190,14 +196,12 @@ pub enum Input {
 }
 
 impl Input {
-    pub fn from_csv(s: &str) -> Option<Self> {
-        if s.is_empty() {
-            return None;
-        }
-        if let Some(parsed) = parse_input(s) {
-            return Some(parsed);
-        }
-        Some(Self::Unknown(s.to_owned()))
+    /// Parse a non-empty CSV input identifier. Empty strings are caller-filtered
+    /// (they mean "no input bound" in the source row, not a missing variant).
+    /// Unknown identifiers become `Input::Unknown(s)` so they survive round-trip.
+    pub fn from_csv(s: &str) -> Self {
+        debug_assert!(!s.is_empty(), "Input::from_csv called with empty string");
+        parse_input(s).unwrap_or_else(|| Self::Unknown(s.to_owned()))
     }
 
     pub fn to_csv(&self) -> String {
@@ -206,11 +210,11 @@ impl Input {
                 let suffix = if *soft { "_soft" } else { "" };
                 format!("mp_{}_{}{}", pos.as_csv(), dir.as_csv(), suffix)
             }
-            Self::Side { dir, soft, long } => {
-                let suffix = match (*soft, *long) {
-                    (false, true) => "_long",
-                    (false, false) => "",
-                    (true, false | true) => "_soft",
+            Self::Side { dir, kind } => {
+                let suffix = match kind {
+                    SideKind::Hard => "",
+                    SideKind::Soft => "_soft",
+                    SideKind::Long => "_long",
                 };
                 format!("right_{}{}", dir.as_csv(), suffix)
             }
@@ -316,17 +320,18 @@ fn split_pos_dir(body: &str) -> Option<(&str, &str)> {
 }
 
 fn parse_side(rest: &str) -> Option<Input> {
-    let (body, long) = rest
-        .strip_suffix("_long")
-        .map_or((rest, false), |b| (b, true));
-    let (body, soft) = body
-        .strip_suffix("_soft")
-        .map_or((body, false), |b| (b, true));
-    if soft && long {
-        return None;
-    }
+    let (body, kind) = strip_side_suffix(rest);
     let dir = SipPuff::from_csv(body)?;
-    Some(Input::Side { dir, soft, long })
+    Some(Input::Side { dir, kind })
+}
+
+fn strip_side_suffix(rest: &str) -> (&str, SideKind) {
+    for (suffix, kind) in [("_long", SideKind::Long), ("_soft", SideKind::Soft)] {
+        if let Some(body) = rest.strip_suffix(suffix) {
+            return (body, kind);
+        }
+    }
+    (rest, SideKind::Hard)
 }
 
 fn parse_dpad(s: &str) -> Option<(DPadDir, bool)> {
@@ -563,7 +568,7 @@ mod input_enum_tests {
     #[test]
     fn every_documented_id_round_trips() {
         for id in ALL_INPUT_IDS {
-            let parsed = Input::from_csv(id).unwrap_or_else(|| panic!("did not parse: {id}"));
+            let parsed = Input::from_csv(id);
             assert!(
                 !matches!(parsed, Input::Unknown(_)),
                 "{id} parsed as Unknown"
@@ -575,7 +580,7 @@ mod input_enum_tests {
 
     #[test]
     fn unknown_input_round_trips_verbatim() {
-        let parsed = Input::from_csv("mystery_input").expect("Unknown must always parse");
+        let parsed = Input::from_csv("mystery_input");
         assert_eq!(parsed, Input::Unknown("mystery_input".into()));
         assert_eq!(parsed.to_csv(), "mystery_input");
     }
@@ -584,12 +589,7 @@ mod input_enum_tests {
     fn mp_long_does_not_exist_for_mouthpiece() {
         assert!(matches!(
             Input::from_csv("mp_center_sip_long"),
-            Some(Input::Unknown(_))
+            Input::Unknown(_)
         ));
-    }
-
-    #[test]
-    fn empty_input_is_none() {
-        assert!(Input::from_csv("").is_none());
     }
 }

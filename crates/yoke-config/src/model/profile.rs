@@ -19,13 +19,39 @@ pub struct TopLine {
     pub source: String,
     pub title: String,
     pub trailing_cells: Vec<String>,
+    // Total cell count emitted by the source file's top line; the writer
+    // pads back to this width so explicit trailing commas survive round-trip.
+    pub width: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubProfile {
     pub header: SubProfileHeader,
-    pub bindings: Vec<Binding>,
-    pub overrides: Vec<PreferenceOverride>,
+    // Bindings and overrides are stored in source order so a sub-profile whose
+    // rows are interleaved round-trips byte-for-byte through the writer.
+    pub rows: Vec<SubProfileRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SubProfileRow {
+    Binding(Binding),
+    Override(PreferenceOverride),
+}
+
+impl SubProfile {
+    pub fn bindings(&self) -> impl Iterator<Item = &Binding> {
+        self.rows.iter().filter_map(|r| match r {
+            SubProfileRow::Binding(b) => Some(b),
+            SubProfileRow::Override(_) => None,
+        })
+    }
+
+    pub fn overrides(&self) -> impl Iterator<Item = &PreferenceOverride> {
+        self.rows.iter().filter_map(|r| match r {
+            SubProfileRow::Override(o) => Some(o),
+            SubProfileRow::Binding(_) => None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,6 +76,7 @@ mod tests {
                 source: String::new(),
                 title: "Default".into(),
                 trailing_cells: vec![],
+                width: 4,
             },
             sub_profiles: vec![],
             preferences: None,

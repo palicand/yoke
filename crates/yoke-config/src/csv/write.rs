@@ -42,7 +42,7 @@ fn push_cell(out: &mut String, cell: &str) {
 
 use crate::csv::raw::{RawRow, RawSection};
 use crate::error::WriteError;
-use crate::model::{Binding, Profile, SubProfile};
+use crate::model::{Binding, PreferenceOverride, Profile, SubProfile, SubProfileRow};
 
 pub fn write(profile: &Profile, template: Option<&RawCsv>) -> Result<Vec<u8>, WriteError> {
     template.map_or_else(
@@ -127,25 +127,27 @@ fn rebuild_sub_profile(sp: &SubProfile, template: &RawSection) -> RawSection {
     let body_template_width = template.rows.first().map_or(4, |r| r.cells.len());
 
     let mut rows = header_rows;
-    for b in &sp.bindings {
-        rows.push(binding_row(b, body_template_width));
-    }
-    for o in &sp.overrides {
-        let mut cells = vec![o.key.as_csv(), "normal".to_string(), o.value.clone()];
-        pad_to(&mut cells, body_template_width);
-        if let Some(c) = &o.comment {
-            if cells.len() > 10 {
-                cells[10].clone_from(c);
-            } else {
-                while cells.len() < 10 {
-                    cells.push(String::new());
-                }
-                cells.push(c.clone());
-            }
-        }
-        rows.push(RawRow { cells });
+    for row in &sp.rows {
+        rows.push(match row {
+            SubProfileRow::Binding(b) => binding_row(b, body_template_width),
+            SubProfileRow::Override(o) => override_row(o, body_template_width),
+        });
     }
     RawSection { rows }
+}
+
+const COMMENT_COL: usize = 10;
+
+// Place a column-K (index 10) comment, padding earlier cells as needed.
+fn place_comment(cells: &mut Vec<String>, comment: &str) {
+    if cells.len() > COMMENT_COL {
+        comment.clone_into(&mut cells[COMMENT_COL]);
+    } else {
+        while cells.len() < COMMENT_COL {
+            cells.push(String::new());
+        }
+        cells.push(comment.to_owned());
+    }
 }
 
 fn binding_row(b: &Binding, width: usize) -> RawRow {
@@ -159,16 +161,16 @@ fn binding_row(b: &Binding, width: usize) -> RawRow {
     ];
     pad_to(&mut cells, width);
     if let Some(c) = &b.comment {
-        // Comment lives at column K (index 10). If padding already reached that
-        // column, overwrite the placeholder rather than appending a 12th cell.
-        if cells.len() > 10 {
-            cells[10].clone_from(c);
-        } else {
-            while cells.len() < 10 {
-                cells.push(String::new());
-            }
-            cells.push(c.clone());
-        }
+        place_comment(&mut cells, c);
+    }
+    RawRow { cells }
+}
+
+fn override_row(o: &PreferenceOverride, width: usize) -> RawRow {
+    let mut cells = vec![o.key.as_csv(), "normal".to_string(), o.value.clone()];
+    pad_to(&mut cells, width);
+    if let Some(c) = &o.comment {
+        place_comment(&mut cells, c);
     }
     RawRow { cells }
 }
@@ -205,17 +207,11 @@ fn build_sub_profile_section(sp: &SubProfile) -> RawSection {
             ],
         },
     ];
-    for b in &sp.bindings {
-        rows.push(binding_row(b, 4));
-    }
-    for o in &sp.overrides {
-        let cells = vec![
-            o.key.as_csv(),
-            "normal".to_string(),
-            o.value.clone(),
-            String::new(),
-        ];
-        rows.push(RawRow { cells });
+    for row in &sp.rows {
+        rows.push(match row {
+            SubProfileRow::Binding(b) => binding_row(b, 4),
+            SubProfileRow::Override(o) => override_row(o, 4),
+        });
     }
     RawSection { rows }
 }
@@ -279,14 +275,18 @@ fn top_line_to_cells(profile: &Profile) -> Vec<String> {
         profile.top_line.title.clone(),
     ];
     cells.extend(profile.top_line.trailing_cells.iter().cloned());
-    // Drop trailing empty cells so a 2-cell top line (e.g. prefs-only file)
-    // round-trips without gaining spurious commas.
-    while cells.last().is_some_and(String::is_empty) {
-        cells.pop();
-    }
-    // Always keep at least the label and version.
-    while cells.len() < 2 {
-        cells.push(String::new());
+    // Preserve the source's column count: a 2-cell top line stays 2 cells,
+    // a 4-cell stays 4, a 5-cell with trailing empties stays 5.
+    if profile.top_line.width == 0 {
+        // Default to 2 — the minimum that survives a parse round-trip.
+        while cells.last().is_some_and(String::is_empty) && cells.len() > 2 {
+            cells.pop();
+        }
+    } else {
+        cells.truncate(profile.top_line.width);
+        while cells.len() < profile.top_line.width {
+            cells.push(String::new());
+        }
     }
     cells
 }

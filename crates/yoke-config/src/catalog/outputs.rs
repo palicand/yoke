@@ -106,34 +106,35 @@ csv_enum! { SystemAction {
 }}
 
 impl Output {
-    pub fn from_csv(s: &str) -> Option<Self> {
-        if s.is_empty() {
-            return None;
-        }
+    /// Parse a non-empty CSV output identifier. Empty strings are caller-filtered
+    /// (they signal a blank-output terminator row at the parser level).
+    /// Unknown identifiers become `Output::Unknown(s)` so they survive round-trip.
+    pub fn from_csv(s: &str) -> Self {
+        debug_assert!(!s.is_empty(), "Output::from_csv called with empty string");
         if s == "touch" {
-            return Some(Self::Touch);
+            return Self::Touch;
         }
         if let Some(v) = KbKey::from_csv(s) {
-            return Some(Self::Keyboard(v));
+            return Self::Keyboard(v);
         }
         if let Some(v) = MouseAction::from_csv(s) {
-            return Some(Self::Mouse(v));
+            return Self::Mouse(v);
         }
         if let Some(v) = GamepadButton::from_csv(s) {
-            return Some(Self::Gamepad(v));
+            return Self::Gamepad(v);
         }
         if let Some(rest) = s.strip_prefix("dpad_")
             && let Some(d) = DPadDir::from_csv(rest)
         {
-            return Some(Self::Dpad(d));
+            return Self::Dpad(d);
         }
         if let Some(v) = JoyOutput::from_csv(s) {
-            return Some(Self::Joystick(v));
+            return Self::Joystick(v);
         }
         if let Some(v) = SystemAction::from_csv(s) {
-            return Some(Self::System(v));
+            return Self::System(v);
         }
-        Some(Self::Unknown(s.to_owned()))
+        Self::Unknown(s.to_owned())
     }
 
     pub fn to_csv(&self) -> String {
@@ -296,7 +297,7 @@ mod tests {
     #[test]
     fn every_documented_id_round_trips() {
         for id in ALL_OUTPUT_IDS {
-            let parsed = Output::from_csv(id).unwrap_or_else(|| panic!("did not parse: {id}"));
+            let parsed = Output::from_csv(id);
             assert!(
                 !matches!(parsed, Output::Unknown(_)),
                 "{id} parsed as Unknown"
@@ -307,18 +308,13 @@ mod tests {
 
     #[test]
     fn unknown_output_round_trips_verbatim() {
-        let parsed = Output::from_csv("mystery_output").expect("Unknown must always parse");
+        let parsed = Output::from_csv("mystery_output");
         assert_eq!(parsed, Output::Unknown("mystery_output".into()));
         assert_eq!(parsed.to_csv(), "mystery_output");
     }
 
     #[test]
     fn touch_is_a_dedicated_variant() {
-        assert_eq!(Output::from_csv("touch"), Some(Output::Touch));
-    }
-
-    #[test]
-    fn empty_output_is_none() {
-        assert!(Output::from_csv("").is_none());
+        assert_eq!(Output::from_csv("touch"), Output::Touch);
     }
 }

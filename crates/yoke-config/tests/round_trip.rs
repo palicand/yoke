@@ -71,6 +71,24 @@ joystick_dead_zone_shape,normal,1,\r\n\
 }
 
 #[test]
+fn interleaved_bindings_and_overrides_preserve_order() {
+    // binding, override, binding, override — the writer must emit them in
+    // source order, not group all bindings first.
+    assert_byte_round_trip(
+        "interleaved",
+        b"QuadStick Configuration,Version 1.4,,Test\r\n\
+Profile Name,,Mouse,\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_left,normal,left,\r\n\
+joystick_dead_zone_shape,normal,1,\r\n\
+mouse_right,normal,right,\r\n\
+anti_dead_zone,normal,5,\r\n\
+\r\n",
+    );
+}
+
+#[test]
 fn comments_in_column_k() {
     assert_byte_round_trip(
         "comments",

@@ -149,7 +149,7 @@ use crate::catalog::{
 use crate::error::Warning;
 use crate::model::{
     Binding, PreferenceEntry, PreferenceOverride, Preferences, Profile, SubProfile,
-    SubProfileHeader, TopLine,
+    SubProfileHeader, SubProfileRow, TopLine,
 };
 
 #[derive(Debug, Clone)]
@@ -224,6 +224,7 @@ fn build_top_line(cells: &[String]) -> TopLine {
         source: get(2),
         title: get(3),
         trailing_cells: trailing,
+        width: cells.len(),
     }
 }
 
@@ -231,8 +232,7 @@ fn build_sub_profile(section: &RawSection) -> (SubProfile, Vec<Warning>) {
     let mut warnings = Vec::new();
     let header = build_sub_profile_header(section);
     let body: Vec<&RawRow> = section.rows.iter().skip(3).collect();
-    let mut bindings: Vec<Binding> = Vec::new();
-    let mut overrides: Vec<PreferenceOverride> = Vec::new();
+    let mut rows: Vec<SubProfileRow> = Vec::new();
     let mut seen_blank_output = false;
 
     for (idx, row) in body.iter().enumerate() {
@@ -263,16 +263,16 @@ fn build_sub_profile(section: &RawSection) -> (SubProfile, Vec<Warning>) {
         };
 
         if PreferenceSpec::for_id(output_cell).is_some() {
-            let key = PreferenceKey::from_csv(output_cell).unwrap();
-            overrides.push(PreferenceOverride {
+            let key = PreferenceKey::from_csv(output_cell);
+            rows.push(SubProfileRow::Override(PreferenceOverride {
                 key,
                 value: input_cell.to_owned(),
                 comment,
-            });
+            }));
             continue;
         }
 
-        let output = Output::from_csv(output_cell).unwrap();
+        let output = Output::from_csv(output_cell);
         if matches!(output, Output::Unknown(_)) {
             warnings.push(Warning::UnknownOutput {
                 id: output_cell.into(),
@@ -291,7 +291,7 @@ fn build_sub_profile(section: &RawSection) -> (SubProfile, Vec<Warning>) {
         let input = if input_cell.is_empty() {
             None
         } else {
-            let i = Input::from_csv(input_cell).unwrap();
+            let i = Input::from_csv(input_cell);
             if matches!(i, Input::Unknown(_)) {
                 warnings.push(Warning::UnknownInput {
                     id: input_cell.into(),
@@ -301,22 +301,15 @@ fn build_sub_profile(section: &RawSection) -> (SubProfile, Vec<Warning>) {
             Some(i)
         };
 
-        bindings.push(Binding {
+        rows.push(SubProfileRow::Binding(Binding {
             output,
             modifier,
             input,
             comment,
-        });
+        }));
     }
 
-    (
-        SubProfile {
-            header,
-            bindings,
-            overrides,
-        },
-        warnings,
-    )
+    (SubProfile { header, rows }, warnings)
 }
 
 fn build_sub_profile_header(section: &RawSection) -> SubProfileHeader {
@@ -360,7 +353,7 @@ fn build_preferences(section: &RawSection) -> (Preferences, Vec<Warning>) {
         let value = row.cells.get(1).cloned().unwrap_or_default();
         let units = row.cells.get(2).cloned().unwrap_or_default();
         let descr = row.cells.get(3).cloned().unwrap_or_default();
-        let key = PreferenceKey::from_csv(id).unwrap();
+        let key = PreferenceKey::from_csv(id);
         if matches!(key, PreferenceKey::Unknown(_)) {
             warnings.push(Warning::UnknownPreference {
                 id: id.into(),
@@ -411,7 +404,7 @@ kb_left_shift,delay_on 1000,lip,\r\n\
         let sp = &result.model.sub_profiles[0];
         assert_eq!(sp.header.mode, SubProfileMode::Mouse);
         assert_eq!(sp.header.channel, Channel::Usb);
-        assert_eq!(sp.bindings.len(), 2);
+        assert_eq!(sp.bindings().count(), 2);
         assert!(result.warnings.is_empty());
     }
 
@@ -427,13 +420,14 @@ joystick_dead_zone_shape,normal,1,\r\n\
     fn preference_row_parses_as_override_not_binding() {
         let r = parse(WITH_PREFS_OVERRIDE).expect("parse");
         let sp = &r.model.sub_profiles[0];
-        assert_eq!(sp.bindings.len(), 1, "only mouse_left is a binding");
-        assert_eq!(sp.overrides.len(), 1);
+        assert_eq!(sp.bindings().count(), 1, "only mouse_left is a binding");
+        let overrides: Vec<_> = sp.overrides().collect();
+        assert_eq!(overrides.len(), 1);
         assert_eq!(
-            sp.overrides[0].key,
-            PreferenceKey::from_csv("joystick_dead_zone_shape").unwrap()
+            overrides[0].key,
+            PreferenceKey::from_csv("joystick_dead_zone_shape")
         );
-        assert_eq!(sp.overrides[0].value, "1");
+        assert_eq!(overrides[0].value, "1");
     }
 
     const WITH_PREFS_SECTION: &[u8] = b"QuadStick Configuration,Version 1.1,abc,Mac\r\n\
@@ -467,7 +461,7 @@ mystery_output,future_modifier,unknown_input_id,\r\n\
     #[test]
     fn unknown_vocabulary_emits_warnings_but_loads() {
         let r = parse(WITH_UNKNOWN).expect("parse");
-        assert_eq!(r.model.sub_profiles[0].bindings.len(), 1);
+        assert_eq!(r.model.sub_profiles[0].bindings().count(), 1);
         assert!(
             r.warnings
                 .iter()

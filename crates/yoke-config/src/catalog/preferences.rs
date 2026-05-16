@@ -440,14 +440,15 @@ impl PreferenceSpec {
 }
 
 impl PreferenceKey {
-    pub fn from_csv(s: &str) -> Option<Self> {
-        if s.is_empty() {
-            return None;
-        }
-        if let Some(spec) = PreferenceSpec::for_id(s) {
-            return Some(Self::Known(spec.key));
-        }
-        Some(Self::Unknown(s.to_owned()))
+    /// Parse a non-empty CSV preference identifier. Empty strings are caller-filtered.
+    /// Unknown identifiers become `PreferenceKey::Unknown(s)` so they survive round-trip.
+    pub fn from_csv(s: &str) -> Self {
+        debug_assert!(
+            !s.is_empty(),
+            "PreferenceKey::from_csv called with empty string"
+        );
+        PreferenceSpec::for_id(s)
+            .map_or_else(|| Self::Unknown(s.to_owned()), |spec| Self::Known(spec.key))
     }
 
     pub fn as_csv(&self) -> String {
@@ -468,7 +469,7 @@ mod tests {
     #[test]
     fn known_key_round_trips() {
         for spec in PreferenceSpec::ALL {
-            let parsed = PreferenceKey::from_csv(spec.id).expect(spec.id);
+            let parsed = PreferenceKey::from_csv(spec.id);
             assert_eq!(parsed.as_csv(), spec.id);
             assert!(!matches!(parsed, PreferenceKey::Unknown(_)));
         }
@@ -476,7 +477,7 @@ mod tests {
 
     #[test]
     fn unknown_key_round_trips() {
-        let k = PreferenceKey::from_csv("future_pref").unwrap();
+        let k = PreferenceKey::from_csv("future_pref");
         assert_eq!(k, PreferenceKey::Unknown("future_pref".into()));
         assert_eq!(k.as_csv(), "future_pref");
     }
@@ -484,7 +485,7 @@ mod tests {
     #[test]
     fn every_known_id_has_a_spec() {
         for spec in PreferenceSpec::ALL {
-            let key = PreferenceKey::from_csv(spec.id).expect(spec.id);
+            let key = PreferenceKey::from_csv(spec.id);
             assert_eq!(PreferenceSpec::for_key(&key).map(|s| s.id), Some(spec.id));
         }
     }

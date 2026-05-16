@@ -6,4 +6,4 @@ pub mod profile;
 pub use binding::Binding;
 pub use overrides::PreferenceOverride;
 pub use preferences::{PreferenceEntry, Preferences};
-pub use profile::{Profile, SubProfile, SubProfileHeader, TopLine};
+pub use profile::{Profile, SubProfile, SubProfileHeader, SubProfileRow, TopLine};
