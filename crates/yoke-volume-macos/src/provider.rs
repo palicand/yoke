@@ -22,8 +22,10 @@ use tokio::sync::{broadcast, watch};
 use yoke_volume::error::VolumeError;
 use yoke_volume::io;
 use yoke_volume::profile::{ProfileEntry, ProfileName};
-use yoke_volume::provider::VolumeProvider;
-use yoke_volume::state::{HORI_PS4_VID_PID, ModeHint, MountEvent, MountState, VidPid};
+use yoke_volume::provider::{VolumeProvider, require_present_at};
+use yoke_volume::state::{
+    HORI_PS4_VID_PID, ModeHint, MountEvent, MountState, VidPid, state_transition_event,
+};
 
 const EVENT_CHANNEL_CAPACITY: usize = 64;
 const USB_POLL_INTERVAL_SECS: f64 = 1.0;
@@ -38,18 +40,22 @@ pub struct MacOsVolumeProvider {
 }
 
 pub struct Inner {
-    pub state: Mutex<MountState>,
-    pub state_tx: watch::Sender<MountState>,
-    pub event_tx: broadcast::Sender<MountEvent>,
-    pub tracked: Mutex<Tracked>,
+    state_tx: watch::Sender<MountState>,
+    event_tx: broadcast::Sender<MountEvent>,
+    tracked: Mutex<Tracked>,
 }
 
 #[derive(Default)]
-pub struct Tracked {
-    pub quadstick_vid_pids: HashSet<VidPid>,
-    pub hori_seen: bool,
-    pub mount_point: Option<PathBuf>,
-    pub label: Option<String>,
+struct Tracked {
+    quadstick_vid_pids: HashSet<VidPid>,
+    hori_seen: bool,
+    ds3_emulation_vp: Option<VidPid>,
+    // Sticky across polls: physical USB port where we last saw a confirmed
+    // QuadStick. Used to recognize the device after it re-enumerates under
+    // an emulation persona we don't have explicitly listed.
+    quadstick_location_id: Option<u32>,
+    mount_point: Option<PathBuf>,
+    label: Option<String>,
 }
 
 impl Tracked {
@@ -65,6 +71,19 @@ impl Tracked {
             return MountState::DeviceVisibleNoVolume {
                 vid_pid: vp,
                 mode_hint: Some(ModeHint::MassStorageDisabled),
+            };
+        }
+        if let Some(vp) = self.ds3_emulation_vp {
+            if let (Some(mp), Some(lbl)) = (self.mount_point.as_ref(), self.label.as_ref()) {
+                return MountState::Present {
+                    mount_point: mp.clone(),
+                    vid_pid: vp,
+                    label: lbl.clone(),
+                };
+            }
+            return MountState::DeviceVisibleNoVolume {
+                vid_pid: vp,
+                mode_hint: Some(ModeHint::Ds3Emulation),
             };
         }
         if self.hori_seen {
@@ -101,8 +120,13 @@ impl Worker {
 }
 
 fn drain_usb_devices(inner: &Inner) {
+    let last_qs_location = inner.tracked.lock().unwrap().quadstick_location_id;
+
     let mut new_quadsticks: HashSet<VidPid> = HashSet::new();
+    let mut new_qs_location: Option<u32> = None;
     let mut hori_seen = false;
+    let mut ds3_emulation_vp: Option<VidPid> = None;
+    let mut unknown_at_last_qs_location: Option<VidPid> = None;
     unsafe {
         let matching = usb::IOServiceMatching(usb::kIOUSBDeviceClassName.as_ptr().cast());
         if matching.is_null() {
@@ -127,14 +151,30 @@ fn drain_usb_devices(inner: &Inner) {
                     vendor: vid,
                     product: pid,
                 };
+                let location = usb::read_location_id(entry);
                 match usb::classify(vp) {
                     usb::DeviceClass::QuadStick(vp) => {
                         new_quadsticks.insert(vp);
+                        if let Some(loc) = location {
+                            new_qs_location = Some(loc);
+                        }
                     }
                     usb::DeviceClass::HoriPs4 => {
                         hori_seen = true;
                     }
-                    usb::DeviceClass::Other => {}
+                    usb::DeviceClass::Ds3Emulation(vp) => {
+                        ds3_emulation_vp = Some(vp);
+                        if let Some(loc) = location {
+                            new_qs_location = Some(loc);
+                        }
+                    }
+                    usb::DeviceClass::Other => {
+                        if let (Some(loc), Some(stored)) = (location, last_qs_location)
+                            && loc == stored
+                        {
+                            unknown_at_last_qs_location = Some(vp);
+                        }
+                    }
                 }
             }
             usb::IOObjectRelease(entry);
@@ -145,6 +185,13 @@ fn drain_usb_devices(inner: &Inner) {
     let mut tracked = inner.tracked.lock().unwrap();
     tracked.quadstick_vid_pids = new_quadsticks;
     tracked.hori_seen = hori_seen;
+    // Promote a same-port unknown device to ds3_emulation_vp as a fallback,
+    // so we keep recognizing the QuadStick across emulation modes whose
+    // VID:PIDs we haven't catalogued yet.
+    tracked.ds3_emulation_vp = ds3_emulation_vp.or(unknown_at_last_qs_location);
+    if let Some(loc) = new_qs_location {
+        tracked.quadstick_location_id = Some(loc);
+    }
 }
 
 fn drain_volumes(inner: &Inner) {
@@ -153,18 +200,21 @@ fn drain_volumes(inner: &Inner) {
         return;
     };
     for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
         let name = entry.file_name();
         let name_lossy = name.to_string_lossy();
-        if name_lossy.eq_ignore_ascii_case("Quad Stick")
-            || name_lossy.eq_ignore_ascii_case("QuadStick")
+        if !name_lossy.eq_ignore_ascii_case("Quad Stick")
+            && !name_lossy.eq_ignore_ascii_case("QuadStick")
         {
-            found = Some((path, name_lossy.into_owned()));
-            break;
+            continue;
         }
+        // /Volumes entries are typically symlinks to the actual mount point,
+        // so follow with metadata() rather than DirEntry::file_type which is
+        // a no-follow lstat on macOS.
+        if !entry.metadata().is_ok_and(|m| m.is_dir()) {
+            continue;
+        }
+        found = Some((entry.path(), name_lossy.into_owned()));
+        break;
     }
     let mut tracked = inner.tracked.lock().unwrap();
     if let Some((mp, lbl)) = found {
@@ -178,38 +228,17 @@ fn drain_volumes(inner: &Inner) {
 
 fn publish(inner: &Inner) {
     let new_state = inner.tracked.lock().unwrap().compute();
-    let old = std::mem::replace(&mut *inner.state.lock().unwrap(), new_state.clone());
-    let _ = inner.state_tx.send(new_state.clone());
-    if let Some(evt) = state_transition_event(&old, &new_state) {
+    let mut emitted_event = None;
+    inner.state_tx.send_if_modified(|cur| {
+        if *cur == new_state {
+            return false;
+        }
+        emitted_event = state_transition_event(cur, &new_state);
+        *cur = new_state.clone();
+        true
+    });
+    if let Some(evt) = emitted_event {
         let _ = inner.event_tx.send(evt);
-    }
-}
-
-fn state_transition_event(old: &MountState, new_state: &MountState) -> Option<MountEvent> {
-    match (old, new_state) {
-        (
-            MountState::Absent | MountState::DeviceVisibleNoVolume { .. },
-            MountState::Present {
-                mount_point,
-                vid_pid,
-                label,
-            },
-        ) => Some(MountEvent::VolumeMounted {
-            mount_point: mount_point.clone(),
-            vid_pid: *vid_pid,
-            label: label.clone(),
-        }),
-        (
-            MountState::Present { .. },
-            MountState::Absent | MountState::DeviceVisibleNoVolume { .. },
-        ) => Some(MountEvent::VolumeUnmounted),
-        (MountState::Absent, MountState::DeviceVisibleNoVolume { vid_pid, .. }) => {
-            Some(MountEvent::DeviceAppeared { vid_pid: *vid_pid })
-        }
-        (MountState::DeviceVisibleNoVolume { .. }, MountState::Absent) => {
-            Some(MountEvent::DeviceDisappeared)
-        }
-        _ => None,
     }
 }
 
@@ -243,7 +272,7 @@ fn handle_disk_appeared(inner: &Inner, disk: da::DADiskRef) {
         return;
     }
     // Confirm the appearing disk is on a QuadStick USB ancestor before
-    // touching tracked state. Walk: IOMedia -> ancestors -> first IOUSBDevice.
+    // touching tracked state.
     let Some(media) = (unsafe { usb::iomedia_for_bsd_name(bsd) }) else {
         return;
     };
@@ -281,52 +310,73 @@ fn handle_disk_disappeared(inner: &Inner, _disk: da::DADiskRef) {
 }
 
 fn volume_path_from_disk(disk: da::DADiskRef) -> Option<PathBuf> {
-    unsafe {
-        let desc = da::DADiskCopyDescription(disk);
-        if desc.is_null() {
-            return None;
-        }
-        let key_c = CString::new("DAVolumePath").ok()?;
-        let key_cf = CFStringCreateWithCString(ptr::null(), key_c.as_ptr(), kCFStringEncodingUTF8);
-        if key_cf.is_null() {
-            CFRelease(desc.cast());
-            return None;
-        }
-        let url_ptr = CFDictionaryGetValue(desc, key_cf.cast());
-        CFRelease(key_cf.cast());
-        if url_ptr.is_null() {
-            CFRelease(desc.cast());
-            return None;
-        }
-        let cf_path =
-            CFURLCopyFileSystemPath(url_ptr.cast::<_>() as CFURLRef, kCFURLPOSIXPathStyle);
-        CFRelease(desc.cast());
-        if cf_path.is_null() {
-            return None;
-        }
-        // CFStringGetLength returns CFIndex (signed isize); a negative value
-        // would indicate API misuse and we treat it as zero.
-        let length_raw = CFStringGetLength(cf_path);
-        let length = usize::try_from(length_raw).unwrap_or(0);
-        // Worst-case UTF-8 expansion is 4 bytes per UTF-16 code unit, plus NUL.
-        let buf_size = length.saturating_mul(4).saturating_add(1);
-        let mut buf = vec![0u8; buf_size];
-        let buf_size_isize = isize::try_from(buf_size).unwrap_or(isize::MAX);
-        let ok = CFStringGetCString(
+    // SAFETY for the unsafe blocks below: `disk` is a valid DADiskRef owned by
+    // DiskArbitration during the callback that produced it. Each CFRelease
+    // pairs with a Create/Copy on the same path; CFDictionaryGetValue follows
+    // the Get-rule (no release). The buffer fed to CFStringGetCString is sized
+    // for the worst-case UTF-8 expansion of the CFString.
+
+    // SAFETY: DADiskCopyDescription returns +1 (Create-rule); released below.
+    let desc = unsafe { da::DADiskCopyDescription(disk) };
+    if desc.is_null() {
+        return None;
+    }
+    let key_c = CString::new("DAVolumePath").ok()?;
+    // SAFETY: NUL-terminated `key_c.as_ptr()` lives until end of function.
+    let key_cf =
+        unsafe { CFStringCreateWithCString(ptr::null(), key_c.as_ptr(), kCFStringEncodingUTF8) };
+    if key_cf.is_null() {
+        // SAFETY: pairs with the DADiskCopyDescription above.
+        unsafe { CFRelease(desc.cast()) };
+        return None;
+    }
+    // SAFETY: Get-rule, no retain/release on `url_ptr`.
+    let url_ptr = unsafe { CFDictionaryGetValue(desc, key_cf.cast()) };
+    // SAFETY: pairs with CFStringCreateWithCString above.
+    unsafe { CFRelease(key_cf.cast()) };
+    if url_ptr.is_null() {
+        // SAFETY: pairs with DADiskCopyDescription above.
+        unsafe { CFRelease(desc.cast()) };
+        return None;
+    }
+    // SAFETY: url_ptr is a CFURLRef returned by DA; CFURLCopyFileSystemPath
+    // returns +1 (Copy-rule), released below.
+    let cf_path =
+        unsafe { CFURLCopyFileSystemPath(url_ptr.cast::<_>() as CFURLRef, kCFURLPOSIXPathStyle) };
+    // SAFETY: pairs with DADiskCopyDescription above.
+    unsafe { CFRelease(desc.cast()) };
+    if cf_path.is_null() {
+        return None;
+    }
+    // CFStringGetLength returns CFIndex (signed isize); a negative value
+    // would indicate API misuse and we treat it as zero.
+    // SAFETY: cf_path is a valid +1 CFStringRef from CFURLCopyFileSystemPath.
+    let length_raw = unsafe { CFStringGetLength(cf_path) };
+    let length = usize::try_from(length_raw).unwrap_or(0);
+    // Worst-case UTF-8 expansion is 4 bytes per UTF-16 code unit, plus NUL.
+    let buf_size = length.saturating_mul(4).saturating_add(1);
+    let mut buf = vec![0u8; buf_size];
+    let buf_size_isize = isize::try_from(buf_size).unwrap_or(isize::MAX);
+    // SAFETY: buf is owned, mutable, and sized for the worst-case expansion.
+    let ok = unsafe {
+        CFStringGetCString(
             cf_path,
             buf.as_mut_ptr().cast(),
             buf_size_isize,
             kCFStringEncodingUTF8,
-        );
-        CFRelease(cf_path.cast());
-        if ok == 0 {
-            return None;
-        }
-        let s = CStr::from_ptr(buf.as_ptr().cast())
-            .to_string_lossy()
-            .into_owned();
-        Some(PathBuf::from(s))
+        )
+    };
+    // SAFETY: pairs with CFURLCopyFileSystemPath above.
+    unsafe { CFRelease(cf_path.cast()) };
+    if ok == 0 {
+        return None;
     }
+    // SAFETY: CFStringGetCString succeeded, so buf starts with a valid
+    // NUL-terminated C string within its allocation.
+    let s = unsafe { CStr::from_ptr(buf.as_ptr().cast()) }
+        .to_string_lossy()
+        .into_owned();
+    Some(PathBuf::from(s))
 }
 
 impl RunLoopWorker for Worker {
@@ -401,20 +451,16 @@ impl RunLoopWorker for Worker {
 }
 
 impl MacOsVolumeProvider {
-    // Result surface kept for BackendInit errors; DA session failure is a
-    // warning-only path today but callers should not assume this always succeeds.
-    #[allow(clippy::unnecessary_wraps)]
     pub fn new() -> Result<Self, VolumeError> {
         let (state_tx, _) = watch::channel(MountState::Absent);
         let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let inner = Arc::new(Inner {
-            state: Mutex::new(MountState::Absent),
             state_tx,
             event_tx,
             tracked: Mutex::new(Tracked::default()),
         });
         let worker = Worker::new(Arc::clone(&inner));
-        let thread = RunLoopThread::spawn(worker);
+        let thread = RunLoopThread::spawn(worker)?;
         Ok(Self {
             inner,
             _thread: thread,
@@ -425,20 +471,14 @@ impl MacOsVolumeProvider {
         &self,
         f: impl FnOnce(&Path) -> Result<T, VolumeError>,
     ) -> Result<T, VolumeError> {
-        let state = self.inner.state.lock().unwrap().clone();
-        match state {
-            MountState::Absent => Err(VolumeError::NotPresent),
-            MountState::DeviceVisibleNoVolume { mode_hint, .. } => {
-                Err(VolumeError::VolumeHidden { hint: mode_hint })
-            }
-            MountState::Present { mount_point, .. } => f(&mount_point),
-        }
+        let state = self.inner.state_tx.borrow().clone();
+        require_present_at(&state, f)
     }
 }
 
 impl VolumeProvider for MacOsVolumeProvider {
     fn current_state(&self) -> MountState {
-        self.inner.state.lock().unwrap().clone()
+        self.inner.state_tx.borrow().clone()
     }
 
     fn subscribe_state(&self) -> watch::Receiver<MountState> {

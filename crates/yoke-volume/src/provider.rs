@@ -1,6 +1,7 @@
 use crate::error::VolumeError;
 use crate::profile::{ProfileEntry, ProfileName};
 use crate::state::{MountEvent, MountState};
+use std::path::Path;
 use tokio::sync::{broadcast, watch};
 
 pub trait VolumeProvider: Send + Sync + 'static {
@@ -13,4 +14,17 @@ pub trait VolumeProvider: Send + Sync + 'static {
     fn write_profile(&self, name: &ProfileName, bytes: &[u8]) -> Result<(), VolumeError>;
     fn delete_profile(&self, name: &ProfileName) -> Result<(), VolumeError>;
     fn rename_profile(&self, from: &ProfileName, to: &ProfileName) -> Result<(), VolumeError>;
+}
+
+pub fn require_present_at<T>(
+    state: &MountState,
+    f: impl FnOnce(&Path) -> Result<T, VolumeError>,
+) -> Result<T, VolumeError> {
+    match state {
+        MountState::Absent => Err(VolumeError::NotPresent),
+        MountState::DeviceVisibleNoVolume { mode_hint, .. } => {
+            Err(VolumeError::VolumeHidden { hint: *mode_hint })
+        }
+        MountState::Present { mount_point, .. } => f(mount_point),
+    }
 }

@@ -11,7 +11,9 @@ use core_foundation_sys::number::{CFNumberGetValue, kCFNumberSInt32Type};
 use core_foundation_sys::runloop::CFRunLoopSourceRef;
 use core_foundation_sys::string::{CFStringCreateWithCString, CFStringRef, kCFStringEncodingUTF8};
 use libc::{c_char, c_void};
-use yoke_volume::state::{HORI_PS4_VID_PID, QUADSTICK_VID_PIDS, VidPid};
+use yoke_volume::state::{
+    HORI_PS4_VID_PID, QUADSTICK_DS3_EMULATION_VID_PIDS, QUADSTICK_VID_PIDS, VidPid,
+};
 
 pub type io_object_t = u32;
 pub type io_service_t = io_object_t;
@@ -150,6 +152,48 @@ pub unsafe fn iomedia_for_bsd_name(bsd_name: *const c_char) -> Option<io_service
     if svc == 0 { None } else { Some(svc) }
 }
 
+/// Read `locationID` for the given `IOKit` USB device entry. The value
+/// encodes the device's physical USB port path and survives re-enumeration
+/// when the device swaps emulation modes (and therefore VID:PID).
+///
+/// # Safety
+/// `entry` must be a valid `io_registry_entry_t` owned by the caller.
+pub unsafe fn read_location_id(entry: io_registry_entry_t) -> Option<u32> {
+    let cstring_key = std::ffi::CString::new("locationID").ok()?;
+    let cf_key = unsafe {
+        CFStringCreateWithCString(
+            std::ptr::null(),
+            cstring_key.as_ptr(),
+            kCFStringEncodingUTF8,
+        )
+    };
+    if cf_key.is_null() {
+        return None;
+    }
+    let raw = unsafe { IORegistryEntryCreateCFProperty(entry, cf_key, std::ptr::null(), 0) };
+    unsafe { core_foundation_sys::base::CFRelease(cf_key.cast()) };
+    if raw.is_null() {
+        return None;
+    }
+    let number_ref = raw.cast::<core_foundation_sys::number::__CFNumber>();
+    let mut value: i32 = 0;
+    let ok = unsafe {
+        CFNumberGetValue(
+            number_ref,
+            kCFNumberSInt32Type,
+            std::ptr::addr_of_mut!(value).cast(),
+        )
+    };
+    unsafe { core_foundation_sys::base::CFRelease(raw) };
+    if !ok {
+        return None;
+    }
+    // locationID is documented as UInt32, but stored as a signed CFNumber.
+    // Observed values fit comfortably in i32; reject the rare high-bit case
+    // rather than silently aliasing.
+    u32::try_from(value).ok()
+}
+
 /// Read a 16-bit integer property from an `IORegistry` entry by key name.
 ///
 /// Returns `None` if the property is absent, cannot be created as a CF string,
@@ -192,6 +236,7 @@ pub unsafe fn read_u16_property(entry: io_registry_entry_t, key: &str) -> Option
 pub enum DeviceClass {
     QuadStick(VidPid),
     HoriPs4,
+    Ds3Emulation(VidPid),
     Other,
 }
 
@@ -201,6 +246,8 @@ pub fn classify(vid_pid: VidPid) -> DeviceClass {
         DeviceClass::QuadStick(vid_pid)
     } else if vid_pid == HORI_PS4_VID_PID {
         DeviceClass::HoriPs4
+    } else if QUADSTICK_DS3_EMULATION_VID_PIDS.contains(&vid_pid) {
+        DeviceClass::Ds3Emulation(vid_pid)
     } else {
         DeviceClass::Other
     }
@@ -238,5 +285,19 @@ mod tests {
             }),
             DeviceClass::Other
         );
+    }
+
+    #[test]
+    fn classify_sony_ds3_emulation_pids() {
+        let wired = VidPid {
+            vendor: 0x054C,
+            product: 0x05C5,
+        };
+        let ds3 = VidPid {
+            vendor: 0x054C,
+            product: 0x0268,
+        };
+        assert_eq!(classify(wired), DeviceClass::Ds3Emulation(wired));
+        assert_eq!(classify(ds3), DeviceClass::Ds3Emulation(ds3));
     }
 }

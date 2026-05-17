@@ -20,6 +20,10 @@ pub enum MountEvent {
         vid_pid: VidPid,
     },
     DeviceDisappeared,
+    DeviceModeChanged {
+        vid_pid: VidPid,
+        mode_hint: Option<ModeHint>,
+    },
     VolumeMounted {
         mount_point: PathBuf,
         vid_pid: VidPid,
@@ -41,6 +45,7 @@ pub struct VidPid {
 pub enum ModeHint {
     Ps4OrHori,
     MassStorageDisabled,
+    Ds3Emulation,
 }
 
 pub const QUADSTICK_VID_PIDS: &[VidPid] = &[
@@ -70,6 +75,57 @@ pub const HORI_PS4_VID_PID: VidPid = VidPid {
     vendor: 0x0F0D,
     product: 0x0066,
 };
+
+// QuadStick re-enumerates under genuine Sony VID:PIDs when a profile activates
+// DualShock-style emulation (impersonating a real PS3 controller to satisfy
+// hardware checks). Observed at the same physical USB locationID as the base
+// "Quad Stick" device, so the device has not actually been unplugged.
+pub const QUADSTICK_DS3_EMULATION_VID_PIDS: &[VidPid] = &[
+    VidPid {
+        vendor: 0x054C,
+        product: 0x05C5,
+    },
+    VidPid {
+        vendor: 0x054C,
+        product: 0x0268,
+    },
+];
+
+#[must_use]
+pub fn state_transition_event(old: &MountState, new: &MountState) -> Option<MountEvent> {
+    match (old, new) {
+        (
+            MountState::Absent | MountState::DeviceVisibleNoVolume { .. },
+            MountState::Present {
+                mount_point,
+                vid_pid,
+                label,
+            },
+        ) => Some(MountEvent::VolumeMounted {
+            mount_point: mount_point.clone(),
+            vid_pid: *vid_pid,
+            label: label.clone(),
+        }),
+        (
+            MountState::Present { .. },
+            MountState::Absent | MountState::DeviceVisibleNoVolume { .. },
+        ) => Some(MountEvent::VolumeUnmounted),
+        (MountState::Absent, MountState::DeviceVisibleNoVolume { vid_pid, .. }) => {
+            Some(MountEvent::DeviceAppeared { vid_pid: *vid_pid })
+        }
+        (MountState::DeviceVisibleNoVolume { .. }, MountState::Absent) => {
+            Some(MountEvent::DeviceDisappeared)
+        }
+        (
+            MountState::DeviceVisibleNoVolume { .. },
+            MountState::DeviceVisibleNoVolume { vid_pid, mode_hint },
+        ) => Some(MountEvent::DeviceModeChanged {
+            vid_pid: *vid_pid,
+            mode_hint: *mode_hint,
+        }),
+        _ => None,
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -102,6 +158,40 @@ mod tests {
         let json = serde_json::to_string(&state).unwrap();
         let restored: MountState = serde_json::from_str(&json).unwrap();
         assert_eq!(state, restored);
+    }
+
+    #[test]
+    fn device_visible_no_volume_to_emulation_emits_mode_changed() {
+        let old = MountState::DeviceVisibleNoVolume {
+            vid_pid: VidPid {
+                vendor: 0x16D0,
+                product: 0x092B,
+            },
+            mode_hint: Some(ModeHint::MassStorageDisabled),
+        };
+        let new = MountState::DeviceVisibleNoVolume {
+            vid_pid: VidPid {
+                vendor: 0x054C,
+                product: 0x05C5,
+            },
+            mode_hint: Some(ModeHint::Ds3Emulation),
+        };
+        let evt = state_transition_event(&old, &new);
+        assert!(matches!(
+            evt,
+            Some(MountEvent::DeviceModeChanged {
+                mode_hint: Some(ModeHint::Ds3Emulation),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn ds3_emulation_pids_disjoint_from_quadstick_set() {
+        for vp in QUADSTICK_DS3_EMULATION_VID_PIDS {
+            assert!(!QUADSTICK_VID_PIDS.contains(vp));
+            assert_ne!(*vp, HORI_PS4_VID_PID);
+        }
     }
 
     #[test]

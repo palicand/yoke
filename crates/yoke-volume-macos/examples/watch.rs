@@ -1,5 +1,4 @@
 #![cfg(target_os = "macos")]
-// Print stdout is intentional for this 30-line smoke binary.
 #![allow(clippy::print_stdout)]
 
 use std::time::Duration;

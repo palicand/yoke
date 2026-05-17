@@ -10,10 +10,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::sync_channel;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use yoke_volume::error::VolumeError;
 
-// Return codes from CFRunLoopRunInMode.
 const K_CF_RUN_LOOP_RAN_STOPPED: c_int = 2;
-const K_CF_RUN_LOOP_FINISHED: c_int = 1;
 
 unsafe extern "C" {
     static kCFRunLoopDefaultMode: CFStringRef;
@@ -41,7 +40,7 @@ struct RunLoopHandle(CFRunLoopRef);
 unsafe impl Send for RunLoopHandle {}
 
 impl RunLoopThread {
-    pub fn spawn<W: RunLoopWorker>(mut worker: W) -> Self {
+    pub fn spawn<W: RunLoopWorker>(mut worker: W) -> Result<Self, VolumeError> {
         let (tx, rx) = sync_channel::<RunLoopHandle>(0);
         let stop_flag = Arc::new(AtomicBool::new(false));
         let stop_flag_clone = Arc::clone(&stop_flag);
@@ -49,16 +48,19 @@ impl RunLoopThread {
             .name("yoke-volume-da".into())
             .spawn(move || {
                 let run_loop: CFRunLoopRef = unsafe { CFRunLoopGetCurrent() };
-                // Retain so the ref stays valid for our stored copy even after
-                // this thread exits (CF Get-rule: CFRunLoopGetCurrent is not +1).
+                // CF Get-rule: CFRunLoopGetCurrent is not +1, retain so the
+                // stored handle outlives this thread.
                 unsafe { CFRetain(run_loop.cast()) };
                 worker.setup(run_loop);
-                tx.send(RunLoopHandle(run_loop))
-                    .expect("seeding handshake must succeed");
+                if tx.send(RunLoopHandle(run_loop)).is_err() {
+                    worker.teardown();
+                    unsafe { CFRelease(run_loop.cast()) };
+                    return;
+                }
                 drop(tx);
-                // Pump in short slices so we can observe the stop flag even
-                // when no CF sources are registered (CFRunLoopRun would return
-                // immediately in that case, making CFRunLoopStop from Drop racy).
+                // Pump in short slices so the stop flag is observed even when
+                // no CF sources are registered (CFRunLoopRun would otherwise
+                // return immediately and race CFRunLoopStop from Drop).
                 loop {
                     let result = unsafe { CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, 0) };
                     if stop_flag_clone.load(Ordering::Acquire) {
@@ -71,13 +73,15 @@ impl RunLoopThread {
                 }
                 worker.teardown();
             })
-            .expect("spawn DA thread");
-        let run_loop = rx.recv().expect("DA thread sent its run loop");
-        Self {
+            .map_err(|e| VolumeError::BackendInit(format!("spawn DA thread: {e}")))?;
+        let run_loop = rx
+            .recv()
+            .map_err(|_| VolumeError::BackendInit("DA thread exited before seeding".into()))?;
+        Ok(Self {
             handle: Some(handle),
             run_loop: Mutex::new(Some(run_loop.0)),
             stop_flag,
-        }
+        })
     }
 }
 

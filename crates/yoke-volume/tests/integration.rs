@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tempfile::tempdir;
+use tempfile::{TempDir, tempdir};
 use yoke_volume::state::MountEvent;
 use yoke_volume::{FsBackend, ProfileKind, ProfileName, VolumeError, VolumeProvider};
 
@@ -15,10 +15,15 @@ fn pname(s: &str) -> ProfileName {
     ProfileName::new(s).unwrap()
 }
 
-#[test]
-fn byte_level_round_trip_via_fs_backend() {
+fn fresh_backend() -> (TempDir, FsBackend) {
     let dir = tempdir().unwrap();
     let backend = FsBackend::new(dir.path().to_path_buf());
+    (dir, backend)
+}
+
+#[test]
+fn byte_level_round_trip_via_fs_backend() {
+    let (_dir, backend) = fresh_backend();
     backend
         .write_profile(&pname("sample"), FIXTURE_CSV)
         .unwrap();
@@ -28,8 +33,7 @@ fn byte_level_round_trip_via_fs_backend() {
 
 #[test]
 fn model_level_round_trip_via_yoke_config() {
-    let dir = tempdir().unwrap();
-    let backend = FsBackend::new(dir.path().to_path_buf());
+    let (_dir, backend) = fresh_backend();
 
     let parsed_before = yoke_config::parse(FIXTURE_CSV).expect("fixture must parse");
 
@@ -45,8 +49,7 @@ fn model_level_round_trip_via_yoke_config() {
 
 #[test]
 fn multi_profile_lifecycle() {
-    let dir = tempdir().unwrap();
-    let backend = FsBackend::new(dir.path().to_path_buf());
+    let (_dir, backend) = fresh_backend();
 
     backend
         .write_profile(&pname("default"), FIXTURE_CSV)
@@ -92,8 +95,7 @@ fn multi_profile_lifecycle() {
 
 #[test]
 fn not_present_failure_path() {
-    let dir = tempdir().unwrap();
-    let backend = FsBackend::new(dir.path().to_path_buf());
+    let (_dir, backend) = fresh_backend();
     backend.write_profile(&pname("x"), b"first").unwrap();
 
     backend.set_present(false);
@@ -128,8 +130,7 @@ fn event_stream_observation() {
         .unwrap();
 
     rt.block_on(async {
-        let dir = tempdir().unwrap();
-        let backend = FsBackend::new(dir.path().to_path_buf());
+        let (_dir, backend) = fresh_backend();
         let mut events = backend.subscribe_events();
 
         backend.set_present(false);

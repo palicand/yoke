@@ -1,10 +1,10 @@
 use crate::error::VolumeError;
 use crate::io;
 use crate::profile::{ProfileEntry, ProfileName};
-use crate::provider::VolumeProvider;
-use crate::state::{MountEvent, MountState, VidPid};
+use crate::provider::{VolumeProvider, require_present_at};
+use crate::state::{MountEvent, MountState, VidPid, state_transition_event};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::{broadcast, watch};
 
 const FS_BACKEND_LABEL: &str = "fs-backend";
@@ -20,7 +20,6 @@ pub struct FsBackend {
 
 struct FsInner {
     root: PathBuf,
-    state: Mutex<MountState>,
     state_tx: watch::Sender<MountState>,
     event_tx: broadcast::Sender<MountEvent>,
 }
@@ -28,47 +27,33 @@ struct FsInner {
 impl FsBackend {
     pub fn new(root: PathBuf) -> Self {
         let initial = compute_state(&root);
-        let (state_tx, _) = watch::channel(initial.clone());
+        let (state_tx, _) = watch::channel(initial);
         let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let inner = Arc::new(FsInner {
             root,
-            state: Mutex::new(initial),
             state_tx,
             event_tx,
         });
         Self { inner }
     }
 
-    /// # Panics
-    ///
-    /// Panics if the internal state mutex is poisoned.
     pub fn set_present(&self, present: bool) {
         let new_state = if present {
             compute_state(&self.inner.root)
         } else {
             MountState::Absent
         };
-        let old_state = self.inner.state.lock().unwrap().clone();
-        let event = match (&old_state, &new_state) {
-            (MountState::Present { .. }, MountState::Absent) => Some(MountEvent::VolumeUnmounted),
-            (
-                MountState::Absent,
-                MountState::Present {
-                    mount_point,
-                    vid_pid,
-                    label,
-                },
-            ) => Some(MountEvent::VolumeMounted {
-                mount_point: mount_point.clone(),
-                vid_pid: *vid_pid,
-                label: label.clone(),
-            }),
-            _ => None,
-        };
-        *self.inner.state.lock().unwrap() = new_state.clone();
-        let _ = self.inner.state_tx.send(new_state);
-        if let Some(e) = event {
-            let _ = self.inner.event_tx.send(e);
+        let mut emitted_event = None;
+        self.inner.state_tx.send_if_modified(|cur| {
+            if *cur == new_state {
+                return false;
+            }
+            emitted_event = state_transition_event(cur, &new_state);
+            *cur = new_state.clone();
+            true
+        });
+        if let Some(evt) = emitted_event {
+            let _ = self.inner.event_tx.send(evt);
         }
     }
 
@@ -76,14 +61,8 @@ impl FsBackend {
         &self,
         f: impl FnOnce(&Path) -> Result<T, VolumeError>,
     ) -> Result<T, VolumeError> {
-        let state = self.inner.state.lock().unwrap().clone();
-        match state {
-            MountState::Absent => Err(VolumeError::NotPresent),
-            MountState::DeviceVisibleNoVolume { mode_hint, .. } => {
-                Err(VolumeError::VolumeHidden { hint: mode_hint })
-            }
-            MountState::Present { mount_point, .. } => f(&mount_point),
-        }
+        let state = self.inner.state_tx.borrow().clone();
+        require_present_at(&state, f)
     }
 }
 
@@ -101,7 +80,7 @@ fn compute_state(root: &Path) -> MountState {
 
 impl VolumeProvider for FsBackend {
     fn current_state(&self) -> MountState {
-        self.inner.state.lock().unwrap().clone()
+        self.inner.state_tx.borrow().clone()
     }
 
     fn subscribe_state(&self) -> watch::Receiver<MountState> {
