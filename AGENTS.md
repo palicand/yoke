@@ -90,6 +90,18 @@ All commands assume the Nix devShell is active (direnv handles this on
    decisions and the code carries the result.
 3. **Implement** the plan, ideally task-by-task with subagents per
    task. Frequent commits.
+4. **Reconcile the spec as you go.** While the sub-project is still in
+   active development on its feature branch, the spec is a living
+   document and must stay accurate. Whenever a commit changes the
+   shape of a sub-project's public API, core state machine, FFI
+   surface, or named architectural mechanism (push vs poll, lock
+   topology, ownership model), update the matching section of the
+   spec in the same commit. Prefer contract-descriptions and
+   pointers to the source file (e.g. "authoritative shape lives in
+   `crates/yoke-volume/src/fs_backend.rs`") over re-pasted code
+   snippets — mirrored snippets are the most common drift source.
+   Once a sub-project ships (PR merged), its dated spec is frozen;
+   changes go in a new dated spec, not in-place edits.
 
 ## Parallel-agent coordination
 
