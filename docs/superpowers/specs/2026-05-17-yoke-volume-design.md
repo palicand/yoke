@@ -207,6 +207,7 @@ pub enum MountState {
 pub enum MountEvent {
     DeviceAppeared { vid_pid: VidPid },
     DeviceDisappeared,
+    DeviceModeChanged { vid_pid: VidPid, mode_hint: Option<ModeHint> },
     VolumeMounted { mount_point: PathBuf, vid_pid: VidPid, label: String },
     VolumeUnmounted,
     MultipleDevicesDetected { count: usize },
@@ -219,6 +220,11 @@ pub struct VidPid { pub vendor: u16, pub product: u16 }
 pub enum ModeHint {
     Ps4OrHori,            // Hori VID/PID seen (0x0F0D / 0x0066)
     MassStorageDisabled,  // QuadStick VID/PID seen but no QuadStick FAT mount
+    Emulation,            // Unknown VID/PID at the port where we last saw a
+                          // confirmed Quad Stick — a profile activated a
+                          // third-party persona (Sony DS3, Xbox, Switch,
+                          // generic gamepad, ...). The persona's VID/PID is
+                          // carried in MountState::DeviceVisibleNoVolume.
 }
 
 pub const QUADSTICK_VID_PIDS: &[VidPid] = &[
@@ -233,6 +239,14 @@ pub const HORI_PS4_VID_PID: VidPid = VidPid { vendor: 0x0F0D, product: 0x0066 };
 
 Both backends share the same VID/PID catalog. The Hori fallback is broken
 out because seeing it is the signal for `ModeHint::Ps4OrHori`.
+
+`QUADSTICK_VID_PIDS` is intentionally **not** exhaustive of every persona
+the device can adopt. QuadStick profiles can flip the device into
+third-party emulation (Sony DualShock 3, Xbox 360, Switch Pro, generic
+gamepad, ...), each of which re-enumerates under the impersonated
+vendor's VID:PID rather than `0x16D0`. The macOS backend recognizes these
+via physical-port anchoring (§ 6) instead of a per-persona catalogue, so
+this const can stay small and stable.
 
 `PathBuf` serializes as a string. On macOS this is always something under
 `/Volumes/`; the field is a `PathBuf` for type honesty, not for
@@ -388,6 +402,30 @@ robust against the rare race where a callback is firing during
 `Drop`: we hold `Arc<Inner>` through the FFI registration, so the
 callback can complete safely; the thread join waits for the run
 loop to drain.
+
+**LocationID anchoring for emulation profiles.** During USB drain the
+watcher reads each device's IOKit `locationID` alongside
+`idVendor` / `idProduct`. When it sees a confirmed Quad Stick
+(VID/PID in `QUADSTICK_VID_PIDS`) it remembers that `locationID` in
+session-scoped state. On subsequent drains, any device classified as
+`Other` whose `locationID` matches that anchor is treated as the
+QuadStick in some emulation persona and surfaces as
+`MountState::DeviceVisibleNoVolume { vid_pid: <persona>, mode_hint:
+Some(Emulation) }`. The persona's `vid_pid` is propagated through to
+state and into the `DeviceModeChanged` event so the UI can describe
+*what* is being emulated without us having to maintain an exhaustive
+mapping. This is what lets the backend keep recognizing the device
+across DualShock 3, Xbox, Switch, and other third-party emulation
+profiles whose VID/PIDs we have not enumerated.
+
+The anchor is **session-scoped and one-way sticky**: it is set when a
+confirmed Quad Stick is seen, never cleared. The trade-off is a
+cold-start gap — if the watcher launches while the device is already
+in an emulation persona it has no anchor yet and reports `Absent`
+until the user flips back to base mode once. That fail-safe is
+deliberate: without a confirmed Quad Stick sighting at that port we
+cannot tell the device apart from a real third-party controller
+plugged into the same hub.
 
 The trait methods on `MacOsVolumeProvider` read the snapshot mutex
 for `current_state` and clone-out a `watch::Receiver` /
@@ -589,12 +627,15 @@ This sub-project is done when:
   passes.
 - The maintainer has run `cargo run --example watch -p
   yoke-volume-macos` against a real QuadStick once and confirmed the
-  three observed transitions: plug-in → `DeviceAppeared` then
+  observed transitions: plug-in → `DeviceAppeared` then
   `VolumeMounted`; switch device to PS4 mode → `VolumeUnmounted` then
   state becomes `DeviceVisibleNoVolume { hint: Some(Ps4OrHori) }`;
-  unplug → `DeviceDisappeared`, state `Absent`. The example does not
-  ship CI assertions for these — it is a maintainer-validated smoke
-  test, recorded in the PR description.
+  switch device to a non-Hori emulation profile (DS3 / Xbox / ...) →
+  state becomes `DeviceVisibleNoVolume { hint: Some(Emulation) }` via
+  locationID anchoring (no spurious `DeviceDisappeared`); switch back
+  to base mode → `VolumeMounted`; unplug → `DeviceDisappeared`, state
+  `Absent`. The example does not ship CI assertions for these — it is
+  a maintainer-validated smoke test, recorded in the PR description.
 
 ## Out of scope (queued for future sub-projects)
 
