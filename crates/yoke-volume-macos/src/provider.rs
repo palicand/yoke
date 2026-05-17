@@ -126,7 +126,6 @@ fn drain_usb_devices(inner: &Inner) {
     let mut new_qs_location: Option<u32> = None;
     let mut hori_seen = false;
     let mut emulation_vp: Option<VidPid> = None;
-    let mut unknown_at_last_qs_location: Option<VidPid> = None;
     unsafe {
         let matching = usb::IOServiceMatching(usb::kIOUSBDeviceClassName.as_ptr().cast());
         if matching.is_null() {
@@ -162,17 +161,16 @@ fn drain_usb_devices(inner: &Inner) {
                     usb::DeviceClass::HoriPs4 => {
                         hori_seen = true;
                     }
-                    usb::DeviceClass::Emulation(vp) => {
-                        emulation_vp = Some(vp);
-                        if let Some(loc) = location {
-                            new_qs_location = Some(loc);
-                        }
-                    }
                     usb::DeviceClass::Other => {
+                        // Recognize any device at the port where we last
+                        // saw a confirmed Quad Stick as the same device
+                        // in some emulation persona (Sony, Xbox, Switch,
+                        // generic gamepad, ...). The exhaustive PID list
+                        // can come later once each mode is catalogued.
                         if let (Some(loc), Some(stored)) = (location, last_qs_location)
                             && loc == stored
                         {
-                            unknown_at_last_qs_location = Some(vp);
+                            emulation_vp = Some(vp);
                         }
                     }
                 }
@@ -185,10 +183,7 @@ fn drain_usb_devices(inner: &Inner) {
     let mut tracked = inner.tracked.lock().unwrap();
     tracked.quadstick_vid_pids = new_quadsticks;
     tracked.hori_seen = hori_seen;
-    // Promote a same-port unknown device to emulation_vp as a fallback,
-    // so we keep recognizing the QuadStick across emulation modes whose
-    // VID:PIDs we haven't catalogued yet.
-    tracked.emulation_vp = emulation_vp.or(unknown_at_last_qs_location);
+    tracked.emulation_vp = emulation_vp;
     if let Some(loc) = new_qs_location {
         tracked.quadstick_location_id = Some(loc);
     }

@@ -79,22 +79,6 @@ pub const HORI_PS4_VID_PID: VidPid = VidPid {
     product: 0x0066,
 };
 
-// Confirmed VID:PIDs the QuadStick adopts in specific emulation profiles
-// (DualShock impersonation observed 2026-05-17). The list is descriptive,
-// not exhaustive: Xbox / Switch / other emulation modes use yet-uncatalogued
-// VID:PIDs, and `yoke-volume-macos` falls back to physical-port anchoring to
-// recognize the QuadStick across them.
-pub const QUADSTICK_EMULATION_VID_PIDS: &[VidPid] = &[
-    VidPid {
-        vendor: 0x054C,
-        product: 0x05C5,
-    },
-    VidPid {
-        vendor: 0x054C,
-        product: 0x0268,
-    },
-];
-
 #[must_use]
 pub fn state_transition_event(old: &MountState, new: &MountState) -> Option<MountEvent> {
     match (old, new) {
@@ -188,14 +172,6 @@ mod tests {
                 ..
             })
         ));
-    }
-
-    #[test]
-    fn emulation_pids_disjoint_from_quadstick_set() {
-        for vp in QUADSTICK_EMULATION_VID_PIDS {
-            assert!(!QUADSTICK_VID_PIDS.contains(vp));
-            assert_ne!(*vp, HORI_PS4_VID_PID);
-        }
     }
 
     #[test]
