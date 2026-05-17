@@ -135,7 +135,7 @@ fn parse_chunk(lines: &[Vec<u8>]) -> Result<Vec<RawRow>, ParseError> {
 
     let mut rows: Vec<RawRow> = Vec::new();
     for rec in rdr.records() {
-        let r = rec.map_err(|e| ParseError::Csv(e.to_string()))?;
+        let r = rec?;
         rows.push(RawRow {
             cells: r.iter().map(str::to_owned).collect(),
         });
@@ -231,36 +231,28 @@ fn build_top_line(cells: &[String]) -> TopLine {
 fn build_sub_profile(section: &RawSection) -> (SubProfile, Vec<Warning>) {
     let mut warnings = Vec::new();
     let header = build_sub_profile_header(section);
-    let body: Vec<&RawRow> = section.rows.iter().skip(3).collect();
     let mut rows: Vec<SubProfileRow> = Vec::new();
     let mut seen_blank_output = false;
 
-    for (idx, row) in body.iter().enumerate() {
+    for (idx, row) in section.rows.iter().skip(3).enumerate() {
         let output_cell = row.cells.first().map_or("", String::as_str);
         if output_cell.is_empty() {
             seen_blank_output = true;
             continue;
         }
         if seen_blank_output {
-            warnings.push(Warning::DataAfterTerminator {
-                line: idx,
-                count: 1,
-            });
+            warnings.push(Warning::DataAfterTerminator { line: idx });
         }
         let modifier_cell = row.cells.get(1).map_or("", String::as_str);
         let input_cell = row.cells.get(2).map_or("", String::as_str);
-        let comment_cells: Vec<&str> = row
-            .cells
-            .iter()
-            .skip(10)
-            .map(String::as_str)
-            .filter(|s| !s.is_empty())
-            .collect();
-        let comment = if comment_cells.is_empty() {
-            None
-        } else {
-            Some(comment_cells.join(" "))
-        };
+        let mut comment = String::new();
+        for cell in row.cells.iter().skip(10).filter(|s| !s.is_empty()) {
+            if !comment.is_empty() {
+                comment.push(' ');
+            }
+            comment.push_str(cell);
+        }
+        let comment = (!comment.is_empty()).then_some(comment);
 
         if PreferenceSpec::for_id(output_cell).is_some() {
             let key = PreferenceKey::from_csv(output_cell);
@@ -344,8 +336,7 @@ fn build_preferences(section: &RawSection) -> (Preferences, Vec<Warning>) {
     let mut warnings = Vec::new();
     let mut entries: Vec<(String, PreferenceEntry)> = Vec::new();
 
-    let body: Vec<&RawRow> = section.rows.iter().skip(3).collect();
-    for (idx, row) in body.iter().enumerate() {
+    for (idx, row) in section.rows.iter().skip(3).enumerate() {
         let id = row.cells.first().map_or("", String::as_str);
         if id.is_empty() {
             break;

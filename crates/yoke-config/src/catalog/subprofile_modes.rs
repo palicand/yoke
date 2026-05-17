@@ -11,13 +11,13 @@ pub enum SubProfileMode {
     Unknown(String),
 }
 
-const TABLE: &[(&str, &str, &str)] = &[
-    ("Mouse", "Mouse Mode", ""),
-    ("Mouse Scroll", "", ""),
-    ("Left Analog", "Left joy", ""),
-    ("Right Analog", "Right joy", ""),
-    ("Mixed Analog", "Mixed Joystick", ""),
-    ("D-Pad", "", ""),
+const TABLE: &[(&str, &str)] = &[
+    ("Mouse", "Mouse Mode"),
+    ("Mouse Scroll", ""),
+    ("Left Analog", "Left joy"),
+    ("Right Analog", "Right joy"),
+    ("Mixed Analog", "Mixed Joystick"),
+    ("D-Pad", ""),
 ];
 
 impl SubProfileMode {
@@ -57,11 +57,8 @@ impl SubProfileMode {
             return None;
         }
         let trimmed = s.trim();
-        for (i, (canon, syn1, syn2)) in TABLE.iter().enumerate() {
-            if trimmed == *canon
-                || (!syn1.is_empty() && trimmed == *syn1)
-                || (!syn2.is_empty() && trimmed == *syn2)
-            {
+        for (i, (canon, syn)) in TABLE.iter().enumerate() {
+            if trimmed == *canon || (!syn.is_empty() && trimmed == *syn) {
                 return Some(Self::KNOWN[i].clone());
             }
         }

@@ -143,22 +143,22 @@ fn place_comment(cells: &mut Vec<String>, comment: &str) {
     if cells.len() > COMMENT_COL {
         comment.clone_into(&mut cells[COMMENT_COL]);
     } else {
-        while cells.len() < COMMENT_COL {
-            cells.push(String::new());
-        }
+        cells.resize(COMMENT_COL, String::new());
         cells.push(comment.to_owned());
     }
 }
 
 fn binding_row(b: &Binding, width: usize) -> RawRow {
-    let mut cells = vec![
-        b.output.to_csv(),
-        b.modifier.to_csv(),
+    let row_width = width.max(b.comment.as_ref().map_or(3, |_| COMMENT_COL + 1));
+    let mut cells: Vec<String> = Vec::with_capacity(row_width);
+    cells.push(b.output.to_csv());
+    cells.push(b.modifier.to_csv());
+    cells.push(
         b.input
             .as_ref()
             .map(crate::catalog::Input::to_csv)
             .unwrap_or_default(),
-    ];
+    );
     pad_to(&mut cells, width);
     if let Some(c) = &b.comment {
         place_comment(&mut cells, c);
@@ -167,7 +167,11 @@ fn binding_row(b: &Binding, width: usize) -> RawRow {
 }
 
 fn override_row(o: &PreferenceOverride, width: usize) -> RawRow {
-    let mut cells = vec![o.key.as_csv(), "normal".to_string(), o.value.clone()];
+    let row_width = width.max(o.comment.as_ref().map_or(3, |_| COMMENT_COL + 1));
+    let mut cells: Vec<String> = Vec::with_capacity(row_width);
+    cells.push(o.key.as_csv());
+    cells.push("normal".to_owned());
+    cells.push(o.value.clone());
     pad_to(&mut cells, width);
     if let Some(c) = &o.comment {
         place_comment(&mut cells, c);
@@ -284,16 +288,14 @@ fn top_line_to_cells(profile: &Profile) -> Vec<String> {
         }
     } else {
         cells.truncate(profile.top_line.width);
-        while cells.len() < profile.top_line.width {
-            cells.push(String::new());
-        }
+        cells.resize(profile.top_line.width, String::new());
     }
     cells
 }
 
 fn pad_to(cells: &mut Vec<String>, target_width: usize) {
-    while cells.len() < target_width {
-        cells.push(String::new());
+    if cells.len() < target_width {
+        cells.resize(target_width, String::new());
     }
 }
 

@@ -54,68 +54,61 @@ pub enum Modifier {
 
 impl Modifier {
     pub fn from_csv(s: &str) -> Option<Self> {
-        fn opt_u32(a: Option<&&str>) -> Option<u32> {
-            a.and_then(|s| s.parse().ok())
-        }
-        fn opt_u8(a: Option<&&str>) -> Option<u8> {
-            a.and_then(|s| s.parse().ok())
-        }
-        fn opt_i32(a: Option<&&str>) -> Option<i32> {
+        fn parse_opt<T: std::str::FromStr>(a: Option<&str>) -> Option<T> {
             a.and_then(|s| s.parse().ok())
         }
 
         let mut tokens = s.split_whitespace();
         let name = tokens.next()?;
-        let args: Vec<&str> = tokens.collect();
 
         Some(match name {
             "normal" => Self::Normal,
             "toggle" => Self::Toggle,
             "delay_on" => Self::DelayOn {
-                ms: opt_u32(args.first()),
+                ms: parse_opt(tokens.next()),
             },
             "delay_off" => Self::DelayOff {
-                ms: opt_u32(args.first()),
+                ms: parse_opt(tokens.next()),
             },
             "greater_than" => Self::GreaterThan {
-                pct: opt_u8(args.first()),
-                upper: opt_u8(args.get(1)),
+                pct: parse_opt(tokens.next()),
+                upper: parse_opt(tokens.next()),
             },
             "less_than" => Self::LessThan {
-                pct: opt_u8(args.first()),
+                pct: parse_opt(tokens.next()),
             },
             "repeat" => Self::Repeat {
-                hz: opt_u32(args.first()),
-                delay_ms: opt_u32(args.get(1)),
+                hz: parse_opt(tokens.next()),
+                delay_ms: parse_opt(tokens.next()),
             },
             "pulse" => Self::Pulse {
-                ms: opt_u32(args.first()),
-                count: opt_u32(args.get(1)),
+                ms: parse_opt(tokens.next()),
+                count: parse_opt(tokens.next()),
             },
             "duty" => Self::Duty {
-                ms: opt_u32(args.first()),
+                ms: parse_opt(tokens.next()),
             },
             "force_off" => Self::ForceOff {
-                ms: opt_u32(args.first()),
+                ms: parse_opt(tokens.next()),
             },
             "delayed_latch" => Self::DelayedLatch {
-                ms: opt_u32(args.first()),
+                ms: parse_opt(tokens.next()),
             },
             "tap" => Self::Tap {
-                window_ms: opt_u32(args.first()),
-                pulse_ms: opt_u32(args.get(1)),
+                window_ms: parse_opt(tokens.next()),
+                pulse_ms: parse_opt(tokens.next()),
             },
             "increment_value" => Self::IncrementValue {
-                amount: opt_i32(args.first()),
-                interval_ms: opt_u32(args.get(1)),
+                amount: parse_opt(tokens.next()),
+                interval_ms: parse_opt(tokens.next()),
             },
             "decrement_value" => Self::DecrementValue {
-                amount: opt_i32(args.first()),
-                interval_ms: opt_u32(args.get(1)),
+                amount: parse_opt(tokens.next()),
+                interval_ms: parse_opt(tokens.next()),
             },
             _ => Self::Unknown {
                 name: name.to_owned(),
-                args: args.into_iter().map(str::to_owned).collect(),
+                args: tokens.map(str::to_owned).collect(),
             },
         })
     }

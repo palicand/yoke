@@ -35,7 +35,16 @@ impl MpPosition {
     }
 
     pub fn from_csv(s: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|p| p.as_csv() == s)
+        match s {
+            "left" => Some(Self::Left),
+            "left_center" => Some(Self::LeftCenter),
+            "center" => Some(Self::Center),
+            "right_center" => Some(Self::RightCenter),
+            "right" => Some(Self::Right),
+            "left_right" => Some(Self::LeftRight),
+            "triple" => Some(Self::Triple),
+            _ => None,
+        }
     }
 }
 
@@ -82,7 +91,13 @@ impl JoyAxis {
         }
     }
     pub fn from_csv(s: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|d| d.as_csv() == s)
+        match s {
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            "up" => Some(Self::Up),
+            "down" => Some(Self::Down),
+            _ => None,
+        }
     }
 }
 
@@ -122,7 +137,17 @@ impl DPadDir {
         }
     }
     pub fn from_csv(s: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|d| d.as_csv() == s)
+        match s {
+            "N" => Some(Self::N),
+            "NE" => Some(Self::NE),
+            "E" => Some(Self::E),
+            "SE" => Some(Self::SE),
+            "S" => Some(Self::S),
+            "SW" => Some(Self::SW),
+            "W" => Some(Self::W),
+            "NW" => Some(Self::NW),
+            _ => None,
+        }
     }
 }
 

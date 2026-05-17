@@ -8,10 +8,13 @@ pub enum Channel {
 
 impl Channel {
     pub fn from_csv(s: &str) -> Option<Self> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "usb" => Some(Self::Usb),
-            "bluetooth" => Some(Self::Bluetooth),
-            _ => None,
+        let s = s.trim();
+        if s.eq_ignore_ascii_case("usb") {
+            Some(Self::Usb)
+        } else if s.eq_ignore_ascii_case("bluetooth") {
+            Some(Self::Bluetooth)
+        } else {
+            None
         }
     }
 

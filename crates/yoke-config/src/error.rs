@@ -11,7 +11,7 @@ pub enum ParseError {
     #[error("unclosed quote at line {line}")]
     UnclosedQuote { line: usize },
     #[error("CSV tokenization failed: {0}")]
-    Csv(String),
+    Csv(#[from] csv::Error),
 }
 
 #[derive(Debug, Error)]
@@ -46,7 +46,6 @@ pub enum Warning {
     },
     DataAfterTerminator {
         line: usize,
-        count: usize,
     },
     DuplicateBinding {
         input: String,
