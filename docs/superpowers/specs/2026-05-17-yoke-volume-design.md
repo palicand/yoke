@@ -134,17 +134,18 @@ yoke/crates/
 - `libc` — `c_void`, integer typedefs for the FFI signatures.
 - `tracing` — workspace rule.
 
-The FFI surface is hand-rolled. Seven DiskArbitration symbols
-(`DASessionCreate`, `DASessionScheduleWithRunLoop`,
-`DARegisterDiskAppearedCallback`, `DARegisterDiskDisappearedCallback`,
-`DARegisterDiskDescriptionChangedCallback`, `DADiskCopyDescription`,
-`DADiskCopyIOMedia`) and five IOKit-USB symbols
-(`IOServiceGetMatchingServices`, `IOServiceMatching`,
-`IOServiceAddMatchingNotification`, `IORegistryEntryGetParentEntry`,
-`IORegistryEntryCreateCFProperty`) live as `extern "C"` blocks in
-`disk_arbitration.rs` / `iokit_usb.rs`. The published `disk-arbitration-sys`
-and `io-kit-sys` crates exist but bring in more surface than we need and
-both have stale maintenance signals; the local FFI is small enough to own.
+The FFI surface is hand-rolled. The DiskArbitration block in
+`disk_arbitration.rs` declares the session, scheduling, and
+appearance-callback symbols plus `DADiskCopyDescription`,
+`DADiskCreateFromVolumePath`, and `DADiskGetBSDName` (the BSD-name
+hook into IOKit). The IOKit block in `iokit_usb.rs` declares the
+matching, iteration, and property primitives plus `IOBSDNameMatching`
+and `IOServiceGetMatchingService`, used by the disk-appeared handler
+to walk from BSD name to USB ancestor. Those two files are the
+authoritative symbol lists; do not re-enumerate them here. The
+published `disk-arbitration-sys` and `io-kit-sys` crates exist but
+bring in more surface than we need and both have stale maintenance
+signals; the local FFI is small enough to own.
 
 Workspace `members` grows from `["crates/yoke-config"]` to
 `["crates/yoke-config", "crates/yoke-volume", "crates/yoke-volume-macos"]`.
@@ -333,75 +334,108 @@ buffer cache is in whatever state it is in.
    `broadcast::channel(64)`) on the calling thread.
 2. Spawn a dedicated OS thread named `yoke-volume-da`. Stack frame on
    that thread:
-   - `CFRunLoopGetCurrent()`.
-   - `DASessionCreate(kCFAllocatorDefault)`, `DASessionScheduleWithRunLoop`
-     on the current run loop in mode `kCFRunLoopDefaultMode`.
-   - Register `DARegisterDiskAppearedCallback`,
-     `DARegisterDiskDisappearedCallback`,
-     `DARegisterDiskDescriptionChangedCallback`. The user context pointer
-     is an `Arc<Inner>` cloned into the FFI.
-   - Create `IONotificationPortRef`,
-     `IONotificationPortGetRunLoopSource`, add to current run loop.
-   - `IOServiceAddMatchingNotification` for `kIOMatchedNotification` and
-     `kIOTerminatedNotification`, matching `IOUSBDevice`. A single
-     registration is used; the callback reads `idVendor` / `idProduct`
-     and filters against `QUADSTICK_VID_PIDS` / `HORI_PS4_VID_PID`. This
-     avoids ordering coupling between multiple VID-specific registrations.
-   - Drain currently-attached USB devices via
-     `IOServiceGetMatchingServices` with the same matching dictionary.
-     Drain currently-mounted disks by iterating `/Volumes/` and calling
-     `DADiskCreateFromVolumePath` on each candidate (DA's appearance
-     callback does *not* fire for disks mounted before registration, so
-     this enumeration is required for first-state seeding).
-   - Seed `MountState` from drained data; `state_tx.send_replace(...)`
-     and emit a single initial event.
-   - `CFRunLoopRun()`. Returns only when `CFRunLoopStop` is called on
-     drop.
+   - `CFRunLoopGetCurrent()`, retained so the parent can post
+     `CFRunLoopStop` from `Drop`.
+   - `DASessionCreate`, `DASessionScheduleWithRunLoop` on the current
+     run loop in mode `kCFRunLoopDefaultMode`.
+   - Register `DARegisterDiskAppearedCallback` and
+     `DARegisterDiskDisappearedCallback` with a **null match dict**;
+     the callbacks themselves resolve each disk's BSD name to an
+     `IOMedia` via `IOBSDNameMatching`, walk the parent chain to the
+     `IOUSBDevice`, and filter on VID/PID against
+     `QUADSTICK_VID_PIDS` / `HORI_PS4_VID_PID`. This keeps the
+     filtering logic in one place and avoids ordering coupling
+     between multiple VID-specific registrations.
+   - The user context pointer is an `Arc<Inner>` published via
+     `Arc::into_raw`. The leaked strong ref is reclaimed in
+     `Worker::teardown` after the session has been released, so the
+     `Arc` outlives every callback firing.
+   - Install a `CFRunLoopTimer` that fires every
+     `USB_POLL_INTERVAL_SECS` (currently 1.0 s) and runs `poll_usb`,
+     which re-enumerates USB devices via `IOServiceGetMatchingServices`
+     (matching `IOUSBDevice`), drains `/Volumes/` for QuadStick mounts,
+     and republishes `MountState`. The poll is the only path that
+     updates the location-ID anchor used for emulation-persona
+     detection — DA's disk-appeared cannot tell us about a USB device
+     that re-enumerates without re-mounting.
+   - Run an initial `drain_usb_devices` + `drain_volumes` before
+     entering the pump so consumers see a seeded state immediately.
+   - Pump the run loop with
+     `CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, 0)` in a loop,
+     checking the stop flag after each tick. Short slices let `Drop`
+     cause a prompt exit even when no CF source has fired recently.
 3. The constructor returns once the seeding is complete. We use a
    `std::sync::mpsc::sync_channel(0)` rendezvous between the calling
    thread and the DA thread for the "seeding complete" handshake.
 
-Internal state struct:
+The original plan used `IOServiceAddMatchingNotification` for
+push-driven USB events. We switched to a timer because the polling
+path needs to run regardless — to refresh the location-ID anchor
+when the device re-enumerates under an emulation persona we have
+not explicitly catalogued — and a single mechanism is simpler than
+two. `IOServiceAddMatchingNotification` and its companion symbols
+remain declared in `iokit_usb.rs` (marked `#[allow(dead_code)]`)
+for the day push notifications come back; yank them if that day
+never arrives.
 
-```rust
-struct Inner {
-    state: Mutex<MountState>,
-    state_tx: watch::Sender<MountState>,
-    event_tx: broadcast::Sender<MountEvent>,
-    devices_seen: Mutex<HashSet<DeviceKey>>,   // for MultipleDevicesDetected
-}
-```
+Internal state lives in `Inner`, shared with FFI callbacks via the
+leaked `Arc::into_raw` refcon described above. `Inner` carries the
+tokio `watch::Sender<MountState>` and `broadcast::Sender<MountEvent>`
+plus a single `Mutex<Tracked>` holding everything the callbacks
+mutate: confirmed-QuadStick VID/PIDs, BSD volume names of QuadStick
+mounts, the location-ID anchor, the current emulation VID/PID (if
+any), and the current `mount_point` / `label`. `MountState` itself
+is derived on demand by `Tracked::compute()` rather than stored,
+which removes a class of "state and tracked fields disagree" bugs.
+Consumers of `MountState` use the lock-free watch channel; only the
+callbacks and `poll_usb` ever lock the Mutex.
 
-Where `DeviceKey` is whatever uniquely identifies a connected USB device
-(IOKit `IOService` registry id, fetched via
-`IORegistryEntryGetRegistryEntryID`).
+The authoritative field set lives in `provider.rs`; treat that file
+as ground truth and update this section only when the shape of the
+contract changes.
 
-On every callback (DA disk appeared / disappeared / description changed /
-IOKit device matched / IOKit device terminated):
+Two callback paths mutate state on the DA thread:
 
-1. Resolve the affected disk to its parent `IOMedia`, then to its
-   grandparent `IOUSBDevice`, via
-   `IORegistryEntryGetParentEntry` walks. Read its
-   `idVendor` / `idProduct` properties. Compare against
-   `QUADSTICK_VID_PIDS` and `HORI_PS4_VID_PID`.
-2. Recompute the desired `MountState` from the union of (USB devices
-   currently present) and (DA disks currently mounted with QuadStick
-   ancestry).
-3. `state_tx.send_replace(new_state.clone())`; emit the corresponding
-   `MountEvent`(s) on the broadcast channel. Lagged subscribers see
-   `RecvError::Lagged(n)`; they can call `current_state()` to resync.
-4. If two QuadStick devices are simultaneously present, emit
-   `MultipleDevicesDetected { count }` and pick the lowest registry-id
-   one as "the device".
+1. **DA disk-appeared / disk-disappeared.** The handler resolves the
+   disk's BSD name (`DADiskGetBSDName`) to an `IOMedia` via
+   `IOBSDNameMatching`, then walks parent entries with
+   `IORegistryEntryGetParentEntry` looking for an `IOUSBDevice`
+   whose `idVendor` / `idProduct` matches a known QuadStick. On a
+   confirmed match, disk-appeared records the BSD name in
+   `Tracked.quadstick_bsd_names` and stores `mount_point` / `label`
+   from the DA description's `DAVolumePath`; disk-disappeared clears
+   `mount_point` / `label` only if the BSD name was in the
+   QuadStick set (so unrelated volumes leaving `/Volumes/` do not
+   produce spurious `VolumeUnmounted` events).
+2. **`poll_usb` timer (1 s cadence).** Re-enumerates `IOUSBDevice`
+   via `IOServiceGetMatchingServices`, rewrites
+   `Tracked.quadstick_vid_pids` / `hori_seen` / `emulation_vp` /
+   `quadstick_location_id` from scratch, and re-scans `/Volumes/`
+   for QuadStick-labelled mounts (so a mass-storage-enabled flip
+   that beat DA's appearance callback is still picked up).
 
-`Drop` for `MacOsVolumeProvider` posts a `CFRunLoopStop` to the DA
-thread's run loop, joins the thread, releases CF objects. All FFI
-pointer ownership is tracked via `CFRetain` / `CFRelease`; ownership
-of `IOServiceObject_t` via `IOObjectRelease`. Run-loop stop is
-robust against the rare race where a callback is firing during
-`Drop`: we hold `Arc<Inner>` through the FFI registration, so the
-callback can complete safely; the thread join waits for the run
-loop to drain.
+Both paths terminate in `publish`, which derives the desired
+`MountState` from `Tracked::compute()`, calls
+`state_tx.send_if_modified(...)`, and emits the
+`state_transition_events` returned by `yoke_volume::state` on the
+broadcast channel. Lagged broadcast subscribers see
+`RecvError::Lagged(n)` and can call `current_state()` to resync.
+
+Multiple simultaneous QuadStick devices: not handled in this
+sub-project. The `MountEvent::MultipleDevicesDetected` variant
+exists in `state.rs` for forward compatibility, but the current
+backend treats whichever VID/PID it sees first as "the device".
+Revisit when somebody actually plugs in two.
+
+`Drop` for `MacOsVolumeProvider` is implemented via
+`RunLoopThread::drop`: it sets a stop flag, calls `CFRunLoopStop`
+on the DA thread's run loop, joins the thread, then the `Worker`'s
+`teardown` invalidates the timer, releases the DA session, and
+reclaims the leaked `Arc<Inner>` strong ref. Because the run loop
+has fully exited before `teardown` runs, no callback can still be
+in flight against the about-to-be-dropped `Inner`. All FFI pointer
+ownership is tracked via `CFRetain` / `CFRelease`; IOKit handles
+via `IOObjectRelease`.
 
 **LocationID anchoring for emulation profiles.** During USB drain the
 watcher reads each device's IOKit `locationID` alongside
@@ -439,12 +473,11 @@ when applicable; otherwise they execute against the
 
 ```rust
 pub struct FsBackend {
-    root: PathBuf,
     inner: Arc<FsInner>,
 }
 
 struct FsInner {
-    state: Mutex<MountState>,
+    root: PathBuf,
     state_tx: watch::Sender<MountState>,
     event_tx: broadcast::Sender<MountEvent>,
 }
@@ -454,6 +487,11 @@ impl FsBackend {
     pub fn set_present(&self, present: bool) { ... }   // test-only state nudge
 }
 ```
+
+As with `Inner`, `MountState` is derived from `root` (via
+`compute_state`) rather than cached; the watch channel publishes the
+derived state. `crates/yoke-volume/src/fs_backend.rs` is the
+authoritative shape.
 
 `new(root)` publishes `Present { mount_point: root.clone(), vid_pid:
 VidPid { 0, 0 }, label: "fs-backend".into() }` if `root.is_dir()`,
