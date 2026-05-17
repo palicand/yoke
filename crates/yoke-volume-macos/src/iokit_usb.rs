@@ -281,5 +281,4 @@ mod tests {
             DeviceClass::Other
         );
     }
-
 }

@@ -105,12 +105,17 @@ pub fn state_transition_event(old: &MountState, new: &MountState) -> Option<Moun
             Some(MountEvent::DeviceDisappeared)
         }
         (
-            MountState::DeviceVisibleNoVolume { .. },
+            MountState::DeviceVisibleNoVolume {
+                vid_pid: old_vid_pid,
+                mode_hint: old_mode_hint,
+            },
             MountState::DeviceVisibleNoVolume { vid_pid, mode_hint },
-        ) => Some(MountEvent::DeviceModeChanged {
-            vid_pid: *vid_pid,
-            mode_hint: *mode_hint,
-        }),
+        ) if old_vid_pid != vid_pid || old_mode_hint != mode_hint => {
+            Some(MountEvent::DeviceModeChanged {
+                vid_pid: *vid_pid,
+                mode_hint: *mode_hint,
+            })
+        }
         _ => None,
     }
 }
@@ -172,6 +177,18 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn identical_device_visible_no_volume_emits_no_event() {
+        let s = MountState::DeviceVisibleNoVolume {
+            vid_pid: VidPid {
+                vendor: 0x16D0,
+                product: 0x092B,
+            },
+            mode_hint: Some(ModeHint::MassStorageDisabled),
+        };
+        assert_eq!(state_transition_event(&s, &s), None);
     }
 
     #[test]

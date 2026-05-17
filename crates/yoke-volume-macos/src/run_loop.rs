@@ -25,7 +25,7 @@ pub struct RunLoopThread {
 }
 
 pub trait RunLoopWorker: Send + 'static {
-    fn setup(&mut self, run_loop: CFRunLoopRef);
+    fn setup(&mut self, run_loop: CFRunLoopRef) -> Result<(), VolumeError>;
     fn teardown(&mut self);
 }
 
@@ -41,7 +41,7 @@ unsafe impl Send for RunLoopHandle {}
 
 impl RunLoopThread {
     pub fn spawn<W: RunLoopWorker>(mut worker: W) -> Result<Self, VolumeError> {
-        let (tx, rx) = sync_channel::<RunLoopHandle>(0);
+        let (tx, rx) = sync_channel::<Result<RunLoopHandle, VolumeError>>(0);
         let stop_flag = Arc::new(AtomicBool::new(false));
         let stop_flag_clone = Arc::clone(&stop_flag);
         let handle = std::thread::Builder::new()
@@ -51,8 +51,9 @@ impl RunLoopThread {
                 // CF Get-rule: CFRunLoopGetCurrent is not +1, retain so the
                 // stored handle outlives this thread.
                 unsafe { CFRetain(run_loop.cast()) };
-                worker.setup(run_loop);
-                if tx.send(RunLoopHandle(run_loop)).is_err() {
+                let setup_result = worker.setup(run_loop).map(|()| RunLoopHandle(run_loop));
+                let setup_ok = setup_result.is_ok();
+                if tx.send(setup_result).is_err() || !setup_ok {
                     worker.teardown();
                     unsafe { CFRelease(run_loop.cast()) };
                     return;
@@ -76,7 +77,7 @@ impl RunLoopThread {
             .map_err(|e| VolumeError::BackendInit(format!("spawn DA thread: {e}")))?;
         let run_loop = rx
             .recv()
-            .map_err(|_| VolumeError::BackendInit("DA thread exited before seeding".into()))?;
+            .map_err(|_| VolumeError::BackendInit("DA thread exited before seeding".into()))??;
         Ok(Self {
             handle: Some(handle),
             run_loop: Mutex::new(Some(run_loop.0)),
@@ -111,8 +112,9 @@ mod tests {
     }
 
     impl RunLoopWorker for TrivialWorker {
-        fn setup(&mut self, _rl: CFRunLoopRef) {
+        fn setup(&mut self, _rl: CFRunLoopRef) -> Result<(), VolumeError> {
             self.setup_called.store(true, Ordering::SeqCst);
+            Ok(())
         }
         fn teardown(&mut self) {
             self.teardown_called.store(true, Ordering::SeqCst);
@@ -127,7 +129,7 @@ mod tests {
             setup_called: setup.clone(),
             teardown_called: teardown.clone(),
         };
-        let thread = RunLoopThread::spawn(worker);
+        let thread = RunLoopThread::spawn(worker).expect("spawn");
         assert!(
             setup.load(Ordering::SeqCst),
             "setup must run before spawn returns"
@@ -137,5 +139,23 @@ mod tests {
             teardown.load(Ordering::SeqCst),
             "teardown must run after stop"
         );
+    }
+
+    struct FailingWorker;
+
+    impl RunLoopWorker for FailingWorker {
+        fn setup(&mut self, _rl: CFRunLoopRef) -> Result<(), VolumeError> {
+            Err(VolumeError::BackendInit("test failure".into()))
+        }
+        fn teardown(&mut self) {}
+    }
+
+    #[test]
+    fn spawn_propagates_setup_failure() {
+        match RunLoopThread::spawn(FailingWorker) {
+            Err(VolumeError::BackendInit(_)) => {}
+            Err(other) => panic!("expected BackendInit, got {other:?}"),
+            Ok(_) => panic!("expected setup failure to surface"),
+        }
     }
 }

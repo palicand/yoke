@@ -48,6 +48,10 @@ pub struct Inner {
 #[derive(Default)]
 struct Tracked {
     quadstick_vid_pids: HashSet<VidPid>,
+    // BSD names (e.g. "disk5s1") of disks confirmed to belong to a QuadStick
+    // at appear-time. Consulted on disappear so an unrelated volume going
+    // away doesn't trigger a spurious VolumeUnmounted.
+    quadstick_bsd_names: HashSet<String>,
     hori_seen: bool,
     emulation_vp: Option<VidPid>,
     // Sticky across polls: physical USB port where we last saw a confirmed
@@ -279,6 +283,12 @@ fn handle_disk_appeared(inner: &Inner, disk: da::DADiskRef) {
     if !matches!(usb::classify(vp), usb::DeviceClass::QuadStick(_)) {
         return;
     }
+    // SAFETY: bsd was non-null above and DADiskGetBSDName returns a static
+    // C string owned by DiskArbitration for the lifetime of the callback.
+    let bsd_name = unsafe { CStr::from_ptr(bsd) }
+        .to_str()
+        .ok()
+        .map(str::to_owned);
     let mount_point = volume_path_from_disk(disk);
     let label = mount_point
         .as_ref()
@@ -287,6 +297,9 @@ fn handle_disk_appeared(inner: &Inner, disk: da::DADiskRef) {
     {
         let mut t = inner.tracked.lock().unwrap();
         t.quadstick_vid_pids.insert(vp);
+        if let Some(name) = bsd_name {
+            t.quadstick_bsd_names.insert(name);
+        }
         if let Some(mp) = mount_point {
             t.mount_point = Some(mp);
             t.label = Some(label);
@@ -295,9 +308,23 @@ fn handle_disk_appeared(inner: &Inner, disk: da::DADiskRef) {
     publish(inner);
 }
 
-fn handle_disk_disappeared(inner: &Inner, _disk: da::DADiskRef) {
+fn handle_disk_disappeared(inner: &Inner, disk: da::DADiskRef) {
+    let bsd = unsafe { da::DADiskGetBSDName(disk) };
+    if bsd.is_null() {
+        return;
+    }
+    // SAFETY: same as in handle_disk_appeared.
+    let Ok(bsd_name) = unsafe { CStr::from_ptr(bsd) }.to_str() else {
+        return;
+    };
     {
         let mut t = inner.tracked.lock().unwrap();
+        // Only clear when we know the disappearing disk was tracked as a
+        // QuadStick. Otherwise an unrelated /Volumes change would falsely
+        // emit VolumeUnmounted.
+        if !t.quadstick_bsd_names.remove(bsd_name) {
+            return;
+        }
         t.mount_point = None;
         t.label = None;
     }
@@ -375,12 +402,13 @@ fn volume_path_from_disk(disk: da::DADiskRef) -> Option<PathBuf> {
 }
 
 impl RunLoopWorker for Worker {
-    fn setup(&mut self, _run_loop: CFRunLoopRef) {
+    fn setup(&mut self, _run_loop: CFRunLoopRef) -> Result<(), VolumeError> {
         unsafe {
             let session = da::DASessionCreate(ptr::null());
             if session.is_null() {
-                tracing::warn!("DASessionCreate returned null");
-                return;
+                return Err(VolumeError::BackendInit(
+                    "DASessionCreate returned null".into(),
+                ));
             }
             let run_loop = CFRunLoopGetCurrent();
             da::DASessionScheduleWithRunLoop(session, run_loop, kCFRunLoopDefaultMode);
@@ -423,6 +451,7 @@ impl RunLoopWorker for Worker {
         drain_usb_devices(&self.inner);
         drain_volumes(&self.inner);
         publish(&self.inner);
+        Ok(())
     }
 
     fn teardown(&mut self) {

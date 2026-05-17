@@ -22,6 +22,21 @@ pub fn list_profiles(root: &Path) -> Result<Vec<ProfileEntry>, VolumeError> {
         if !meta.is_file() {
             continue;
         }
+        // Accept any `.csv` file as a profile first. Genuine write_profile
+        // temp files end in `.tmp.<hex>`, not `.csv`, so this can't swallow
+        // a stale temp — and a contrived `foo.csv.tmp.bar.csv` should be
+        // kept rather than swept.
+        if fname_str.to_ascii_lowercase().ends_with(".csv") {
+            let name = ProfileName::new(&fname_str)?;
+            let kind = name.kind();
+            entries.push(ProfileEntry {
+                name,
+                kind,
+                byte_len: meta.len(),
+                modified: meta.modified().unwrap_or(now),
+            });
+            continue;
+        }
         if fname_str.contains(".csv.tmp.") {
             let modified = meta.modified().unwrap_or(now);
             let age = now.duration_since(modified).unwrap_or(Duration::ZERO);
@@ -29,19 +44,7 @@ pub fn list_profiles(root: &Path) -> Result<Vec<ProfileEntry>, VolumeError> {
                 tracing::warn!(file = %fname_str, "sweeping stale .tmp file");
                 let _ = fs::remove_file(dent.path());
             }
-            continue;
         }
-        if !fname_str.to_ascii_lowercase().ends_with(".csv") {
-            continue;
-        }
-        let name = ProfileName::new(&fname_str)?;
-        let kind = name.kind();
-        entries.push(ProfileEntry {
-            name,
-            kind,
-            byte_len: meta.len(),
-            modified: meta.modified().unwrap_or(now),
-        });
     }
     entries.sort_by(|a, b| a.name.as_filename().cmp(b.name.as_filename()));
     Ok(entries)
@@ -164,6 +167,34 @@ mod tests {
             .unwrap();
         list_profiles(dir.path()).unwrap();
         assert!(!stale.exists(), "stale .tmp should have been swept");
+    }
+
+    #[test]
+    fn list_keeps_csv_files_with_tmp_in_middle_of_name() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("legit.csv"), "").unwrap();
+        // Pathological name with both ".csv.tmp." substring and a .csv suffix.
+        fs::write(dir.path().join("foo.csv.tmp.bar.csv"), "").unwrap();
+        let stale = dir.path().join("orphan.csv.tmp.deadbeef");
+        fs::write(&stale, "leftover").unwrap();
+        let old = SystemTime::now() - Duration::from_mins(2);
+        let times = fs::FileTimes::new().set_modified(old).set_accessed(old);
+        fs::File::options()
+            .write(true)
+            .open(&stale)
+            .unwrap()
+            .set_times(times)
+            .unwrap();
+        let names: Vec<_> = list_profiles(dir.path())
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name.as_filename().to_string())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["foo.csv.tmp.bar.csv".to_string(), "legit.csv".to_string()]
+        );
+        assert!(!stale.exists(), "stale .tmp should still be swept");
     }
 
     #[test]

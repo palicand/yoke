@@ -21,7 +21,12 @@ pub struct ProfileEntry {
 
 impl ProfileName {
     pub fn new(raw: &str) -> Result<Self, VolumeError> {
-        let stem = raw.strip_suffix(".csv").unwrap_or(raw);
+        let stem =
+            if raw.len() >= 4 && raw.as_bytes()[raw.len() - 4..].eq_ignore_ascii_case(b".csv") {
+                &raw[..raw.len() - 4]
+            } else {
+                raw
+            };
         if stem.is_empty() {
             return Err(VolumeError::InvalidProfileName(raw.to_string()));
         }
@@ -75,6 +80,15 @@ mod tests {
     fn accepts_name_with_csv_suffix() {
         let n = ProfileName::new("destiny.csv").unwrap();
         assert_eq!(n.as_filename(), "destiny.csv");
+    }
+
+    #[test]
+    fn strips_csv_suffix_case_insensitively() {
+        let n = ProfileName::new("DEFAULT.CSV").unwrap();
+        assert_eq!(n.as_filename(), "DEFAULT.csv");
+        assert_eq!(n.kind(), ProfileKind::Default);
+        let n = ProfileName::new("Destiny.Csv").unwrap();
+        assert_eq!(n.as_filename(), "Destiny.csv");
     }
 
     #[test]

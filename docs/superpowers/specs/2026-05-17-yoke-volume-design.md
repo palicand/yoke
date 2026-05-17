@@ -81,7 +81,7 @@ the contract and picks a backend crate per `cfg(target_os)`.
 
 ### 1. Workspace layout: two crates
 
-```
+```text
 yoke/crates/
 ├── yoke-volume/                 # host-only, platform-neutral core
 │   ├── Cargo.toml
