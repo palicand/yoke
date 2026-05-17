@@ -40,3 +40,7 @@ jobs:
       - name: cargo test
         if: ${{ hashFiles('crates/**/Cargo.toml') != '' }}
         run: nix develop --command cargo test --workspace
+
+      - name: cargo build --target wasm32-unknown-unknown (yoke-config)
+        if: ${{ hashFiles('crates/yoke-config/Cargo.toml') != '' }}
+        run: nix develop --command cargo build -p yoke-config --target wasm32-unknown-unknown

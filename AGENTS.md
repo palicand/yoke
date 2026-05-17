@@ -135,10 +135,15 @@ shell is the production wrapper, not the development substrate.
 
 ## Fixtures
 
-Example QuadStick config CSVs live in the parent workspace at
-`../examples/` (one level above the Yoke checkout). Once `yoke-config`
-exists (sub-project B), copies for unit tests will be checked in at
-`fixtures/csv/`. The QuadStick volume mount itself may or may not be
+`yoke-config` does not check in QuadStick configuration CSVs. Per the
+sub-project B spec, the test corpus stays outside the repository: test
+fixtures live as inline raw string literals inside the test functions
+themselves, and an optional `YOKE_CORPUS_DIR` environment variable
+points the test suite at a local-only directory for cross-validation.
+
+The maintainer's pre-existing Mac corpus at `../examples/*.csv` (parent
+of the Yoke checkout) is referenced by the spec but not mirrored into
+this repository. The QuadStick volume mount itself may or may not be
 present at any time — `enable_DS3_emulation` mode controls exposure and
 macOS enumeration is racy. Refer to the maintainer's local wire-protocol
 notes for the underlying USB-level details (those notes are not in this
@@ -151,8 +156,12 @@ repo yet — see the repository map for why).
 - The visual design reference: `design_handoff_quadstick_config/` in the
   parent workspace. Treat as Figma-equivalent — the React JSX in it is
   not a port target.
-- Vocabulary catalog source of truth (until ported to Rust):
-  `design_handoff_quadstick_config/src/data.js`.
+- Vocabulary catalog source of truth: the QuadStick user manual at
+  <https://quadstick.s3.amazonaws.com/documents/user_manual/um/configuration.htm>
+  and its dropdown subpages, reconciled against Fred Davidson's current
+  Google Sheets template and the canonical community-configuration index.
+  `design_handoff_quadstick_config/src/data.js` in the parent workspace is
+  a Mac-specific design handoff and is now a cross-reference only.
 - Original Windows manager source (primary protocol source):
   <https://github.com/fdavison/QMP-4>.
 - macOS fork (cross-check for portability):
