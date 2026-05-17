@@ -45,7 +45,10 @@ pub struct VidPid {
 pub enum ModeHint {
     Ps4OrHori,
     MassStorageDisabled,
-    Ds3Emulation,
+    // QuadStick is impersonating a third-party controller (Sony, Xbox,
+    // Switch, etc.) so the FAT volume and command channel are not
+    // exposed. The specific VID:PID identifies which persona is active.
+    Emulation,
 }
 
 pub const QUADSTICK_VID_PIDS: &[VidPid] = &[
@@ -76,11 +79,12 @@ pub const HORI_PS4_VID_PID: VidPid = VidPid {
     product: 0x0066,
 };
 
-// QuadStick re-enumerates under genuine Sony VID:PIDs when a profile activates
-// DualShock-style emulation (impersonating a real PS3 controller to satisfy
-// hardware checks). Observed at the same physical USB locationID as the base
-// "Quad Stick" device, so the device has not actually been unplugged.
-pub const QUADSTICK_DS3_EMULATION_VID_PIDS: &[VidPid] = &[
+// Confirmed VID:PIDs the QuadStick adopts in specific emulation profiles
+// (DualShock impersonation observed 2026-05-17). The list is descriptive,
+// not exhaustive: Xbox / Switch / other emulation modes use yet-uncatalogued
+// VID:PIDs, and `yoke-volume-macos` falls back to physical-port anchoring to
+// recognize the QuadStick across them.
+pub const QUADSTICK_EMULATION_VID_PIDS: &[VidPid] = &[
     VidPid {
         vendor: 0x054C,
         product: 0x05C5,
@@ -174,21 +178,21 @@ mod tests {
                 vendor: 0x054C,
                 product: 0x05C5,
             },
-            mode_hint: Some(ModeHint::Ds3Emulation),
+            mode_hint: Some(ModeHint::Emulation),
         };
         let evt = state_transition_event(&old, &new);
         assert!(matches!(
             evt,
             Some(MountEvent::DeviceModeChanged {
-                mode_hint: Some(ModeHint::Ds3Emulation),
+                mode_hint: Some(ModeHint::Emulation),
                 ..
             })
         ));
     }
 
     #[test]
-    fn ds3_emulation_pids_disjoint_from_quadstick_set() {
-        for vp in QUADSTICK_DS3_EMULATION_VID_PIDS {
+    fn emulation_pids_disjoint_from_quadstick_set() {
+        for vp in QUADSTICK_EMULATION_VID_PIDS {
             assert!(!QUADSTICK_VID_PIDS.contains(vp));
             assert_ne!(*vp, HORI_PS4_VID_PID);
         }

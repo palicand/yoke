@@ -12,7 +12,7 @@ use core_foundation_sys::runloop::CFRunLoopSourceRef;
 use core_foundation_sys::string::{CFStringCreateWithCString, CFStringRef, kCFStringEncodingUTF8};
 use libc::{c_char, c_void};
 use yoke_volume::state::{
-    HORI_PS4_VID_PID, QUADSTICK_DS3_EMULATION_VID_PIDS, QUADSTICK_VID_PIDS, VidPid,
+    HORI_PS4_VID_PID, QUADSTICK_EMULATION_VID_PIDS, QUADSTICK_VID_PIDS, VidPid,
 };
 
 pub type io_object_t = u32;
@@ -236,7 +236,7 @@ pub unsafe fn read_u16_property(entry: io_registry_entry_t, key: &str) -> Option
 pub enum DeviceClass {
     QuadStick(VidPid),
     HoriPs4,
-    Ds3Emulation(VidPid),
+    Emulation(VidPid),
     Other,
 }
 
@@ -246,8 +246,8 @@ pub fn classify(vid_pid: VidPid) -> DeviceClass {
         DeviceClass::QuadStick(vid_pid)
     } else if vid_pid == HORI_PS4_VID_PID {
         DeviceClass::HoriPs4
-    } else if QUADSTICK_DS3_EMULATION_VID_PIDS.contains(&vid_pid) {
-        DeviceClass::Ds3Emulation(vid_pid)
+    } else if QUADSTICK_EMULATION_VID_PIDS.contains(&vid_pid) {
+        DeviceClass::Emulation(vid_pid)
     } else {
         DeviceClass::Other
     }
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    fn classify_sony_ds3_emulation_pids() {
+    fn classify_known_emulation_pids() {
         let wired = VidPid {
             vendor: 0x054C,
             product: 0x05C5,
@@ -297,7 +297,7 @@ mod tests {
             vendor: 0x054C,
             product: 0x0268,
         };
-        assert_eq!(classify(wired), DeviceClass::Ds3Emulation(wired));
-        assert_eq!(classify(ds3), DeviceClass::Ds3Emulation(ds3));
+        assert_eq!(classify(wired), DeviceClass::Emulation(wired));
+        assert_eq!(classify(ds3), DeviceClass::Emulation(ds3));
     }
 }

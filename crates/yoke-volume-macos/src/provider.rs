@@ -49,7 +49,7 @@ pub struct Inner {
 struct Tracked {
     quadstick_vid_pids: HashSet<VidPid>,
     hori_seen: bool,
-    ds3_emulation_vp: Option<VidPid>,
+    emulation_vp: Option<VidPid>,
     // Sticky across polls: physical USB port where we last saw a confirmed
     // QuadStick. Used to recognize the device after it re-enumerates under
     // an emulation persona we don't have explicitly listed.
@@ -73,7 +73,7 @@ impl Tracked {
                 mode_hint: Some(ModeHint::MassStorageDisabled),
             };
         }
-        if let Some(vp) = self.ds3_emulation_vp {
+        if let Some(vp) = self.emulation_vp {
             if let (Some(mp), Some(lbl)) = (self.mount_point.as_ref(), self.label.as_ref()) {
                 return MountState::Present {
                     mount_point: mp.clone(),
@@ -83,7 +83,7 @@ impl Tracked {
             }
             return MountState::DeviceVisibleNoVolume {
                 vid_pid: vp,
-                mode_hint: Some(ModeHint::Ds3Emulation),
+                mode_hint: Some(ModeHint::Emulation),
             };
         }
         if self.hori_seen {
@@ -125,7 +125,7 @@ fn drain_usb_devices(inner: &Inner) {
     let mut new_quadsticks: HashSet<VidPid> = HashSet::new();
     let mut new_qs_location: Option<u32> = None;
     let mut hori_seen = false;
-    let mut ds3_emulation_vp: Option<VidPid> = None;
+    let mut emulation_vp: Option<VidPid> = None;
     let mut unknown_at_last_qs_location: Option<VidPid> = None;
     unsafe {
         let matching = usb::IOServiceMatching(usb::kIOUSBDeviceClassName.as_ptr().cast());
@@ -162,8 +162,8 @@ fn drain_usb_devices(inner: &Inner) {
                     usb::DeviceClass::HoriPs4 => {
                         hori_seen = true;
                     }
-                    usb::DeviceClass::Ds3Emulation(vp) => {
-                        ds3_emulation_vp = Some(vp);
+                    usb::DeviceClass::Emulation(vp) => {
+                        emulation_vp = Some(vp);
                         if let Some(loc) = location {
                             new_qs_location = Some(loc);
                         }
@@ -185,10 +185,10 @@ fn drain_usb_devices(inner: &Inner) {
     let mut tracked = inner.tracked.lock().unwrap();
     tracked.quadstick_vid_pids = new_quadsticks;
     tracked.hori_seen = hori_seen;
-    // Promote a same-port unknown device to ds3_emulation_vp as a fallback,
+    // Promote a same-port unknown device to emulation_vp as a fallback,
     // so we keep recognizing the QuadStick across emulation modes whose
     // VID:PIDs we haven't catalogued yet.
-    tracked.ds3_emulation_vp = ds3_emulation_vp.or(unknown_at_last_qs_location);
+    tracked.emulation_vp = emulation_vp.or(unknown_at_last_qs_location);
     if let Some(loc) = new_qs_location {
         tracked.quadstick_location_id = Some(loc);
     }
