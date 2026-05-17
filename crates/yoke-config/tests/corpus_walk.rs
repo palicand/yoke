@@ -14,10 +14,14 @@ fn corpus_dir_round_trips() {
     let mut failures: Vec<(PathBuf, String)> = Vec::new();
     let mut tested = 0usize;
 
-    for entry in walkdir::WalkDir::new(&dir)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
+    for entry_res in walkdir::WalkDir::new(&dir) {
+        let entry = match entry_res {
+            Ok(e) => e,
+            Err(e) => {
+                failures.push((dir.clone(), format!("walk: {e}")));
+                continue;
+            }
+        };
         if !entry.file_type().is_file() {
             continue;
         }

@@ -443,20 +443,28 @@ impl PreferenceKey {
     /// Parse a non-empty CSV preference identifier. Empty strings are caller-filtered.
     /// Unknown identifiers become `PreferenceKey::Unknown(s)` so they survive round-trip.
     pub fn from_csv(s: &str) -> Self {
+        let trimmed = s.trim();
         debug_assert!(
-            !s.is_empty(),
+            !trimmed.is_empty(),
             "PreferenceKey::from_csv called with empty string"
         );
-        PreferenceSpec::for_id(s)
-            .map_or_else(|| Self::Unknown(s.to_owned()), |spec| Self::Known(spec.key))
+        PreferenceSpec::for_id(trimmed).map_or_else(
+            || Self::Unknown(trimmed.to_owned()),
+            |spec| Self::Known(spec.key),
+        )
     }
 
+    /// # Panics
+    /// Panics if `Self::Known(k)` references a key not in `PreferenceSpec::ALL`. This
+    /// indicates catalog drift — the enum and the spec table must stay in sync — and
+    /// is a programmer error rather than a data error.
     pub fn as_csv(&self) -> String {
         match self {
             Self::Known(k) => PreferenceSpec::ALL
                 .iter()
                 .find(|s| s.key == *k)
-                .map_or_else(String::new, |s| s.id.to_owned()),
+                .map(|s| s.id.to_owned())
+                .expect("KnownPreference missing from PreferenceSpec::ALL"),
             Self::Unknown(s) => s.clone(),
         }
     }
@@ -488,6 +496,20 @@ mod tests {
             let key = PreferenceKey::from_csv(spec.id);
             assert_eq!(PreferenceSpec::for_key(&key).map(|s| s.id), Some(spec.id));
         }
+    }
+
+    #[test]
+    fn from_csv_trims_padded_known_id() {
+        let known = PreferenceKey::from_csv(&format!("  {}  ", PreferenceSpec::ALL[0].id));
+        assert!(matches!(known, PreferenceKey::Known(_)));
+        assert_eq!(known.as_csv(), PreferenceSpec::ALL[0].id);
+    }
+
+    #[test]
+    fn from_csv_trims_unknown_id() {
+        let k = PreferenceKey::from_csv("  future_pref  ");
+        assert_eq!(k, PreferenceKey::Unknown("future_pref".into()));
+        assert_eq!(k.as_csv(), "future_pref");
     }
 
     #[test]

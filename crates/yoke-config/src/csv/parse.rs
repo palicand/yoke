@@ -28,12 +28,17 @@ pub fn read_raw(input: &[u8]) -> Result<RawCsv, ParseError> {
     let mut sections: Vec<RawSection> = Vec::new();
     let mut blank_runs: Vec<usize> = Vec::new();
 
-    if !first_chunk_rows.is_empty() {
+    // If the first chunk holds only the top line, its trailing blanks belong before
+    // the first real section — capture them separately so they aren't dropped.
+    let leading_blanks = if first_chunk_rows.is_empty() {
+        chunks[0].trailing_blanks
+    } else {
         sections.push(RawSection {
             rows: first_chunk_rows,
         });
         blank_runs.push(chunks[0].trailing_blanks);
-    }
+        0
+    };
 
     for chunk in &chunks[1..] {
         if chunk.lines.is_empty() {
@@ -54,6 +59,7 @@ pub fn read_raw(input: &[u8]) -> Result<RawCsv, ParseError> {
 
     Ok(RawCsv {
         top_line,
+        leading_blanks,
         sections,
         blank_runs,
     })
@@ -344,6 +350,12 @@ fn build_preferences(section: &RawSection) -> (Preferences, Vec<Warning>) {
         let value = row.cells.get(1).cloned().unwrap_or_default();
         let units = row.cells.get(2).cloned().unwrap_or_default();
         let descr = row.cells.get(3).cloned().unwrap_or_default();
+        let comment = row
+            .cells
+            .get(4)
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned);
         let key = PreferenceKey::from_csv(id);
         if matches!(key, PreferenceKey::Unknown(_)) {
             warnings.push(Warning::UnknownPreference {
@@ -367,7 +379,7 @@ fn build_preferences(section: &RawSection) -> (Preferences, Vec<Warning>) {
                 value,
                 units,
                 description: descr,
-                comment: None,
+                comment,
             },
         ));
     }

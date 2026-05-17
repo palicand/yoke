@@ -111,7 +111,7 @@ always semantically intact.
 
 ### 2. Module layout
 
-```
+```text
 crates/yoke-config/
 ├── Cargo.toml
 └── src/

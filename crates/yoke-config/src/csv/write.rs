@@ -3,6 +3,9 @@ use crate::csv::raw::RawCsv;
 pub fn write_raw(raw: &RawCsv) -> Vec<u8> {
     let mut out = String::new();
     push_row(&mut out, &raw.top_line);
+    for _ in 0..raw.leading_blanks {
+        out.push_str("\r\n");
+    }
     for (i, section) in raw.sections.iter().enumerate() {
         for row in &section.rows {
             push_row(&mut out, &row.cells);
@@ -92,12 +95,20 @@ fn write_with_template(profile: &Profile, template: &RawCsv) -> Result<Vec<u8>, 
         sections.push(rebuilt);
     }
 
+    if sp_idx < profile.sub_profiles.len() {
+        return Err(WriteError::InvariantViolation(format!(
+            "model has {} sub-profiles but template has only {sp_idx} sub-profile section(s)",
+            profile.sub_profiles.len()
+        )));
+    }
+
     if !prefs_done && let Some(prefs) = &profile.preferences {
         sections.push(build_prefs_section(prefs));
     }
 
     let raw = RawCsv {
         top_line: top_line_to_cells(profile),
+        leading_blanks: template.leading_blanks,
         sections,
         blank_runs,
     };
@@ -116,6 +127,7 @@ fn write_canonical(profile: &Profile) -> Vec<u8> {
     let blank_runs = vec![1usize; sections.len()];
     let raw = RawCsv {
         top_line: top_line_to_cells(profile),
+        leading_blanks: 0,
         sections,
         blank_runs,
     };
@@ -245,7 +257,7 @@ fn build_prefs_section(prefs: &crate::model::Preferences) -> RawSection {
                 entry.value.clone(),
                 entry.units.clone(),
                 entry.description.clone(),
-                String::new(),
+                entry.comment.clone().unwrap_or_default(),
             ],
         });
     }
@@ -253,11 +265,19 @@ fn build_prefs_section(prefs: &crate::model::Preferences) -> RawSection {
 }
 
 fn rebuild_preferences(profile: &Profile, template: &RawSection) -> RawSection {
+    let header_rows: Vec<RawRow> = template.rows.iter().take(3).cloned().collect();
     let Some(prefs) = &profile.preferences else {
-        return template.clone();
+        return RawSection { rows: header_rows };
     };
-    let mut rows: Vec<RawRow> = template.rows.iter().take(3).cloned().collect();
-    let width = template.rows.first().map_or(5, |r| r.cells.len());
+    // Width must come from data rows, not the title row which is typically 1 cell.
+    let width = template
+        .rows
+        .iter()
+        .map(|r| r.cells.len())
+        .max()
+        .unwrap_or(5)
+        .max(5);
+    let mut rows = header_rows;
     for (id, entry) in &prefs.entries {
         let mut cells = vec![
             id.clone(),
@@ -266,6 +286,16 @@ fn rebuild_preferences(profile: &Profile, template: &RawSection) -> RawSection {
             entry.description.clone(),
         ];
         pad_to(&mut cells, width);
+        if let Some(c) = &entry.comment {
+            if cells.len() > 4 {
+                cells[4].clone_from(c);
+            } else {
+                while cells.len() < 4 {
+                    cells.push(String::new());
+                }
+                cells.push(c.clone());
+            }
+        }
         rows.push(RawRow { cells });
     }
     RawSection { rows }
@@ -331,6 +361,20 @@ kb_left_shift,delay_on 1000,lip,\r\n\
     }
 
     #[test]
+    fn write_with_template_errors_if_model_has_extra_sub_profiles() {
+        let r = parse(FIXTURE).expect("parse");
+        let mut model = r.model.clone();
+        let extra = model.sub_profiles[0].clone();
+        model.sub_profiles.push(extra);
+        match write(&model, Some(&r.raw)) {
+            Err(WriteError::InvariantViolation(msg)) => {
+                assert!(msg.contains("sub-profiles"), "msg was: {msg}");
+            }
+            other => panic!("expected InvariantViolation, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn preference_override_round_trips() {
         let input: &[u8] = b"QuadStick Configuration,Version 1.4,,Test\r\n\
 Profile Name,,Mouse,\r\n\
@@ -344,6 +388,59 @@ joystick_dead_zone_shape,normal,1,\r\n\
         pretty_assertions::assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
             std::str::from_utf8(input).unwrap()
+        );
+    }
+
+    #[test]
+    fn rebuild_preferences_drops_data_rows_when_model_has_none() {
+        const PREFS: &[u8] = b"QuadStick Configuration,Version 1.1,abc,Mac\r\n\
+Preferences,\r\n\
+prefs.csv,,,,\r\n\
+Preference,Value,Units,Description,\r\n\
+volume,40,,,\r\n\
+brightness,75,,,\r\n\
+\r\n";
+        let r = parse(PREFS).expect("parse");
+        let mut model = r.model.clone();
+        model.preferences = None;
+        let bytes = write(&model, Some(&r.raw)).expect("write");
+        let out = std::str::from_utf8(&bytes).unwrap();
+        assert!(out.contains("Preferences,"), "header retained: {out}");
+        assert!(!out.contains("volume"), "stale row leaked: {out}");
+        assert!(!out.contains("brightness"), "stale row leaked: {out}");
+    }
+
+    #[test]
+    fn preference_comment_round_trips() {
+        const WITH_COMMENT: &[u8] = b"QuadStick Configuration,Version 1.1,abc,Mac\r\n\
+Preferences,\r\n\
+prefs.csv,,,,\r\n\
+Preference,Value,Units,Description,\r\n\
+volume,40,,,note-here\r\n\
+\r\n";
+        let r = parse(WITH_COMMENT).expect("parse");
+        let prefs = r.model.preferences.as_ref().expect("prefs");
+        assert_eq!(prefs.entries[0].1.comment.as_deref(), Some("note-here"));
+        let bytes = write(&r.model, Some(&r.raw)).expect("write");
+        pretty_assertions::assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            std::str::from_utf8(WITH_COMMENT).unwrap()
+        );
+    }
+
+    #[test]
+    fn preferences_width_uses_max_data_row() {
+        const WIDE: &[u8] = b"QuadStick Configuration,Version 1.1,abc,Mac\r\n\
+Preferences,\r\n\
+prefs.csv,,,,,\r\n\
+Preference,Value,Units,Description,,\r\n\
+volume,40,,,,\r\n\
+\r\n";
+        let r = parse(WIDE).expect("parse");
+        let bytes = write(&r.model, Some(&r.raw)).expect("write");
+        pretty_assertions::assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            std::str::from_utf8(WIDE).unwrap()
         );
     }
 }

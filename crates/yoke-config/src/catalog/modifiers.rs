@@ -54,62 +54,98 @@ pub enum Modifier {
 
 impl Modifier {
     pub fn from_csv(s: &str) -> Option<Self> {
-        fn parse_opt<T: std::str::FromStr>(a: Option<&str>) -> Option<T> {
-            a.and_then(|s| s.parse().ok())
+        fn unknown(name: &str, args: &[&str]) -> Modifier {
+            Modifier::Unknown {
+                name: name.to_owned(),
+                args: args.iter().map(|s| (*s).to_owned()).collect(),
+            }
+        }
+
+        // Returns Ok(None) if absent, Ok(Some(v)) if parsed, Err if present but malformed.
+        fn parse_arg<T: std::str::FromStr>(args: &[&str], i: usize) -> Result<Option<T>, ()> {
+            args.get(i)
+                .map_or(Ok(None), |s| s.parse::<T>().map(Some).map_err(|_| ()))
         }
 
         let mut tokens = s.split_whitespace();
         let name = tokens.next()?;
+        let args: Vec<&str> = tokens.collect();
 
+        // Each typed arm guards on arity, then propagates `unknown(name, &args)` if any
+        // declared arg fails to parse. This preserves original tokens on round-trip.
         Some(match name {
-            "normal" => Self::Normal,
-            "toggle" => Self::Toggle,
-            "delay_on" => Self::DelayOn {
-                ms: parse_opt(tokens.next()),
+            "normal" if args.is_empty() => Self::Normal,
+            "toggle" if args.is_empty() => Self::Toggle,
+            "delay_on" if args.len() <= 1 => match parse_arg::<u32>(&args, 0) {
+                Ok(ms) => Self::DelayOn { ms },
+                Err(()) => unknown(name, &args),
             },
-            "delay_off" => Self::DelayOff {
-                ms: parse_opt(tokens.next()),
+            "delay_off" if args.len() <= 1 => match parse_arg::<u32>(&args, 0) {
+                Ok(ms) => Self::DelayOff { ms },
+                Err(()) => unknown(name, &args),
             },
-            "greater_than" => Self::GreaterThan {
-                pct: parse_opt(tokens.next()),
-                upper: parse_opt(tokens.next()),
+            "greater_than" if args.len() <= 2 => {
+                match (parse_arg::<u8>(&args, 0), parse_arg::<u8>(&args, 1)) {
+                    (Ok(pct), Ok(upper)) => Self::GreaterThan { pct, upper },
+                    _ => unknown(name, &args),
+                }
+            }
+            "less_than" if args.len() <= 1 => match parse_arg::<u8>(&args, 0) {
+                Ok(pct) => Self::LessThan { pct },
+                Err(()) => unknown(name, &args),
             },
-            "less_than" => Self::LessThan {
-                pct: parse_opt(tokens.next()),
+            "repeat" if args.len() <= 2 => {
+                match (parse_arg::<u32>(&args, 0), parse_arg::<u32>(&args, 1)) {
+                    (Ok(hz), Ok(delay_ms)) => Self::Repeat { hz, delay_ms },
+                    _ => unknown(name, &args),
+                }
+            }
+            "pulse" if args.len() <= 2 => {
+                match (parse_arg::<u32>(&args, 0), parse_arg::<u32>(&args, 1)) {
+                    (Ok(ms), Ok(count)) => Self::Pulse { ms, count },
+                    _ => unknown(name, &args),
+                }
+            }
+            "duty" if args.len() <= 1 => match parse_arg::<u32>(&args, 0) {
+                Ok(ms) => Self::Duty { ms },
+                Err(()) => unknown(name, &args),
             },
-            "repeat" => Self::Repeat {
-                hz: parse_opt(tokens.next()),
-                delay_ms: parse_opt(tokens.next()),
+            "force_off" if args.len() <= 1 => match parse_arg::<u32>(&args, 0) {
+                Ok(ms) => Self::ForceOff { ms },
+                Err(()) => unknown(name, &args),
             },
-            "pulse" => Self::Pulse {
-                ms: parse_opt(tokens.next()),
-                count: parse_opt(tokens.next()),
+            "delayed_latch" if args.len() <= 1 => match parse_arg::<u32>(&args, 0) {
+                Ok(ms) => Self::DelayedLatch { ms },
+                Err(()) => unknown(name, &args),
             },
-            "duty" => Self::Duty {
-                ms: parse_opt(tokens.next()),
-            },
-            "force_off" => Self::ForceOff {
-                ms: parse_opt(tokens.next()),
-            },
-            "delayed_latch" => Self::DelayedLatch {
-                ms: parse_opt(tokens.next()),
-            },
-            "tap" => Self::Tap {
-                window_ms: parse_opt(tokens.next()),
-                pulse_ms: parse_opt(tokens.next()),
-            },
-            "increment_value" => Self::IncrementValue {
-                amount: parse_opt(tokens.next()),
-                interval_ms: parse_opt(tokens.next()),
-            },
-            "decrement_value" => Self::DecrementValue {
-                amount: parse_opt(tokens.next()),
-                interval_ms: parse_opt(tokens.next()),
-            },
-            _ => Self::Unknown {
-                name: name.to_owned(),
-                args: tokens.map(str::to_owned).collect(),
-            },
+            "tap" if args.len() <= 2 => {
+                match (parse_arg::<u32>(&args, 0), parse_arg::<u32>(&args, 1)) {
+                    (Ok(window_ms), Ok(pulse_ms)) => Self::Tap {
+                        window_ms,
+                        pulse_ms,
+                    },
+                    _ => unknown(name, &args),
+                }
+            }
+            "increment_value" if args.len() <= 2 => {
+                match (parse_arg::<i32>(&args, 0), parse_arg::<u32>(&args, 1)) {
+                    (Ok(amount), Ok(interval_ms)) => Self::IncrementValue {
+                        amount,
+                        interval_ms,
+                    },
+                    _ => unknown(name, &args),
+                }
+            }
+            "decrement_value" if args.len() <= 2 => {
+                match (parse_arg::<i32>(&args, 0), parse_arg::<u32>(&args, 1)) {
+                    (Ok(amount), Ok(interval_ms)) => Self::DecrementValue {
+                        amount,
+                        interval_ms,
+                    },
+                    _ => unknown(name, &args),
+                }
+            }
+            _ => unknown(name, &args),
         })
     }
 
@@ -225,6 +261,59 @@ mod tests {
             }
         );
         assert_eq!(m.to_csv(), "future_modifier 42 7");
+    }
+
+    #[test]
+    fn delay_on_with_garbage_arg_round_trips() {
+        let m = Modifier::from_csv("delay_on abc").unwrap();
+        assert_eq!(
+            m,
+            Modifier::Unknown {
+                name: "delay_on".into(),
+                args: vec!["abc".into()],
+            }
+        );
+        assert_eq!(m.to_csv(), "delay_on abc");
+    }
+
+    #[test]
+    fn delay_on_with_extra_arg_round_trips() {
+        let m = Modifier::from_csv("delay_on 1000 extra").unwrap();
+        assert_eq!(
+            m,
+            Modifier::Unknown {
+                name: "delay_on".into(),
+                args: vec!["1000".into(), "extra".into()],
+            }
+        );
+        assert_eq!(m.to_csv(), "delay_on 1000 extra");
+    }
+
+    #[test]
+    fn normal_rejects_extra_args() {
+        let m = Modifier::from_csv("normal junk").unwrap();
+        assert_eq!(
+            m,
+            Modifier::Unknown {
+                name: "normal".into(),
+                args: vec!["junk".into()],
+            }
+        );
+        assert_eq!(m.to_csv(), "normal junk");
+    }
+
+    #[test]
+    fn greater_than_with_garbage_pct_round_trips() {
+        let m = Modifier::from_csv("greater_than 999 70").unwrap();
+        // 999 doesn't fit in u8, so falls through to Unknown.
+        assert_eq!(
+            m,
+            Modifier::Unknown {
+                name: "greater_than".into(),
+                args: vec!["999".into(), "70".into()],
+            }
+        );
+        assert_eq!(m.to_csv(), "greater_than 999 70");
     }
 
     // source: https://quadstick.s3.amazonaws.com/documents/user_manual/um/dropdown_list_for_ouput_functions.htm
