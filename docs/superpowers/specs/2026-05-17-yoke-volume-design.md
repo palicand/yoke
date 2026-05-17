@@ -97,12 +97,12 @@ yoke/crates/
 │       └── integration.rs       # end-to-end tests with yoke-config dev-dep
 └── yoke-volume-macos/           # darwin-only DiskArbitration backend
     ├── Cargo.toml
-    └── src/
-        ├── lib.rs
-        ├── provider.rs          # MacOsVolumeProvider
-        ├── disk_arbitration.rs  # DA session + callbacks (minimal FFI)
-        ├── iokit_usb.rs         # IOUSBDevice enumeration & notifications
-        └── run_loop.rs          # dedicated CFRunLoop thread + lifecycle
+    ├── src/
+    │   ├── lib.rs
+    │   ├── provider.rs          # MacOsVolumeProvider
+    │   ├── disk_arbitration.rs  # DA session + callbacks (minimal FFI)
+    │   ├── iokit_usb.rs         # IOUSBDevice enumeration & notifications
+    │   └── run_loop.rs          # dedicated CFRunLoop thread + lifecycle
     └── examples/
         └── watch.rs             # 30-line smoke binary
 ```
@@ -134,7 +134,7 @@ yoke/crates/
 - `libc` — `c_void`, integer typedefs for the FFI signatures.
 - `tracing` — workspace rule.
 
-The FFI surface is hand-rolled. Six DiskArbitration symbols
+The FFI surface is hand-rolled. Seven DiskArbitration symbols
 (`DASessionCreate`, `DASessionScheduleWithRunLoop`,
 `DARegisterDiskAppearedCallback`, `DARegisterDiskDisappearedCallback`,
 `DARegisterDiskDescriptionChangedCallback`, `DADiskCopyDescription`,

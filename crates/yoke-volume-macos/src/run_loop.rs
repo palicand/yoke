@@ -75,9 +75,19 @@ impl RunLoopThread {
                 worker.teardown();
             })
             .map_err(|e| VolumeError::BackendInit(format!("spawn DA thread: {e}")))?;
-        let run_loop = rx
+        let run_loop = match rx
             .recv()
-            .map_err(|_| VolumeError::BackendInit("DA thread exited before seeding".into()))??;
+            .map_err(|_| VolumeError::BackendInit("DA thread exited before seeding".into()))?
+        {
+            Ok(rl) => rl,
+            Err(setup_err) => {
+                // Wait for the worker to finish teardown before bubbling the
+                // error up, so a caller retrying right away doesn't race a
+                // half-torn-down session.
+                let _ = handle.join();
+                return Err(setup_err);
+            }
+        };
         Ok(Self {
             handle: Some(handle),
             run_loop: Mutex::new(Some(run_loop.0)),

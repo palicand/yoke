@@ -80,7 +80,7 @@ pub const HORI_PS4_VID_PID: VidPid = VidPid {
 };
 
 #[must_use]
-pub fn state_transition_event(old: &MountState, new: &MountState) -> Option<MountEvent> {
+pub fn state_transition_events(old: &MountState, new: &MountState) -> Vec<MountEvent> {
     match (old, new) {
         (
             MountState::Absent | MountState::DeviceVisibleNoVolume { .. },
@@ -89,20 +89,29 @@ pub fn state_transition_event(old: &MountState, new: &MountState) -> Option<Moun
                 vid_pid,
                 label,
             },
-        ) => Some(MountEvent::VolumeMounted {
+        ) => vec![MountEvent::VolumeMounted {
             mount_point: mount_point.clone(),
             vid_pid: *vid_pid,
             label: label.clone(),
-        }),
-        (
-            MountState::Present { .. },
-            MountState::Absent | MountState::DeviceVisibleNoVolume { .. },
-        ) => Some(MountEvent::VolumeUnmounted),
+        }],
+        // Volume goes away AND the device persona changes (e.g. mass-storage
+        // off + DS3 emulation on). Emit both so a consumer wired only to
+        // events still learns the new vid_pid / mode_hint.
+        (MountState::Present { .. }, MountState::DeviceVisibleNoVolume { vid_pid, mode_hint }) => {
+            vec![
+                MountEvent::VolumeUnmounted,
+                MountEvent::DeviceModeChanged {
+                    vid_pid: *vid_pid,
+                    mode_hint: *mode_hint,
+                },
+            ]
+        }
+        (MountState::Present { .. }, MountState::Absent) => vec![MountEvent::VolumeUnmounted],
         (MountState::Absent, MountState::DeviceVisibleNoVolume { vid_pid, .. }) => {
-            Some(MountEvent::DeviceAppeared { vid_pid: *vid_pid })
+            vec![MountEvent::DeviceAppeared { vid_pid: *vid_pid }]
         }
         (MountState::DeviceVisibleNoVolume { .. }, MountState::Absent) => {
-            Some(MountEvent::DeviceDisappeared)
+            vec![MountEvent::DeviceDisappeared]
         }
         (
             MountState::DeviceVisibleNoVolume {
@@ -111,12 +120,12 @@ pub fn state_transition_event(old: &MountState, new: &MountState) -> Option<Moun
             },
             MountState::DeviceVisibleNoVolume { vid_pid, mode_hint },
         ) if old_vid_pid != vid_pid || old_mode_hint != mode_hint => {
-            Some(MountEvent::DeviceModeChanged {
+            vec![MountEvent::DeviceModeChanged {
                 vid_pid: *vid_pid,
                 mode_hint: *mode_hint,
-            })
+            }]
         }
-        _ => None,
+        _ => Vec::new(),
     }
 }
 
@@ -169,13 +178,13 @@ mod tests {
             },
             mode_hint: Some(ModeHint::Emulation),
         };
-        let evt = state_transition_event(&old, &new);
+        let events = state_transition_events(&old, &new);
         assert!(matches!(
-            evt,
-            Some(MountEvent::DeviceModeChanged {
+            events.as_slice(),
+            [MountEvent::DeviceModeChanged {
                 mode_hint: Some(ModeHint::Emulation),
                 ..
-            })
+            }]
         ));
     }
 
@@ -188,7 +197,37 @@ mod tests {
             },
             mode_hint: Some(ModeHint::MassStorageDisabled),
         };
-        assert_eq!(state_transition_event(&s, &s), None);
+        assert!(state_transition_events(&s, &s).is_empty());
+    }
+
+    #[test]
+    fn present_to_device_visible_emits_unmount_and_mode_change() {
+        let old = MountState::Present {
+            mount_point: PathBuf::from("/Volumes/Quad Stick"),
+            vid_pid: VidPid {
+                vendor: 0x16D0,
+                product: 0x092B,
+            },
+            label: "Quad Stick".to_string(),
+        };
+        let new = MountState::DeviceVisibleNoVolume {
+            vid_pid: VidPid {
+                vendor: 0x054C,
+                product: 0x05C5,
+            },
+            mode_hint: Some(ModeHint::Emulation),
+        };
+        let events = state_transition_events(&old, &new);
+        assert!(matches!(
+            events.as_slice(),
+            [
+                MountEvent::VolumeUnmounted,
+                MountEvent::DeviceModeChanged {
+                    mode_hint: Some(ModeHint::Emulation),
+                    ..
+                },
+            ]
+        ));
     }
 
     #[test]

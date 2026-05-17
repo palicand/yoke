@@ -2,7 +2,7 @@ use crate::error::VolumeError;
 use crate::io;
 use crate::profile::{ProfileEntry, ProfileName};
 use crate::provider::{VolumeProvider, require_present_at};
-use crate::state::{MountEvent, MountState, VidPid, state_transition_event};
+use crate::state::{MountEvent, MountState, VidPid, state_transition_events};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{broadcast, watch};
@@ -43,16 +43,16 @@ impl FsBackend {
         } else {
             MountState::Absent
         };
-        let mut emitted_event = None;
+        let mut emitted_events: Vec<MountEvent> = Vec::new();
         self.inner.state_tx.send_if_modified(|cur| {
             if *cur == new_state {
                 return false;
             }
-            emitted_event = state_transition_event(cur, &new_state);
+            emitted_events = state_transition_events(cur, &new_state);
             *cur = new_state.clone();
             true
         });
-        if let Some(evt) = emitted_event {
+        for evt in emitted_events {
             let _ = self.inner.event_tx.send(evt);
         }
     }

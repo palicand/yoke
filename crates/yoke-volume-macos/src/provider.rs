@@ -24,7 +24,7 @@ use yoke_volume::io;
 use yoke_volume::profile::{ProfileEntry, ProfileName};
 use yoke_volume::provider::{VolumeProvider, require_present_at};
 use yoke_volume::state::{
-    HORI_PS4_VID_PID, ModeHint, MountEvent, MountState, VidPid, state_transition_event,
+    HORI_PS4_VID_PID, ModeHint, MountEvent, MountState, VidPid, state_transition_events,
 };
 
 const EVENT_CHANNEL_CAPACITY: usize = 64;
@@ -227,16 +227,16 @@ fn drain_volumes(inner: &Inner) {
 
 fn publish(inner: &Inner) {
     let new_state = inner.tracked.lock().unwrap().compute();
-    let mut emitted_event = None;
+    let mut emitted_events: Vec<MountEvent> = Vec::new();
     inner.state_tx.send_if_modified(|cur| {
         if *cur == new_state {
             return false;
         }
-        emitted_event = state_transition_event(cur, &new_state);
+        emitted_events = state_transition_events(cur, &new_state);
         *cur = new_state.clone();
         true
     });
-    if let Some(evt) = emitted_event {
+    for evt in emitted_events {
         let _ = inner.event_tx.send(evt);
     }
 }

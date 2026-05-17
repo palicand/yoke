@@ -24,7 +24,7 @@ pub type IONotificationPortRef = *mut c_void;
 pub type IOServiceMatchingCallback =
     unsafe extern "C" fn(refcon: *mut c_void, iterator: io_iterator_t);
 
-pub const kIOMatchedNotification: &[u8] = b"IOServiceFirstMatch\0";
+pub const kIOFirstMatchNotification: &[u8] = b"IOServiceFirstMatch\0";
 pub const kIOTerminatedNotification: &[u8] = b"IOServiceTerminate\0";
 pub const kIOUSBDeviceClassName: &[u8] = b"IOUSBDevice\0";
 pub const kIOMainPortDefault: mach_port_t = 0;
