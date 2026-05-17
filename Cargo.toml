@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/yoke-config"]
+members = ["crates/yoke-config", "crates/yoke-volume"]
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
