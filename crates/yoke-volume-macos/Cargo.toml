@@ -1,0 +1,33 @@
+[package]
+name = "yoke-volume-macos"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "macOS DiskArbitration backend for the yoke-volume VolumeProvider trait."
+
+# This crate does not inherit `[lints] workspace = true` because the workspace
+# forbids `unsafe_code`, and this crate is the host-OS FFI boundary that needs
+# `extern "C"` and `unsafe` blocks. The clippy rules below mirror the workspace.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+
+[dependencies]
+tokio = { version = "1.52.3", features = ["sync"] }
+tracing = "0.1.44"
+yoke-volume = { version = "0.1.0", path = "../yoke-volume" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10.1"
+core-foundation-sys = "0.8.7"
+libc = "0.2.186"
+
+[dev-dependencies]
+tokio = { version = "1.52.3", features = ["rt", "time", "macros"] }
+tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter"] }
