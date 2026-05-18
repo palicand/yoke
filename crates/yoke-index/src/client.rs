@@ -18,12 +18,16 @@ impl IndexClient {
     pub fn new() -> Result<Self, IndexError> {
         let cache = Cache::default()
             .ok_or_else(|| IndexError::Io(std::io::Error::other("no cache dir")))?;
+        // Env var override is what lets integration tests point at a wiremock
+        // server without a builder; production code can still call .with_index_url.
+        let index_url =
+            std::env::var("YOKECTL_INDEX_URL").unwrap_or_else(|_| COMMUNITY_INDEX_URL.to_string());
         Ok(Self {
             http: reqwest::Client::builder()
                 .user_agent(concat!("yokectl/", env!("CARGO_PKG_VERSION")))
                 .build()?,
             cache,
-            index_url: COMMUNITY_INDEX_URL.to_string(),
+            index_url,
         })
     }
 

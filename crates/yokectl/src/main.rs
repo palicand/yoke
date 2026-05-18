@@ -7,7 +7,7 @@ mod runtime;
 mod target;
 
 use clap::Parser;
-use cli::{Commands, SubprofileCmd};
+use cli::{Commands, IndexCmd, SubprofileCmd};
 
 fn main() {
     let cli = cli::Cli::parse();
@@ -24,7 +24,7 @@ fn main() {
     std::process::exit(code);
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
     let provider = backend::open(cli.fake_volume.clone())?;
     match cli.command {
@@ -89,6 +89,25 @@ fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
             edits,
             dry_run,
         } => commands::apply::run(&provider, out, &target, &edits, dry_run),
+        Commands::Install {
+            source,
+            as_name,
+            dry_run,
+            no_validate,
+        } => commands::install::run(
+            &provider,
+            out,
+            &source,
+            as_name.as_deref(),
+            dry_run,
+            no_validate,
+        ),
+        Commands::Index { cmd } => match cmd {
+            IndexCmd::List { refresh } => commands::index::run_list(out, refresh),
+            IndexCmd::Search { query } => commands::index::run_search(out, &query),
+            IndexCmd::Show { name } => commands::index::run_show(out, &name),
+            IndexCmd::Update => commands::index::run_update(out),
+        },
         Commands::Subprofile { cmd } => match cmd {
             SubprofileCmd::Add {
                 target,
