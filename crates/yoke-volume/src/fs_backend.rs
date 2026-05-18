@@ -78,6 +78,28 @@ fn compute_state(root: &Path) -> MountState {
     }
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+impl FsBackend {
+    pub fn simulate_state(&self, state: MountState) {
+        let mut emitted: Vec<MountEvent> = Vec::new();
+        self.inner.state_tx.send_if_modified(|cur| {
+            if *cur == state {
+                return false;
+            }
+            emitted = state_transition_events(cur, &state);
+            *cur = state;
+            true
+        });
+        for evt in emitted {
+            let _ = self.inner.event_tx.send(evt);
+        }
+    }
+
+    pub fn simulate_event(&self, event: MountEvent) {
+        let _ = self.inner.event_tx.send(event);
+    }
+}
+
 impl VolumeProvider for FsBackend {
     fn current_state(&self) -> MountState {
         self.inner.state_tx.borrow().clone()
@@ -201,5 +223,26 @@ mod tests {
         let backend = FsBackend::new(dir.path().to_path_buf());
         let rx = backend.subscribe_state();
         assert_eq!(*rx.borrow(), backend.current_state());
+    }
+
+    #[test]
+    fn simulate_state_forces_publication() {
+        let dir = tempdir().unwrap();
+        let backend = FsBackend::new(dir.path().to_path_buf());
+        backend.simulate_state(MountState::Absent);
+        assert!(matches!(backend.current_state(), MountState::Absent));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn simulate_event_pushes_to_broadcast() {
+        let dir = tempdir().unwrap();
+        let backend = FsBackend::new(dir.path().to_path_buf());
+        let mut rx = backend.subscribe_events();
+        backend.simulate_event(MountEvent::DeviceDisappeared);
+        let evt = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(evt, MountEvent::DeviceDisappeared));
     }
 }
