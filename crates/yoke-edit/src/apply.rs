@@ -1,7 +1,12 @@
-use yoke_config::model::{Profile, SubProfile, SubProfileHeader};
+use yoke_config::catalog::{
+    DPadDir, GamepadButton, Input, JoyAxis, JoyOutput, KbKey, Modifier, MouseAction, Output,
+    SipPuff, SystemAction, UsbHost,
+};
+use yoke_config::model::{Binding, Profile, SubProfile, SubProfileHeader, SubProfileRow};
 
 use crate::error::{ApplyError, EditError};
 use crate::op::EditOp;
+use crate::suggest::suggestions;
 
 pub fn apply(profile: Profile, ops: &[EditOp]) -> Result<Profile, ApplyError> {
     let mut current = profile;
@@ -11,73 +16,255 @@ pub fn apply(profile: Profile, ops: &[EditOp]) -> Result<Profile, ApplyError> {
     Ok(current)
 }
 
-fn apply_one(mut profile: Profile, op: &EditOp) -> Result<Profile, EditError> {
+fn apply_one(profile: Profile, op: &EditOp) -> Result<Profile, EditError> {
     match op {
-        EditOp::SetTitle { title } => {
-            profile.top_line.title.clone_from(title);
-            Ok(profile)
-        }
+        EditOp::SetTitle { title } => Ok(apply_set_title(profile, title)),
         EditOp::AddSubProfile {
             name,
             mode,
             sub_mode,
             channel,
-        } => {
-            if profile
-                .sub_profiles
-                .iter()
-                .any(|sp| sp.header.profile_name == *name)
-            {
-                return Err(EditError::SubProfileExists { name: name.clone() });
-            }
-            profile.sub_profiles.push(SubProfile {
-                header: SubProfileHeader {
-                    profile_name: name.clone(),
-                    mode: mode.clone(),
-                    sub_mode: sub_mode.clone(),
-                    channel: *channel,
-                    column_header_label: String::new(),
-                },
-                rows: vec![],
-            });
-            Ok(profile)
-        }
-        EditOp::DeleteSubProfile { name } => {
-            let pos = sub_profile_index(&profile, name)?;
-            if profile.sub_profiles.len() == 1 {
-                return Err(EditError::LastSubProfileDeletion);
-            }
-            profile.sub_profiles.remove(pos);
-            Ok(profile)
-        }
-        EditOp::RenameSubProfile { from, to } => {
-            if profile
-                .sub_profiles
-                .iter()
-                .any(|sp| sp.header.profile_name == *to)
-            {
-                return Err(EditError::SubProfileExists { name: to.clone() });
-            }
-            let pos = sub_profile_index(&profile, from)?;
-            profile.sub_profiles[pos].header.profile_name.clone_from(to);
-            Ok(profile)
-        }
-        EditOp::CloneSubProfile { from, to } => {
-            if profile
-                .sub_profiles
-                .iter()
-                .any(|sp| sp.header.profile_name == *to)
-            {
-                return Err(EditError::SubProfileExists { name: to.clone() });
-            }
-            let pos = sub_profile_index(&profile, from)?;
-            let mut cloned = profile.sub_profiles[pos].clone();
-            cloned.header.profile_name.clone_from(to);
-            profile.sub_profiles.push(cloned);
-            Ok(profile)
+        } => apply_add_sub_profile(profile, name, mode, sub_mode, *channel),
+        EditOp::DeleteSubProfile { name } => apply_delete_sub_profile(profile, name),
+        EditOp::RenameSubProfile { from, to } => apply_rename_sub_profile(profile, from, to),
+        EditOp::CloneSubProfile { from, to } => apply_clone_sub_profile(profile, from, to),
+        EditOp::SetBinding {
+            sub_profile,
+            input,
+            output,
+        } => apply_set_binding(profile, sub_profile, input, output),
+        EditOp::ClearBinding { sub_profile, input } => {
+            apply_clear_binding(profile, sub_profile, input)
         }
         _ => unimplemented!("op {op:?} not yet supported; coming in later tasks"),
     }
+}
+
+fn apply_set_title(mut profile: Profile, title: &str) -> Profile {
+    profile.top_line.title.clear();
+    profile.top_line.title.push_str(title);
+    profile
+}
+
+fn apply_add_sub_profile(
+    mut profile: Profile,
+    name: &str,
+    mode: &yoke_config::catalog::SubProfileMode,
+    sub_mode: &str,
+    channel: yoke_config::catalog::Channel,
+) -> Result<Profile, EditError> {
+    if profile
+        .sub_profiles
+        .iter()
+        .any(|sp| sp.header.profile_name == name)
+    {
+        return Err(EditError::SubProfileExists {
+            name: name.to_owned(),
+        });
+    }
+    profile.sub_profiles.push(SubProfile {
+        header: SubProfileHeader {
+            profile_name: name.to_owned(),
+            mode: mode.clone(),
+            sub_mode: sub_mode.to_owned(),
+            channel,
+            column_header_label: String::new(),
+        },
+        rows: vec![],
+    });
+    Ok(profile)
+}
+
+fn apply_delete_sub_profile(mut profile: Profile, name: &str) -> Result<Profile, EditError> {
+    let pos = sub_profile_index(&profile, name)?;
+    if profile.sub_profiles.len() == 1 {
+        return Err(EditError::LastSubProfileDeletion);
+    }
+    profile.sub_profiles.remove(pos);
+    Ok(profile)
+}
+
+fn apply_rename_sub_profile(
+    mut profile: Profile,
+    from: &str,
+    to: &str,
+) -> Result<Profile, EditError> {
+    if profile
+        .sub_profiles
+        .iter()
+        .any(|sp| sp.header.profile_name == to)
+    {
+        return Err(EditError::SubProfileExists {
+            name: to.to_owned(),
+        });
+    }
+    let pos = sub_profile_index(&profile, from)?;
+    to.clone_into(&mut profile.sub_profiles[pos].header.profile_name);
+    Ok(profile)
+}
+
+fn apply_clone_sub_profile(
+    mut profile: Profile,
+    from: &str,
+    to: &str,
+) -> Result<Profile, EditError> {
+    if profile
+        .sub_profiles
+        .iter()
+        .any(|sp| sp.header.profile_name == to)
+    {
+        return Err(EditError::SubProfileExists {
+            name: to.to_owned(),
+        });
+    }
+    let pos = sub_profile_index(&profile, from)?;
+    let mut cloned = profile.sub_profiles[pos].clone();
+    to.clone_into(&mut cloned.header.profile_name);
+    profile.sub_profiles.push(cloned);
+    Ok(profile)
+}
+
+fn apply_set_binding(
+    mut profile: Profile,
+    sub_profile: &str,
+    input: &str,
+    output: &str,
+) -> Result<Profile, EditError> {
+    let sp_idx = sub_profile_index(&profile, sub_profile)?;
+    let parsed_input = parse_input(input)?;
+    let parsed_output = parse_output(output)?;
+    let target = &mut profile.sub_profiles[sp_idx];
+    let existing = target.rows.iter_mut().find(|r| match r {
+        SubProfileRow::Binding(b) => b.input.as_ref() == Some(&parsed_input),
+        SubProfileRow::Override(_) => false,
+    });
+    if let Some(SubProfileRow::Binding(b)) = existing {
+        b.output = parsed_output;
+        b.modifier = Modifier::Normal;
+        b.comment = None;
+    } else {
+        target.rows.push(SubProfileRow::Binding(Binding::new(
+            parsed_output,
+            Modifier::Normal,
+            Some(parsed_input),
+        )));
+    }
+    Ok(profile)
+}
+
+fn apply_clear_binding(
+    mut profile: Profile,
+    sub_profile: &str,
+    input: &str,
+) -> Result<Profile, EditError> {
+    let sp_idx = sub_profile_index(&profile, sub_profile)?;
+    let parsed_input = parse_input(input)?;
+    let target = &mut profile.sub_profiles[sp_idx];
+    let before = target.rows.len();
+    target.rows.retain(|r| match r {
+        SubProfileRow::Binding(b) => b.input.as_ref() != Some(&parsed_input),
+        SubProfileRow::Override(_) => true,
+    });
+    if target.rows.len() == before {
+        // Catalog accepted the identifier but this sub-profile has no row for it;
+        // from the user's POV the input is still "unknown" within this scope.
+        return Err(EditError::UnknownInput {
+            input: input.to_owned(),
+            suggestions: vec![],
+        });
+    }
+    Ok(profile)
+}
+
+fn parse_input(raw: &str) -> Result<Input, EditError> {
+    match Input::from_csv(raw) {
+        Input::Unknown(_) => Err(EditError::UnknownInput {
+            input: raw.to_owned(),
+            suggestions: suggestions(raw, input_csv_names().iter().map(String::as_str)),
+        }),
+        ok => Ok(ok),
+    }
+}
+
+fn parse_output(raw: &str) -> Result<Output, EditError> {
+    match Output::from_csv(raw) {
+        Output::Unknown(_) => Err(EditError::UnknownOutput {
+            output: raw.to_owned(),
+            suggestions: suggestions(raw, output_csv_names().iter().map(String::as_str)),
+        }),
+        ok => Ok(ok),
+    }
+}
+
+fn input_csv_names() -> Vec<String> {
+    use yoke_config::catalog::MpPosition;
+    let mut out: Vec<String> = Vec::new();
+    // Concrete leaf identifiers cover the realistic typo-suggestion space without
+    // exploding the variant matrix: mouthpiece/side combinations build their own
+    // strings; joystick/USB axis and dpad names round-trip through Input::to_csv.
+    for dir in SipPuff::ALL {
+        for soft in [false, true] {
+            let suffix = if soft { "_soft" } else { "" };
+            for pos in MpPosition::ALL {
+                out.push(format!("mp_{}_{}{suffix}", pos.as_csv(), dir.as_csv()));
+            }
+            out.push(format!("right_{}{suffix}", dir.as_csv()));
+        }
+        out.push(format!("right_{}_long", dir.as_csv()));
+    }
+    out.push("lip".into());
+    out.push("lip_soft".into());
+    for ax in JoyAxis::ALL {
+        out.push((*ax).as_csv().to_owned());
+    }
+    out.push("any_direction".into());
+    out.push("center".into());
+    out.push("constant".into());
+    for d in DPadDir::ALL {
+        out.push((*d).as_csv().to_owned());
+        out.push(format!("{}_inner", d.as_csv()));
+    }
+    for host in UsbHost::ALL {
+        let h = host.as_csv_index();
+        for ax in JoyAxis::ALL {
+            out.push(format!("usb_{h}_{}", ax.as_csv()));
+        }
+        for d in DPadDir::ALL {
+            out.push(format!("usb_{h}_{}", d.as_csv()));
+            out.push(format!("usb_{h}_{}_inner", d.as_csv()));
+        }
+        for n in 1u8..=15 {
+            out.push(format!("usb_{h}_button_{n}"));
+        }
+    }
+    for n in 1u8..=8 {
+        out.push(format!("digital_in_{n}"));
+    }
+    out
+}
+
+fn output_csv_names() -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for k in KbKey::ALL {
+        out.push((*k).as_csv().to_owned());
+    }
+    for m in MouseAction::ALL {
+        out.push((*m).as_csv().to_owned());
+    }
+    for g in GamepadButton::ALL {
+        out.push((*g).as_csv().to_owned());
+    }
+    for d in DPadDir::ALL {
+        out.push(format!("dpad_{}", d.as_csv()));
+    }
+    for j in JoyOutput::ALL {
+        out.push((*j).as_csv().to_owned());
+    }
+    for s in SystemAction::ALL {
+        out.push((*s).as_csv().to_owned());
+    }
+    out.push("touch".into());
+    out
 }
 
 fn sub_profile_index(profile: &Profile, name: &str) -> Result<usize, EditError> {
@@ -315,5 +502,117 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.index, 1);
+    }
+
+    #[test]
+    fn set_binding_rejects_unknown_input() {
+        let mut p = empty_profile();
+        p.sub_profiles.push(empty_sp("Main"));
+        let err = apply(
+            p,
+            &[EditOp::SetBinding {
+                sub_profile: "Main".into(),
+                input: "lip_sof".into(),
+                output: "kb_a".into(),
+            }],
+        )
+        .unwrap_err();
+        match err.error {
+            EditError::UnknownInput { input, suggestions } => {
+                assert_eq!(input, "lip_sof");
+                assert!(
+                    suggestions.iter().any(|s| s == "lip_soft"),
+                    "expected 'lip_soft' in {suggestions:?}"
+                );
+            }
+            other => panic!("expected UnknownInput, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_binding_rejects_unknown_output() {
+        let mut p = empty_profile();
+        p.sub_profiles.push(empty_sp("Main"));
+        let err = apply(
+            p,
+            &[EditOp::SetBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_eter".into(),
+            }],
+        )
+        .unwrap_err();
+        match err.error {
+            EditError::UnknownOutput {
+                output,
+                suggestions,
+            } => {
+                assert_eq!(output, "kb_eter");
+                assert!(
+                    suggestions.iter().any(|s| s == "kb_enter"),
+                    "expected 'kb_enter' in {suggestions:?}"
+                );
+            }
+            other => panic!("expected UnknownOutput, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_binding_rejects_missing_sub_profile() {
+        let p = empty_profile();
+        let err = apply(
+            p,
+            &[EditOp::SetBinding {
+                sub_profile: "Ghost".into(),
+                input: "lip_soft".into(),
+                output: "kb_enter".into(),
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.error,
+            EditError::SubProfileNotFound {
+                name: "Ghost".into()
+            }
+        );
+    }
+
+    #[test]
+    fn set_binding_appends_or_replaces_existing() {
+        let mut p = empty_profile();
+        p.sub_profiles.push(empty_sp("Main"));
+        let out = apply(
+            p,
+            &[EditOp::SetBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_enter".into(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(out.sub_profiles[0].bindings().count(), 1);
+    }
+
+    #[test]
+    fn clear_binding_removes_existing() {
+        use yoke_config::catalog::{Input, KbKey, Modifier, Output};
+        use yoke_config::model::{Binding, SubProfileRow};
+        let mut p = empty_profile();
+        let mut sp = empty_sp("Main");
+        sp.rows.push(SubProfileRow::Binding(Binding::new(
+            Output::Keyboard(KbKey::Enter),
+            Modifier::Normal,
+            Some(Input::Lip { soft: true }),
+        )));
+        p.sub_profiles.push(sp);
+        let out = apply(
+            p,
+            &[EditOp::ClearBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(out.sub_profiles[0].bindings().count(), 0);
     }
 }

@@ -41,6 +41,17 @@ mod tests {
         let candidates: Vec<String> = (0..10).map(|i| format!("foo{i}")).collect();
         let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
         let s = suggestions("foo", refs);
-        assert_eq!(s.len(), 5);
+        // Pin the tie-break order so a future refactor can't silently break it:
+        // all 10 are at distance 1, take(5) preserves source order, so we get foo0..foo4.
+        assert_eq!(
+            s,
+            vec![
+                "foo0".to_string(),
+                "foo1".to_string(),
+                "foo2".to_string(),
+                "foo3".to_string(),
+                "foo4".to_string(),
+            ]
+        );
     }
 }

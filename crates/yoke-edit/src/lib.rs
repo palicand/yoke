@@ -3,7 +3,7 @@
 pub mod apply;
 pub mod error;
 pub mod op;
-pub mod suggest;
+pub(crate) mod suggest;
 
 pub use apply::apply;
 pub use error::{ApplyError, EditError};
