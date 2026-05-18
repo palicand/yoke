@@ -7,6 +7,7 @@ pub mod error;
 pub mod source;
 pub mod url_transform;
 
+pub use entry::IndexEntry;
 pub use error::IndexError;
 pub use source::ProfileSource;
 
