@@ -326,6 +326,24 @@ fn apply_batch_rejects_and_does_not_modify_file_on_invalid_op() {
 }
 
 #[test]
+fn catalog_outputs_lists_kb_a() {
+    yokectl()
+        .args(["catalog", "outputs"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("kb_a"));
+}
+
+#[test]
+fn catalog_channels_lists_usb() {
+    yokectl()
+        .args(["catalog", "channels"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("usb"));
+}
+
+#[test]
 fn subprofile_add_then_delete() {
     let dir = tempdir().unwrap();
     seed_profile(dir.path(), "default.csv", FIXTURE_WITH_SUB);

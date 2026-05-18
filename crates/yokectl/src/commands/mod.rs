@@ -1,4 +1,5 @@
 pub mod apply;
+pub mod catalog;
 pub mod device;
 pub mod edit;
 pub mod index;

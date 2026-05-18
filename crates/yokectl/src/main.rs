@@ -7,7 +7,7 @@ mod runtime;
 mod target;
 
 use clap::Parser;
-use cli::{Commands, IndexCmd, SubprofileCmd};
+use cli::{CatalogCmd, Commands, IndexCmd, SubprofileCmd};
 
 fn main() {
     let cli = cli::Cli::parse();
@@ -109,6 +109,13 @@ fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
             IndexCmd::Show { name } => commands::index::run_show(out, &name),
             IndexCmd::Update => commands::index::run_update(out),
         },
+        Commands::Catalog { cmd } => match cmd {
+            CatalogCmd::Inputs => commands::catalog::run_inputs(out),
+            CatalogCmd::Outputs => commands::catalog::run_outputs(out),
+            CatalogCmd::Preferences => commands::catalog::run_preferences(out),
+            CatalogCmd::Modes => commands::catalog::run_modes(out),
+            CatalogCmd::Channels => commands::catalog::run_channels(out),
+        },
         Commands::Subprofile { cmd } => match cmd {
             SubprofileCmd::Add {
                 target,
@@ -135,7 +142,7 @@ fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
                 commands::subprofile::run_clone(&provider, out, &target, &from, &to)
             }
         },
-        _ => anyhow::bail!("not implemented yet"),
+        Commands::Completions { .. } => anyhow::bail!("not implemented yet"),
     }
 }
 
