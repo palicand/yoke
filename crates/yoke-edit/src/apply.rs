@@ -152,8 +152,6 @@ fn apply_set_binding(
     });
     if let Some(SubProfileRow::Binding(b)) = existing {
         b.output = parsed_output;
-        b.modifier = Modifier::Normal;
-        b.comment = None;
     } else {
         target.rows.push(SubProfileRow::Binding(Binding::new(
             parsed_output,
@@ -790,10 +788,13 @@ mod tests {
             }],
         )
         .unwrap_err();
-        assert!(matches!(
-            err.error,
-            EditError::InvalidPreferenceValue { .. }
-        ));
+        match err.error {
+            EditError::InvalidPreferenceValue { key, value, .. } => {
+                assert_eq!(key, "volume");
+                assert_eq!(value, "200");
+            }
+            other => panic!("expected InvalidPreferenceValue, got {other:?}"),
+        }
     }
 
     #[test]
@@ -907,5 +908,63 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out.sub_profiles[0].overrides().count(), 0);
+    }
+
+    #[test]
+    fn batch_failure_leaves_input_profile_unchanged() {
+        let mut p = empty_profile();
+        p.sub_profiles.push(empty_sp("Main"));
+        let snapshot = p.clone();
+        let _ = apply(
+            p.clone(),
+            &[
+                EditOp::SetTitle {
+                    title: "New".into(),
+                },
+                EditOp::DeleteSubProfile {
+                    name: "Ghost".into(),
+                },
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(p, snapshot);
+    }
+
+    #[test]
+    fn set_binding_replace_preserves_modifier_and_comment() {
+        use yoke_config::catalog::{Input, KbKey, Output};
+        use yoke_config::model::{Binding, SubProfileRow};
+        let mut p = empty_profile();
+        let mut sp = empty_sp("Main");
+        let mut b = Binding::new(
+            Output::Keyboard(KbKey::Enter),
+            Modifier::Toggle,
+            Some(Input::Lip { soft: true }),
+        );
+        b.comment = Some("don't wipe me".to_owned());
+        sp.rows.push(SubProfileRow::Binding(b));
+        p.sub_profiles.push(sp);
+
+        let out = apply(
+            p,
+            &[EditOp::SetBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+            }],
+        )
+        .unwrap();
+
+        let row = out.sub_profiles[0]
+            .rows
+            .iter()
+            .find_map(|r| match r {
+                SubProfileRow::Binding(b) => Some(b),
+                SubProfileRow::Override(_) => None,
+            })
+            .expect("expected the replaced binding to still be present");
+        assert_eq!(row.output, Output::Keyboard(KbKey::A));
+        assert!(matches!(row.modifier, Modifier::Toggle));
+        assert_eq!(row.comment.as_deref(), Some("don't wipe me"));
     }
 }
