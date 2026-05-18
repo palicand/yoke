@@ -87,3 +87,18 @@ async fn fetch_404_returns_fetch_failed() {
         yoke_index::IndexError::FetchFailed { status: 404, .. }
     ));
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "opt-in: requires YOKE_REAL_NETWORK=1 and live internet"]
+async fn real_community_index_fetches_when_env_set() {
+    if std::env::var("YOKE_REAL_NETWORK").as_deref() != Ok("1") {
+        return;
+    }
+    let dir = tempdir().unwrap();
+    let c = IndexClient::new()
+        .unwrap()
+        .with_cache(dir.path().join("idx.csv"), Duration::from_mins(1));
+    let entries = c.list(true).await.expect("network fetch failed");
+    assert!(!entries.is_empty(), "index empty");
+    eprintln!("fetched {} entries", entries.len());
+}
