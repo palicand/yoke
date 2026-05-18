@@ -1,6 +1,7 @@
 mod backend;
 mod cli;
 mod output;
+mod target;
 
 use clap::Parser;
 
