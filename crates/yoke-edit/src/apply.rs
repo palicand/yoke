@@ -1,11 +1,14 @@
 use yoke_config::catalog::{
     DPadDir, GamepadButton, Input, JoyAxis, JoyOutput, KbKey, Modifier, MouseAction, Output,
-    SipPuff, SystemAction, UsbHost,
+    PreferenceKey, PreferenceSpec, PreferenceValueKind, SipPuff, SystemAction, UsbHost,
 };
-use yoke_config::model::{Binding, Profile, SubProfile, SubProfileHeader, SubProfileRow};
+use yoke_config::model::{
+    Binding, PreferenceEntry, PreferenceOverride, Preferences, Profile, SubProfile,
+    SubProfileHeader, SubProfileRow,
+};
 
 use crate::error::{ApplyError, EditError};
-use crate::op::EditOp;
+use crate::op::{EditOp, PreferenceValue};
 use crate::suggest::suggestions;
 
 pub fn apply(profile: Profile, ops: &[EditOp]) -> Result<Profile, ApplyError> {
@@ -36,7 +39,16 @@ fn apply_one(profile: Profile, op: &EditOp) -> Result<Profile, EditError> {
         EditOp::ClearBinding { sub_profile, input } => {
             apply_clear_binding(profile, sub_profile, input)
         }
-        _ => unimplemented!("op {op:?} not yet supported; coming in later tasks"),
+        EditOp::SetPreference { key, value } => apply_set_preference(profile, key, value),
+        EditOp::UnsetPreference { key } => Ok(apply_unset_preference(profile, key)),
+        EditOp::SetOverride {
+            sub_profile,
+            key,
+            value,
+        } => apply_set_override(profile, sub_profile, key, value),
+        EditOp::UnsetOverride { sub_profile, key } => {
+            apply_unset_override(profile, sub_profile, key)
+        }
     }
 }
 
@@ -275,6 +287,134 @@ fn sub_profile_index(profile: &Profile, name: &str) -> Result<usize, EditError> 
         .ok_or_else(|| EditError::SubProfileNotFound {
             name: name.to_owned(),
         })
+}
+
+fn lookup_preference_spec(key: &str) -> Result<PreferenceSpec, EditError> {
+    PreferenceSpec::for_id(key).ok_or_else(|| EditError::UnknownPreference {
+        key: key.to_owned(),
+        suggestions: suggestions(key, PreferenceSpec::ALL.iter().map(|s| s.id)),
+    })
+}
+
+fn coerce_value(spec: &PreferenceSpec, value: &PreferenceValue) -> Result<String, EditError> {
+    // Convert the typed PreferenceValue to the CSV string form, then run the spec's
+    // own validator so range/select checks stay centralised in yoke-config.
+    let raw = match (&spec.kind, value) {
+        (
+            PreferenceValueKind::IntRange { .. } | PreferenceValueKind::SelectInt(_),
+            PreferenceValue::Number(n),
+        ) => n.to_string(),
+        (PreferenceValueKind::Bool, PreferenceValue::Bool(b)) => {
+            if *b { "1" } else { "0" }.to_owned()
+        }
+        (PreferenceValueKind::Bool, PreferenceValue::Number(n)) if *n == 0 || *n == 1 => {
+            n.to_string()
+        }
+        (PreferenceValueKind::Select(_) | PreferenceValueKind::Text, PreferenceValue::Text(s)) => {
+            s.clone()
+        }
+        _ => {
+            return Err(EditError::InvalidPreferenceValue {
+                key: spec.id.to_owned(),
+                value: format!("{value:?}"),
+                expected_type: kind_label(&spec.kind).to_owned(),
+            });
+        }
+    };
+    spec.validate(&raw)
+        .map_err(|msg| EditError::InvalidPreferenceValue {
+            key: spec.id.to_owned(),
+            value: raw.clone(),
+            expected_type: msg,
+        })?;
+    Ok(raw)
+}
+
+const fn kind_label(kind: &PreferenceValueKind) -> &'static str {
+    match kind {
+        PreferenceValueKind::IntRange { .. } | PreferenceValueKind::SelectInt(_) => "integer",
+        PreferenceValueKind::Bool => "boolean",
+        PreferenceValueKind::Select(_) => "string",
+        PreferenceValueKind::Text => "text",
+    }
+}
+
+fn apply_set_preference(
+    mut profile: Profile,
+    key: &str,
+    value: &PreferenceValue,
+) -> Result<Profile, EditError> {
+    let spec = lookup_preference_spec(key)?;
+    let raw = coerce_value(&spec, value)?;
+    let prefs = profile.preferences.get_or_insert_with(Preferences::default);
+    if let Some((_, entry)) = prefs.entries.iter_mut().find(|(k, _)| k == key) {
+        entry.value = raw;
+    } else {
+        prefs.entries.push((
+            key.to_owned(),
+            PreferenceEntry {
+                key: PreferenceKey::Known(spec.key),
+                value: raw,
+                units: String::new(),
+                description: String::new(),
+                comment: None,
+            },
+        ));
+    }
+    Ok(profile)
+}
+
+fn apply_unset_preference(mut profile: Profile, key: &str) -> Profile {
+    if let Some(prefs) = profile.preferences.as_mut() {
+        prefs.entries.retain(|(k, _)| k != key);
+    }
+    profile
+}
+
+fn apply_set_override(
+    mut profile: Profile,
+    sub_profile: &str,
+    key: &str,
+    value: &PreferenceValue,
+) -> Result<Profile, EditError> {
+    let sp_idx = sub_profile_index(&profile, sub_profile)?;
+    let spec = lookup_preference_spec(key)?;
+    let raw = coerce_value(&spec, value)?;
+    let target = &mut profile.sub_profiles[sp_idx];
+    let pref_key = PreferenceKey::Known(spec.key);
+    let existing = target.rows.iter_mut().find(|r| match r {
+        SubProfileRow::Override(o) => o.key == pref_key,
+        SubProfileRow::Binding(_) => false,
+    });
+    if let Some(SubProfileRow::Override(o)) = existing {
+        o.value = raw;
+    } else {
+        target
+            .rows
+            .push(SubProfileRow::Override(PreferenceOverride {
+                key: pref_key,
+                value: raw,
+                comment: None,
+            }));
+    }
+    Ok(profile)
+}
+
+fn apply_unset_override(
+    mut profile: Profile,
+    sub_profile: &str,
+    key: &str,
+) -> Result<Profile, EditError> {
+    let sp_idx = sub_profile_index(&profile, sub_profile)?;
+    let target_key = PreferenceSpec::for_id(key).map(|s| PreferenceKey::Known(s.key));
+    let target = &mut profile.sub_profiles[sp_idx];
+    target.rows.retain(|r| match r {
+        SubProfileRow::Override(o) => target_key
+            .as_ref()
+            .map_or_else(|| o.key.as_csv() != key, |k| &o.key != k),
+        SubProfileRow::Binding(_) => true,
+    });
+    Ok(profile)
 }
 
 #[cfg(test)]
@@ -614,5 +754,158 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out.sub_profiles[0].bindings().count(), 0);
+    }
+
+    #[test]
+    fn set_preference_rejects_unknown_key() {
+        let p = empty_profile();
+        let err = apply(
+            p,
+            &[EditOp::SetPreference {
+                key: "Volum".into(),
+                value: PreferenceValue::Number(55),
+            }],
+        )
+        .unwrap_err();
+        match err.error {
+            EditError::UnknownPreference { key, suggestions } => {
+                assert_eq!(key, "Volum");
+                assert!(
+                    suggestions.iter().any(|s| s == "volume"),
+                    "expected 'volume' in {suggestions:?}"
+                );
+            }
+            other => panic!("expected UnknownPreference, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_preference_rejects_out_of_range_number() {
+        let p = empty_profile();
+        let err = apply(
+            p,
+            &[EditOp::SetPreference {
+                key: "volume".into(),
+                value: PreferenceValue::Number(200),
+            }],
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err.error,
+            EditError::InvalidPreferenceValue { .. }
+        ));
+    }
+
+    #[test]
+    fn set_preference_appends_when_missing() {
+        let p = empty_profile();
+        let out = apply(
+            p,
+            &[EditOp::SetPreference {
+                key: "volume".into(),
+                value: PreferenceValue::Number(55),
+            }],
+        )
+        .unwrap();
+        let prefs = out.preferences.unwrap();
+        assert_eq!(prefs.entries.len(), 1);
+        assert_eq!(prefs.entries[0].0, "volume");
+        assert_eq!(prefs.entries[0].1.value, "55");
+    }
+
+    #[test]
+    fn set_preference_replaces_existing_in_place() {
+        use yoke_config::catalog::{KnownPreference, PreferenceKey};
+        use yoke_config::model::{PreferenceEntry, Preferences};
+        let mut p = empty_profile();
+        p.preferences = Some(Preferences {
+            entries: vec![(
+                "volume".into(),
+                PreferenceEntry {
+                    key: PreferenceKey::Known(KnownPreference::Volume),
+                    value: "30".into(),
+                    units: String::new(),
+                    description: String::new(),
+                    comment: None,
+                },
+            )],
+        });
+        let out = apply(
+            p,
+            &[EditOp::SetPreference {
+                key: "volume".into(),
+                value: PreferenceValue::Number(55),
+            }],
+        )
+        .unwrap();
+        let prefs = out.preferences.unwrap();
+        assert_eq!(prefs.entries.len(), 1);
+        assert_eq!(prefs.entries[0].1.value, "55");
+    }
+
+    #[test]
+    fn unset_preference_removes_entry() {
+        use yoke_config::catalog::{KnownPreference, PreferenceKey};
+        use yoke_config::model::{PreferenceEntry, Preferences};
+        let mut p = empty_profile();
+        p.preferences = Some(Preferences {
+            entries: vec![(
+                "volume".into(),
+                PreferenceEntry {
+                    key: PreferenceKey::Known(KnownPreference::Volume),
+                    value: "30".into(),
+                    units: String::new(),
+                    description: String::new(),
+                    comment: None,
+                },
+            )],
+        });
+        let out = apply(
+            p,
+            &[EditOp::UnsetPreference {
+                key: "volume".into(),
+            }],
+        )
+        .unwrap();
+        assert!(out.preferences.unwrap().entries.is_empty());
+    }
+
+    #[test]
+    fn set_override_appends_to_sub_profile_rows() {
+        let mut p = empty_profile();
+        p.sub_profiles.push(empty_sp("Main"));
+        let out = apply(
+            p,
+            &[EditOp::SetOverride {
+                sub_profile: "Main".into(),
+                key: "volume".into(),
+                value: PreferenceValue::Number(70),
+            }],
+        )
+        .unwrap();
+        assert_eq!(out.sub_profiles[0].overrides().count(), 1);
+    }
+
+    #[test]
+    fn unset_override_removes_matching_row() {
+        use yoke_config::catalog::{KnownPreference, PreferenceKey};
+        use yoke_config::model::{PreferenceOverride, SubProfileRow};
+        let mut p = empty_profile();
+        let mut sp = empty_sp("Main");
+        sp.rows.push(SubProfileRow::Override(PreferenceOverride {
+            key: PreferenceKey::Known(KnownPreference::Volume),
+            value: "70".into(),
+            comment: None,
+        }));
+        p.sub_profiles.push(sp);
+        let out = apply(
+            p,
+            &[EditOp::UnsetOverride {
+                sub_profile: "Main".into(),
+                key: "volume".into(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(out.sub_profiles[0].overrides().count(), 0);
     }
 }
