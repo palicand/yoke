@@ -2,6 +2,7 @@
 
 pub mod error;
 pub mod op;
+pub mod suggest;
 
 pub use error::{ApplyError, EditError};
 pub use op::{EditOp, PreferenceValue};
