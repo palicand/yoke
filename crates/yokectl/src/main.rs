@@ -30,6 +30,22 @@ fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
     match cli.command {
         Commands::Device => commands::device::run_device(&provider, out),
         Commands::Debug => commands::device::run_debug(&provider, out),
+        Commands::List => commands::profile::run_list(&provider, out),
+        Commands::Show { target, raw } => commands::profile::run_show(&provider, out, &target, raw),
+        Commands::Validate { target } => commands::profile::run_validate(&provider, out, &target),
+        Commands::Pull { name, dest, raw } => {
+            commands::profile::run_pull(&provider, out, &name, dest, raw)
+        }
+        Commands::Push {
+            src,
+            name,
+            validate,
+        } => commands::profile::run_push(&provider, out, &src, name.as_deref(), validate),
+        Commands::Copy { from, to } => commands::profile::run_copy(&provider, out, &from, &to),
+        Commands::Rename { from, to } => commands::profile::run_rename(&provider, out, &from, &to),
+        Commands::Delete { name, force } => {
+            commands::profile::run_delete(&provider, out, &name, force)
+        }
         _ => anyhow::bail!("not implemented yet"),
     }
 }

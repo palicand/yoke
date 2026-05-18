@@ -5,14 +5,12 @@ use anyhow::{Context, Result};
 use yoke_volume::VolumeProvider;
 use yoke_volume::profile::ProfileName;
 
-#[allow(dead_code)]
 pub enum Target {
     VolumeName(ProfileName),
     LocalFile(PathBuf),
     Stdin,
 }
 
-#[allow(dead_code)]
 impl Target {
     pub fn classify(raw: &str) -> Self {
         if raw == "-" {
@@ -39,6 +37,7 @@ impl Target {
         }
     }
 
+    #[allow(dead_code)]
     pub fn write_bytes(&self, provider: &dyn VolumeProvider, bytes: &[u8]) -> Result<()> {
         match self {
             Self::VolumeName(n) => provider.write_profile(n, bytes).context("write to volume"),
