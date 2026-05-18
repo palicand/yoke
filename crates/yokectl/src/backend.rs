@@ -5,7 +5,6 @@ use anyhow::{Context, Result};
 use yoke_volume::VolumeProvider;
 use yoke_volume::fs_backend::FsBackend;
 
-#[allow(dead_code)]
 pub fn open(fake_volume: Option<PathBuf>) -> Result<Arc<dyn VolumeProvider>> {
     if let Some(path) = fake_volume {
         return Ok(Arc::new(FsBackend::new(path)));

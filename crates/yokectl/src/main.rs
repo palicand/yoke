@@ -1,22 +1,31 @@
 mod backend;
 mod cli;
+mod error;
 mod output;
 mod runtime;
 mod target;
 
 use clap::Parser;
 
-fn main() -> anyhow::Result<()> {
+fn main() {
     let cli = cli::Cli::parse();
     let out = output::Output::from_flags(cli.json, cli.no_color);
     init_tracing(cli.verbose);
-    let _ = cli.command;
-    out.emit_error(
-        "not-implemented",
-        "command not implemented yet",
-        serde_json::json!({}),
-    );
-    std::process::exit(1);
+    let code = match run(cli, &out) {
+        Ok(()) => 0,
+        Err(err) => {
+            let info = error::classify(&err);
+            out.emit_error(&info.envelope_code, &err.to_string(), info.details);
+            info.code
+        }
+    };
+    std::process::exit(code);
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn run(cli: cli::Cli, _out: &output::Output) -> anyhow::Result<()> {
+    let _provider = backend::open(cli.fake_volume)?;
+    anyhow::bail!("not implemented yet");
 }
 
 fn init_tracing(verbose: u8) {
