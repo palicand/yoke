@@ -1,0 +1,13 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+expression: v
+---
+{
+  "profiles": [
+    {
+      "byte_len": "[REDACTED]",
+      "kind": "Default",
+      "name": "default"
+    }
+  ]
+}

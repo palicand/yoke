@@ -1,0 +1,53 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+expression: v
+---
+{
+  "preferences": [
+    "sip_puff_threshold",
+    "sip_puff_threshold_soft",
+    "sip_puff_maximum",
+    "sip_puff_delay_soft",
+    "lip_position_minimum",
+    "lip_position_maximum",
+    "joystick_deflection_minimum",
+    "joystick_deflection_maximum",
+    "joystick_dead_zone_shape",
+    "anti_dead_zone",
+    "joystick_warning",
+    "joystick_alarm",
+    "joystick_D_Pad_inner",
+    "joystick_D_Pad_outer",
+    "deflection_multiplier_up",
+    "deflection_multiplier_down",
+    "deflection_multiplier_left",
+    "deflection_multiplier_right",
+    "usb_1_multiplier_up",
+    "usb_1_multiplier_down",
+    "usb_1_multiplier_left",
+    "usb_1_multiplier_right",
+    "usb_2_multiplier_up",
+    "usb_2_multiplier_down",
+    "usb_2_multiplier_left",
+    "usb_2_multiplier_right",
+    "mouse_speed",
+    "mouse_response_curve",
+    "volume",
+    "brightness",
+    "digital_out_1",
+    "digital_out_2",
+    "bluetooth_device_mode",
+    "bluetooth_authentication_mode",
+    "bluetooth_connection_mode",
+    "bluetooth_throttle",
+    "bluetooth_remote_address",
+    "enable_swap_inputs",
+    "enable_select_files",
+    "enable_usb_a_device",
+    "enable_DS3_emulation",
+    "enable_rumble",
+    "enable_usb_comm",
+    "debug",
+    "watchdog_disable"
+  ]
+}

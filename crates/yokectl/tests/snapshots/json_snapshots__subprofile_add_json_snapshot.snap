@@ -1,0 +1,8 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+expression: v
+---
+{
+  "action": "subprofile-add",
+  "name": "Alt"
+}

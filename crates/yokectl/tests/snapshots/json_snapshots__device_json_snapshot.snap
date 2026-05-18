@@ -1,0 +1,15 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+expression: v
+---
+{
+  "state": {
+    "kind": "Present",
+    "label": "[REDACTED]",
+    "mount_point": "[REDACTED]",
+    "vid_pid": {
+      "product": 0,
+      "vendor": 0
+    }
+  }
+}
