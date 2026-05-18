@@ -27,7 +27,12 @@ pub fn load_apply_save(
     let bytes = target.read_bytes(provider)?;
     let parsed = yoke_config::parse(&bytes).context("parse profile")?;
     let updated = apply(parsed.model, ops).map_err(anyhow::Error::from)?;
-    let out_bytes = yoke_config::write(&updated, Some(&parsed.raw))?;
+    // Template-fidelity write preserves byte layout when the model still matches the template;
+    // add/delete sub-profile ops change the section count, so fall back to canonical.
+    let out_bytes = match yoke_config::write(&updated, Some(&parsed.raw)) {
+        Ok(b) => b,
+        Err(yoke_config::WriteError::InvariantViolation(_)) => yoke_config::write(&updated, None)?,
+    };
     target.write_bytes(provider, &out_bytes)?;
     Ok(())
 }

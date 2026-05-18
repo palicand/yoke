@@ -7,7 +7,7 @@ mod runtime;
 mod target;
 
 use clap::Parser;
-use cli::Commands;
+use cli::{Commands, SubprofileCmd};
 
 fn main() {
     let cli = cli::Cli::parse();
@@ -84,6 +84,32 @@ fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
             sub_profile,
             input,
         } => commands::edit::run_clear_binding(&provider, out, &target, &sub_profile, &input),
+        Commands::Subprofile { cmd } => match cmd {
+            SubprofileCmd::Add {
+                target,
+                name,
+                mode,
+                channel,
+                sub_mode,
+            } => commands::subprofile::run_add(
+                &provider,
+                out,
+                &target,
+                &name,
+                &mode,
+                &channel,
+                sub_mode.as_deref(),
+            ),
+            SubprofileCmd::Delete { target, name } => {
+                commands::subprofile::run_delete(&provider, out, &target, &name)
+            }
+            SubprofileCmd::Rename { target, from, to } => {
+                commands::subprofile::run_rename(&provider, out, &target, &from, &to)
+            }
+            SubprofileCmd::Clone { target, from, to } => {
+                commands::subprofile::run_clone(&provider, out, &target, &from, &to)
+            }
+        },
         _ => anyhow::bail!("not implemented yet"),
     }
 }

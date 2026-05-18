@@ -273,3 +273,35 @@ fn set_binding_with_bad_input_returns_exit_5_and_suggestions() {
             .any(|s| s == "lip_soft")
     );
 }
+
+#[test]
+fn subprofile_add_then_delete() {
+    let dir = tempdir().unwrap();
+    seed_profile(dir.path(), "default.csv", FIXTURE_WITH_SUB);
+    yokectl()
+        .args([
+            "--fake-volume",
+            dir.path().to_str().unwrap(),
+            "subprofile",
+            "add",
+            "default",
+            "Alt",
+            "--mode",
+            "Mouse",
+            "--channel",
+            "usb",
+        ])
+        .assert()
+        .success();
+    yokectl()
+        .args([
+            "--fake-volume",
+            dir.path().to_str().unwrap(),
+            "subprofile",
+            "delete",
+            "default",
+            "Alt",
+        ])
+        .assert()
+        .success();
+}
