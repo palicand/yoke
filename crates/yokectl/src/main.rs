@@ -102,6 +102,7 @@ fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
             dry_run,
             no_validate,
         ),
+        Commands::Watch { include_poll } => commands::watch::run(&provider, out, include_poll),
         Commands::Index { cmd } => match cmd {
             IndexCmd::List { refresh } => commands::index::run_list(out, refresh),
             IndexCmd::Search { query } => commands::index::run_search(out, &query),
