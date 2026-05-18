@@ -1,11 +1,13 @@
 mod backend;
 mod cli;
+mod commands;
 mod error;
 mod output;
 mod runtime;
 mod target;
 
 use clap::Parser;
+use cli::Commands;
 
 fn main() {
     let cli = cli::Cli::parse();
@@ -23,9 +25,13 @@ fn main() {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn run(cli: cli::Cli, _out: &output::Output) -> anyhow::Result<()> {
-    let _provider = backend::open(cli.fake_volume)?;
-    anyhow::bail!("not implemented yet");
+fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
+    let provider = backend::open(cli.fake_volume.clone())?;
+    match cli.command {
+        Commands::Device => commands::device::run_device(&provider, out),
+        Commands::Debug => commands::device::run_debug(&provider, out),
+        _ => anyhow::bail!("not implemented yet"),
+    }
 }
 
 fn init_tracing(verbose: u8) {
