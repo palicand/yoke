@@ -46,6 +46,44 @@ fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
         Commands::Delete { name, force } => {
             commands::profile::run_delete(&provider, out, &name, force)
         }
+        Commands::SetTitle { target, title } => {
+            commands::edit::run_set_title(&provider, out, &target, &title)
+        }
+        Commands::SetPreference { target, key, value } => {
+            commands::edit::run_set_preference(&provider, out, &target, &key, &value)
+        }
+        Commands::UnsetPreference { target, key } => {
+            commands::edit::run_unset_preference(&provider, out, &target, &key)
+        }
+        Commands::SetOverride {
+            target,
+            sub_profile,
+            key,
+            value,
+        } => commands::edit::run_set_override(&provider, out, &target, &sub_profile, &key, &value),
+        Commands::UnsetOverride {
+            target,
+            sub_profile,
+            key,
+        } => commands::edit::run_unset_override(&provider, out, &target, &sub_profile, &key),
+        Commands::SetBinding {
+            target,
+            sub_profile,
+            input,
+            output: output_s,
+        } => commands::edit::run_set_binding(
+            &provider,
+            out,
+            &target,
+            &sub_profile,
+            &input,
+            &output_s,
+        ),
+        Commands::ClearBinding {
+            target,
+            sub_profile,
+            input,
+        } => commands::edit::run_clear_binding(&provider, out, &target, &sub_profile, &input),
         _ => anyhow::bail!("not implemented yet"),
     }
 }

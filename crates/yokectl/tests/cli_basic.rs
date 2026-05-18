@@ -41,6 +41,13 @@ fn seed_profile(dir: &std::path::Path, name: &str, body: &str) {
 const FIXTURE: &str =
     "QuadStick Configuration,Version 1.4,Mock,Default,,\n,,,,\n*Main,sip_puff,,A,inputs\n";
 
+const FIXTURE_WITH_SUB: &str = "QuadStick Configuration,Version 1.4,Mock,Default\r\n\
+Profile Name,Main,Mouse,usb\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_left,normal,left,\r\n\
+\r\n";
+
 #[test]
 fn list_shows_seeded_profile() {
     let dir = tempdir().unwrap();
@@ -199,4 +206,70 @@ fn debug_emits_sections() {
     let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
     assert!(v.get("device").is_some());
     assert!(v.get("mount").is_some());
+}
+
+#[test]
+fn set_title_round_trips_through_file() {
+    let dir = tempdir().unwrap();
+    seed_profile(dir.path(), "default.csv", FIXTURE);
+    yokectl()
+        .args([
+            "--fake-volume",
+            dir.path().to_str().unwrap(),
+            "set-title",
+            "default",
+            "Renamed",
+        ])
+        .assert()
+        .success();
+    let body = std::fs::read_to_string(dir.path().join("default.csv")).unwrap();
+    assert!(body.contains("Renamed"));
+}
+
+#[test]
+fn set_preference_writes_value() {
+    let dir = tempdir().unwrap();
+    seed_profile(dir.path(), "default.csv", FIXTURE);
+    yokectl()
+        .args([
+            "--fake-volume",
+            dir.path().to_str().unwrap(),
+            "set-preference",
+            "default",
+            "volume",
+            "55",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+fn set_binding_with_bad_input_returns_exit_5_and_suggestions() {
+    let dir = tempdir().unwrap();
+    seed_profile(dir.path(), "default.csv", FIXTURE_WITH_SUB);
+    let out = yokectl()
+        .args([
+            "--fake-volume",
+            dir.path().to_str().unwrap(),
+            "--json",
+            "set-binding",
+            "default",
+            "Main",
+            "lip_sof",
+            "kb_a",
+        ])
+        .assert()
+        .code(5)
+        .get_output()
+        .stdout
+        .clone();
+    let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(v["error"]["code"], "edit-unknown-input");
+    assert!(
+        v["error"]["details"]["suggestions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s == "lip_soft")
+    );
 }
