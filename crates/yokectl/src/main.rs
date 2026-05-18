@@ -84,6 +84,11 @@ fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
             sub_profile,
             input,
         } => commands::edit::run_clear_binding(&provider, out, &target, &sub_profile, &input),
+        Commands::Apply {
+            target,
+            edits,
+            dry_run,
+        } => commands::apply::run(&provider, out, &target, &edits, dry_run),
         Commands::Subprofile { cmd } => match cmd {
             SubprofileCmd::Add {
                 target,

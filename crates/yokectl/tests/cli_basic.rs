@@ -275,6 +275,57 @@ fn set_binding_with_bad_input_returns_exit_5_and_suggestions() {
 }
 
 #[test]
+fn apply_batch_succeeds_when_valid() {
+    let dir = tempdir().unwrap();
+    seed_profile(dir.path(), "default.csv", FIXTURE);
+    let edits = dir.path().join("edits.json");
+    std::fs::write(
+        &edits,
+        r#"{"edits":[{"op":"set-title","title":"Batched"}]}"#,
+    )
+    .unwrap();
+    yokectl()
+        .args([
+            "--fake-volume",
+            dir.path().to_str().unwrap(),
+            "apply",
+            "default",
+            "--edits",
+            edits.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+fn apply_batch_rejects_and_does_not_modify_file_on_invalid_op() {
+    let dir = tempdir().unwrap();
+    seed_profile(dir.path(), "default.csv", FIXTURE);
+    let snapshot = std::fs::read(dir.path().join("default.csv")).unwrap();
+    let edits = dir.path().join("edits.json");
+    std::fs::write(
+        &edits,
+        r#"{"edits":[{"op":"set-title","title":"A"},{"op":"delete-sub-profile","name":"Ghost"}]}"#,
+    )
+    .unwrap();
+    yokectl()
+        .args([
+            "--fake-volume",
+            dir.path().to_str().unwrap(),
+            "apply",
+            "default",
+            "--edits",
+            edits.to_str().unwrap(),
+        ])
+        .assert()
+        .code(5);
+    assert_eq!(
+        std::fs::read(dir.path().join("default.csv")).unwrap(),
+        snapshot
+    );
+}
+
+#[test]
 fn subprofile_add_then_delete() {
     let dir = tempdir().unwrap();
     seed_profile(dir.path(), "default.csv", FIXTURE_WITH_SUB);
