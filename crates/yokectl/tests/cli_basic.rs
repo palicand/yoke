@@ -344,6 +344,42 @@ fn catalog_channels_lists_usb() {
 }
 
 #[test]
+fn completions_bash_emits_function() {
+    yokectl()
+        .args(["completions", "bash"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("_yokectl()"));
+}
+
+#[test]
+fn completions_fish_emits_complete() {
+    yokectl()
+        .args(["completions", "fish"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("complete -c yokectl"));
+}
+
+#[test]
+fn completions_zsh_emits_compdef() {
+    yokectl()
+        .args(["completions", "zsh"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("#compdef yokectl"));
+}
+
+#[test]
+fn completions_powershell_emits_register() {
+    yokectl()
+        .args(["completions", "powershell"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Register-ArgumentCompleter"));
+}
+
+#[test]
 fn subprofile_add_then_delete() {
     let dir = tempdir().unwrap();
     seed_profile(dir.path(), "default.csv", FIXTURE_WITH_SUB);
