@@ -32,11 +32,11 @@ async fn install_list_show_set_binding_pull_diff() {
     let cache_dir = tempdir().unwrap();
     let index_url = format!("{}/index.csv", server.uri());
 
-    // Isolated XDG_CACHE_HOME keeps the index cache out of the user's home and avoids
-    // a hot cache from a prior run masking the wiremock fetch.
+    // Isolated YOKECTL_CACHE_DIR keeps the index cache out of the user's home
+    // and avoids a hot cache from a prior run masking the wiremock fetch.
     yokectl()
         .env("YOKECTL_INDEX_URL", &index_url)
-        .env("XDG_CACHE_HOME", cache_dir.path())
+        .env("YOKECTL_CACHE_DIR", cache_dir.path())
         .args(["--fake-volume", vol, "install", "Destiny 2"])
         .assert()
         .success();

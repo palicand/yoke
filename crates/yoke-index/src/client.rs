@@ -16,8 +16,14 @@ pub struct IndexClient {
 
 impl IndexClient {
     pub fn new() -> Result<Self, IndexError> {
-        let cache = Cache::default()
-            .ok_or_else(|| IndexError::Io(std::io::Error::other("no cache dir")))?;
+        // YOKECTL_CACHE_DIR overrides the platform cache location. Without it,
+        // integration tests would share a stale cache on the host's user dir
+        // and observe non-deterministic CSV URLs across runs.
+        let cache = if let Some(p) = std::env::var_os("YOKECTL_CACHE_DIR") {
+            Cache::with_path(PathBuf::from(p).join("index.csv"), Duration::from_hours(24))
+        } else {
+            Cache::default().ok_or_else(|| IndexError::Io(std::io::Error::other("no cache dir")))?
+        };
         // Env var override is what lets integration tests point at a wiremock
         // server without a builder; production code can still call .with_index_url.
         let index_url =

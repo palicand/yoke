@@ -36,7 +36,10 @@ async fn watch_human(provider: Arc<dyn VolumeProvider>) -> Result<()> {
     Ok(())
 }
 
-async fn watch_json<W: Write + Send>(provider: Arc<dyn VolumeProvider>, mut w: W) -> Result<()> {
+pub async fn watch_json<W: Write + Send>(
+    provider: Arc<dyn VolumeProvider>,
+    mut w: W,
+) -> Result<()> {
     let mut events = provider.subscribe_events();
     let mut state = provider.subscribe_state();
     loop {
