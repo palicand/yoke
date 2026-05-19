@@ -33,8 +33,18 @@ pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
     if let Commands::Completions { shell } = cli.command {
         return commands::completions::run(shell);
     }
-    if let Commands::Docs { format, out } = cli.command {
-        return commands::docs::run(format, &out);
+    if let Commands::Docs {
+        format,
+        out: out_dir,
+    } = cli.command
+    {
+        return commands::docs::run(format, &out_dir);
+    }
+    if let Commands::Manual { topic } = &cli.command {
+        return commands::manual::run(out, topic.as_deref());
+    }
+    if let Commands::Topic { name } = &cli.command {
+        return commands::topic::run(out, name.as_deref());
     }
     let provider = backend::open(cli.fake_volume.clone())?;
     match cli.command {
@@ -118,6 +128,7 @@ pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
             IndexCmd::Search { query } => commands::index::run_search(out, &query),
             IndexCmd::Show { name } => commands::index::run_show(out, &name),
             IndexCmd::Update => commands::index::run_update(out),
+            IndexCmd::Browse => commands::index::run_browse(out),
         },
         Commands::Catalog { cmd } => match cmd {
             CatalogCmd::Inputs => commands::catalog::run_inputs(out),
@@ -152,7 +163,10 @@ pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
                 commands::subprofile::run_clone(&provider, out, &target, &from, &to)
             }
         },
-        Commands::Completions { .. } | Commands::Docs { .. } => {
+        Commands::Completions { .. }
+        | Commands::Docs { .. }
+        | Commands::Manual { .. }
+        | Commands::Topic { .. } => {
             unreachable!("handled before backend open")
         }
     }

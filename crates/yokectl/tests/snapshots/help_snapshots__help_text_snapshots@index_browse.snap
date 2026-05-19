@@ -2,17 +2,9 @@
 source: crates/yokectl/tests/help_snapshots.rs
 expression: stdout
 ---
-Query the community profile index
+Open the community index sheet in the default browser
 
-Usage: yokectl index [OPTIONS] <COMMAND>
-
-Commands:
-  list    List the cached community index as a table
-  search  Fuzzy-filter the index by name
-  show    Print an index row, including the resolved CSV URL
-  update  Force-refresh the cached community index
-  browse  Open the community index sheet in the default browser
-  help    Print this message or the help of the given subcommand(s)
+Usage: yokectl index browse [OPTIONS]
 
 Options:
       --fake-volume <FAKE_VOLUME>  Use a directory as a fake volume backend instead of the platform device

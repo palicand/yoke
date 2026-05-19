@@ -49,13 +49,15 @@ const TOP_LEAVES: &[&str] = &[
     "install",
     "completions",
     "docs",
+    "manual",
+    "topic",
 ];
 
 const GROUPS: &[&str] = &["subprofile", "index", "catalog"];
 
 const NESTED_LEAVES: &[(&str, &[&str])] = &[
     ("subprofile", &["add", "delete", "rename", "clone"]),
-    ("index", &["list", "search", "show", "update"]),
+    ("index", &["list", "search", "show", "update", "browse"]),
     (
         "catalog",
         &["inputs", "outputs", "preferences", "modes", "channels"],

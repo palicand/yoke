@@ -22,6 +22,10 @@ pub struct Output {
 
 #[allow(dead_code)]
 impl Output {
+    pub const fn is_json(&self) -> bool {
+        matches!(self.format, OutputFormat::Json)
+    }
+
     pub fn from_flags(json: bool, no_color: bool) -> Self {
         let env_no_color = std::env::var_os("NO_COLOR").is_some();
         let stdout_is_tty = std::io::stdout().is_terminal();

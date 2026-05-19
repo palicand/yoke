@@ -1,8 +1,9 @@
 use std::io::Write;
 
 use anyhow::Result;
-use yoke_index::IndexClient;
+use yoke_index::{COMMUNITY_INDEX_HTML_URL, IndexClient};
 
+use crate::commands::browser::open_or_emit;
 use crate::output::Output;
 use crate::runtime;
 
@@ -84,4 +85,12 @@ pub fn run_update(out: &Output) -> Result<()> {
     out.emit(&serde_json::json!({"refreshed": entries.len()}), |w| {
         writeln!(w, "refreshed: {} entries", entries.len())
     })
+}
+
+pub fn run_browse(out: &Output) -> Result<()> {
+    open_or_emit(
+        out,
+        &serde_json::json!({ "url": COMMUNITY_INDEX_HTML_URL }),
+        COMMUNITY_INDEX_HTML_URL,
+    )
 }

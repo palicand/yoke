@@ -246,6 +246,29 @@ pub enum Commands {
         #[arg(long, help = "Output directory (created if missing)")]
         out: PathBuf,
     },
+    #[command(
+        about = "Open the upstream QuadStick user manual in the default browser",
+        long_about = "Open the upstream QuadStick user manual in the default browser. \
+                      Bare invocation opens the root page; a known topic slug opens the \
+                      matching sub-page. Under --json the resolved URL is printed to \
+                      stdout and no browser is launched."
+    )]
+    Manual {
+        #[arg(help = "Optional topic slug; omit to open the manual root")]
+        topic: Option<String>,
+    },
+    #[command(
+        about = "Show in-binary topic pages about configuration concepts",
+        long_about = "Show in-binary topic pages about configuration concepts (binding \
+                      model, sub-profiles, sip-puff thresholds, preferences, install \
+                      sources). Bare invocation lists available topics; a slug emits the \
+                      topic body as markdown. Under --json the result is wrapped in a \
+                      JSON envelope instead."
+    )]
+    Topic {
+        #[arg(help = "Topic slug; omit to list available topics")]
+        name: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -309,6 +332,8 @@ pub enum IndexCmd {
     },
     #[command(about = "Force-refresh the cached community index")]
     Update,
+    #[command(about = "Open the community index sheet in the default browser")]
+    Browse,
 }
 
 #[derive(Subcommand, Debug)]

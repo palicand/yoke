@@ -1,7 +1,7 @@
 # yokectl — browse and topics addendum
 
 - **Date:** 2026-05-19
-- **Status:** Proposed, awaiting review
+- **Status:** Approved, ready for implementation
 - **Parent spec:** [2026-05-18-yokectl-design.md](./2026-05-18-yokectl-design.md)
 - **Sibling addendum:** [2026-05-19-yokectl-docs-addendum.md](./2026-05-19-yokectl-docs-addendum.md)
 - **Sub-project ID:** D (`yokectl`)
@@ -72,21 +72,24 @@ Hand-paired with `COMMUNITY_INDEX_URL` rather than derived, because the transfor
 New top-level variant `Commands::Manual { topic: Option<String> }`.
 
 ```rust
-const MANUAL_ROOT: &str = "https://quadstick.s3.amazonaws.com/documents/user_manual/um/configuration.htm";
+const MANUAL_ROOT: &str = "https://quadstick.s3.amazonaws.com/documents/user_manual/um/";
 
 const MANUAL_TOPICS: &[(&str, &str)] = &[
-    ("configuration", "configuration.htm"),
-    ("google-sheets", "google_drive_spreadsheets.htm"),
-    ("sip-puff",      "sip_puff.htm"),
-    ("joystick",      "joystick.htm"),
-    ("keyboard",      "keyboard.htm"),
-    ("mouse",         "mouse.htm"),
-    ("modes",         "modes.htm"),
-    ("preferences",   "preferences.htm"),
+    ("configuration",            "configuration.htm"),
+    ("google-sheets",            "google_drive_spreadsheets.htm"),
+    ("changing-profiles",        "changing_profiles.htm"),
+    ("dropdowns",                "dropdown_lists_used_in_profiles.htm"),
+    ("examples",                 "example_configuration_spreadsheets.htm"),
+    ("preferences",              "preferences.htm"),
+    ("keyboard",                 "keyboard.htm"),
+    ("mouse",                    "mouse.htm"),
+    ("joystick",                 "joystick.htm"),
+    ("reference-cards",          "reference_cards.htm"),
+    ("playstation-xbox-outputs", "selecting_output_names_for_playstation_and_xbox.htm"),
 ];
 ```
 
-The exact filename list will be confirmed against the upstream site at implementation time; entries that 404 are dropped from the table before commit. `yokectl manual` with no topic opens `MANUAL_ROOT`. `yokectl manual <topic>` resolves the slug in `MANUAL_TOPICS`; unknown slugs error with exit code 2 (argument) and a `did you mean: [...]` suggestion list built via `strsim` (same pattern as `yoke-edit::EditError::UnknownInput`).
+The filename list was HEAD-checked against the live site on 2026-05-19. `sip_puff.htm` and `modes.htm` were originally drafted in this spec but do not exist as standalone pages on the upstream manual; the `sip-puff` topic content lives in-tool via `yokectl topic sip-puff`, and mode-related material is folded into `changing-profiles`. `yokectl manual` with no topic opens `configuration.htm` under `MANUAL_ROOT`. `yokectl manual <topic>` resolves the slug in `MANUAL_TOPICS`; unknown slugs error with exit code 2 (argument) and a `did you mean: [...]` suggestion list built via `strsim` (same pattern as `yoke-edit::EditError::UnknownInput`).
 
 `yokectl manual --json` lists the topic table:
 
