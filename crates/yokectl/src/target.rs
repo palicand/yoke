@@ -37,7 +37,6 @@ impl Target {
         }
     }
 
-    #[allow(dead_code)]
     pub fn write_bytes(&self, provider: &dyn VolumeProvider, bytes: &[u8]) -> Result<()> {
         match self {
             Self::VolumeName(n) => provider.write_profile(n, bytes).context("write to volume"),

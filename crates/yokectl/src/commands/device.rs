@@ -16,7 +16,10 @@ pub fn run_device(provider: &Arc<dyn VolumeProvider>, out: &Output) -> Result<()
 
 pub fn run_debug(provider: &Arc<dyn VolumeProvider>, out: &Output) -> Result<()> {
     let state = provider.current_state();
-    let entries: Vec<_> = provider.list_profiles().unwrap_or_default();
+    let entries: Vec<_> = provider.list_profiles().unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "list_profiles failed in debug; reporting empty");
+        Vec::new()
+    });
     out.emit(
         &serde_json::json!({
             "device": state_to_json(&state),

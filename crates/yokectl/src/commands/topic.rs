@@ -1,9 +1,9 @@
 use std::io::Write;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use serde_json::json;
 
-use crate::commands::browser::closest;
+use crate::commands::browser::unknown_slug;
 use crate::output::Output;
 
 const TOPICS: &[(&str, &str)] = &[
@@ -57,13 +57,7 @@ fn title_of(body: &str) -> &str {
 
 fn unknown_topic(slug: &str) -> anyhow::Error {
     let known: Vec<&str> = TOPICS.iter().map(|(s, _)| *s).collect();
-    let suggestions = closest(slug, &known);
-    let suggestions_str = if suggestions.is_empty() {
-        format!("available: {known:?}")
-    } else {
-        format!("did you mean: {suggestions:?}")
-    };
-    anyhow!(format!("unknown topic: {slug:?}; {suggestions_str}"))
+    unknown_slug("topic", slug, &known)
 }
 
 #[cfg(test)]

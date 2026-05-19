@@ -176,8 +176,7 @@ fn apply_clear_binding(
         SubProfileRow::Override(_) => true,
     });
     if target.rows.len() == before {
-        // Catalog accepted the identifier but this sub-profile has no row for it;
-        // from the user's POV the input is still "unknown" within this scope.
+        // Catalog-valid identifier with no row in this scope reads as "unknown" to the user.
         return Err(EditError::UnknownInput {
             input: input.to_owned(),
             suggestions: vec![],
@@ -209,9 +208,6 @@ fn parse_output(raw: &str) -> Result<Output, EditError> {
 fn input_csv_names() -> Vec<String> {
     use yoke_config::catalog::MpPosition;
     let mut out: Vec<String> = Vec::new();
-    // Concrete leaf identifiers cover the realistic typo-suggestion space without
-    // exploding the variant matrix: mouthpiece/side combinations build their own
-    // strings; joystick/USB axis and dpad names round-trip through Input::to_csv.
     for dir in SipPuff::ALL {
         for soft in [false, true] {
             let suffix = if soft { "_soft" } else { "" };
@@ -295,8 +291,6 @@ fn lookup_preference_spec(key: &str) -> Result<PreferenceSpec, EditError> {
 }
 
 fn coerce_value(spec: &PreferenceSpec, value: &PreferenceValue) -> Result<String, EditError> {
-    // Convert the typed PreferenceValue to the CSV string form, then run the spec's
-    // own validator so range/select checks stay centralised in yoke-config.
     let raw = match (&spec.kind, value) {
         (
             PreferenceValueKind::IntRange { .. } | PreferenceValueKind::SelectInt(_),

@@ -8,8 +8,6 @@ use crate::output::{Output, OutputFormat};
 use crate::runtime;
 
 pub fn run(provider: &Arc<dyn VolumeProvider>, out: &Output, _include_poll: bool) -> Result<()> {
-    // include_poll is reserved for a future low-bandwidth fallback; the current
-    // backends already push events, so we ignore it.
     if out.format == OutputFormat::Json {
         runtime::block_on(watch_json(provider.clone(), std::io::stdout()))
     } else {
@@ -68,8 +66,7 @@ pub async fn watch_json<W: Write + Send>(
     Ok(())
 }
 
-// Placeholder RFC-3339-ish timestamp using SystemTime. Pulling chrono in just
-// for formatting wasn't worth a dep; promote when a consumer needs real dates.
+// Approximation suffices until a consumer needs real RFC-3339 dates.
 fn now_iso() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

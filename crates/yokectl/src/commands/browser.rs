@@ -12,12 +12,12 @@ pub fn open_or_emit<S: Serialize>(out: &Output, payload: &S, url: &str) -> Resul
     Ok(())
 }
 
-pub fn closest<'a>(query: &str, options: &'a [&'a str]) -> Vec<&'a str> {
-    let mut scored: Vec<(usize, &str)> = options
-        .iter()
-        .map(|o| (strsim::levenshtein(query, o), *o))
-        .filter(|(d, _)| *d <= 2 || query.len() <= 3)
-        .collect();
-    scored.sort_by_key(|(d, _)| *d);
-    scored.into_iter().take(5).map(|(_, s)| s).collect()
+pub fn unknown_slug(kind: &str, slug: &str, known: &[&str]) -> anyhow::Error {
+    let suggestions = yoke_edit::suggest::suggestions(slug, known.iter().copied());
+    let suggestions_str = if suggestions.is_empty() {
+        format!("available: {known:?}")
+    } else {
+        format!("did you mean: {suggestions:?}")
+    };
+    anyhow::anyhow!(format!("unknown {kind}: {slug:?}; {suggestions_str}"))
 }

@@ -33,8 +33,6 @@ pub fn run_outputs(out: &Output) -> Result<()> {
 }
 
 pub fn run_preferences(out: &Output) -> Result<()> {
-    // PreferenceSpec carries the canonical CSV id alongside the enum key;
-    // KnownPreference itself has no ALL slice.
     let entries: Vec<String> = PreferenceSpec::ALL
         .iter()
         .map(|s| s.id.to_string())
@@ -51,7 +49,6 @@ pub fn run_modes(out: &Output) -> Result<()> {
 }
 
 pub fn run_channels(out: &Output) -> Result<()> {
-    // Channel exposes no ALL slice; the universe is closed at two variants.
     let entries: Vec<String> = [Channel::Usb, Channel::Bluetooth]
         .iter()
         .map(|c| c.canonical_csv().to_string())

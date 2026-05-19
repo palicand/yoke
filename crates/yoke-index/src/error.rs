@@ -13,6 +13,8 @@ pub enum IndexError {
     IndexFormat(String),
     #[error("no index entry matching name: {0}")]
     NotFound(String),
+    #[error("no cache directory available; set YOKECTL_CACHE_DIR to override")]
+    NoCacheDir,
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 }

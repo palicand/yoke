@@ -37,12 +37,10 @@ mod tests {
     }
 
     #[test]
-    fn caps_at_five_suggestions() {
+    fn caps_at_five_and_preserves_source_order_on_ties() {
         let candidates: Vec<String> = (0..10).map(|i| format!("foo{i}")).collect();
         let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
         let s = suggestions("foo", refs);
-        // Pin the tie-break order so a future refactor can't silently break it:
-        // all 10 are at distance 1, take(5) preserves source order, so we get foo0..foo4.
         assert_eq!(
             s,
             vec![

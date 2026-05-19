@@ -1,14 +1,12 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use serde_json::json;
 
-use crate::commands::browser::{closest, open_or_emit};
+use crate::commands::browser::{open_or_emit, unknown_slug};
 use crate::output::Output;
 
 const MANUAL_ROOT: &str = "https://quadstick.s3.amazonaws.com/documents/user_manual/um/";
 
-// Slug → upstream filename under MANUAL_ROOT. Each entry was HEAD-checked
-// against the live site on 2026-05-19; sip-puff and modes do not exist as
-// standalone pages and so are not represented here.
+// HEAD-checked 2026-05-19; sip-puff and modes have no standalone upstream page.
 const MANUAL_TOPICS: &[(&str, &str)] = &[
     ("configuration", "configuration.htm"),
     ("google-sheets", "google_drive_spreadsheets.htm"),
@@ -55,13 +53,7 @@ fn root_url() -> String {
 
 fn unknown_topic(slug: &str) -> anyhow::Error {
     let known: Vec<&str> = MANUAL_TOPICS.iter().map(|(s, _)| *s).collect();
-    let suggestions = closest(slug, &known);
-    let suggestions_str = if suggestions.is_empty() {
-        format!("available: {known:?}")
-    } else {
-        format!("did you mean: {suggestions:?}")
-    };
-    anyhow!(format!("unknown manual topic: {slug:?}; {suggestions_str}"))
+    unknown_slug("manual topic", slug, &known)
 }
 
 #[cfg(test)]

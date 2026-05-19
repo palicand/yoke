@@ -146,6 +146,11 @@ fn classify_index(err: &yoke_index::IndexError) -> ExitInfo {
             envelope_code: "index-format".into(),
             details: serde_json::json!({"message": s}),
         },
+        I::NoCacheDir => ExitInfo {
+            code: 6,
+            envelope_code: "no-cache-dir".into(),
+            details: serde_json::json!({"message": err.to_string()}),
+        },
         I::Io(e) => ExitInfo {
             code: 6,
             envelope_code: "io".into(),

@@ -1,16 +1,16 @@
+use std::io;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use crate::IndexError;
 
 pub struct Cache {
-    pub path: PathBuf,
-    pub ttl: Duration,
+    pub(crate) path: PathBuf,
+    pub(crate) ttl: Duration,
 }
 
 impl Cache {
-    // Plan specifies `default() -> Option<Self>` because the project-dirs lookup can fail.
-    // This intentionally shadows the `Default` trait signature; see the plan for context.
+    // Shadows Default::default because ProjectDirs lookup can fail.
     #[allow(clippy::should_implement_trait)]
     pub fn default() -> Option<Self> {
         directories::ProjectDirs::from("com", "Yoke", "yokectl").map(|p| Self {
@@ -25,10 +25,11 @@ impl Cache {
     }
 
     pub async fn read_fresh(&self) -> Result<Option<Vec<u8>>, IndexError> {
-        if !self.path.exists() {
-            return Ok(None);
-        }
-        let meta = tokio::fs::metadata(&self.path).await?;
+        let meta = match tokio::fs::metadata(&self.path).await {
+            Ok(m) => m,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(IndexError::Io(e)),
+        };
         let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
         let age = SystemTime::now()
             .duration_since(modified)

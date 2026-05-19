@@ -9,23 +9,19 @@ use crate::url_transform::to_csv_export;
 use crate::{COMMUNITY_INDEX_URL, IndexError};
 
 pub struct IndexClient {
-    pub(crate) http: reqwest::Client,
-    pub(crate) cache: Cache,
-    pub(crate) index_url: String,
+    http: reqwest::Client,
+    cache: Cache,
+    index_url: String,
 }
 
 impl IndexClient {
     pub fn new() -> Result<Self, IndexError> {
-        // YOKECTL_CACHE_DIR overrides the platform cache location. Without it,
-        // integration tests would share a stale cache on the host's user dir
-        // and observe non-deterministic CSV URLs across runs.
+        // YOKECTL_CACHE_DIR and YOKECTL_INDEX_URL let tests bypass platform cache + production URL.
         let cache = if let Some(p) = std::env::var_os("YOKECTL_CACHE_DIR") {
             Cache::with_path(PathBuf::from(p).join("index.csv"), Duration::from_hours(24))
         } else {
-            Cache::default().ok_or_else(|| IndexError::Io(std::io::Error::other("no cache dir")))?
+            Cache::default().ok_or(IndexError::NoCacheDir)?
         };
-        // Env var override is what lets integration tests point at a wiremock
-        // server without a builder; production code can still call .with_index_url.
         let index_url =
             std::env::var("YOKECTL_INDEX_URL").unwrap_or_else(|_| COMMUNITY_INDEX_URL.to_string());
         Ok(Self {
@@ -63,7 +59,6 @@ impl IndexClient {
                 .parse::<Url>()
                 .map_err(|e| IndexError::InvalidUrl(e.to_string()))?;
             let b = self.fetch_url(&url).await?;
-            // Cache write failure must not fail the fetch path.
             if let Err(e) = self.cache.write(&b).await {
                 tracing::warn!(?e, "cache write failed");
             }
