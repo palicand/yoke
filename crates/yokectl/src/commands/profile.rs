@@ -84,7 +84,6 @@ pub fn run_pull(
     out: &Output,
     name: &str,
     dest: Option<PathBuf>,
-    _raw: bool,
 ) -> Result<()> {
     let pn = ProfileName::new(name)?;
     let bytes = provider.read_profile(&pn)?;

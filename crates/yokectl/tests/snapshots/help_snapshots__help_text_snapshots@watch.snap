@@ -1,17 +1,15 @@
 ---
 source: crates/yokectl/tests/help_snapshots.rs
+assertion_line: 74
 expression: stdout
 ---
-Stream MountState transitions and MountEvents as they arrive. Emits NDJSON under --json. --include-poll adds raw poll-tick events for forensics; it requires --json because the volume is too high to render usefully in human mode.
+Stream MountState transitions and MountEvents as they arrive. Emits NDJSON under --json.
 
 Usage: yokectl watch [OPTIONS]
 
 Options:
       --fake-volume <FAKE_VOLUME>
           Use a directory as a fake volume backend instead of the platform device
-
-      --include-poll
-          Also emit raw poll-tick events (requires --json)
 
       --json
           Emit machine-readable JSON on stdout (NDJSON for watch)

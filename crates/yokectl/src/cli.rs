@@ -50,14 +50,9 @@ pub enum Commands {
     #[command(
         about = "Stream MountState transitions and MountEvents as they arrive",
         long_about = "Stream MountState transitions and MountEvents as they arrive. \
-                      Emits NDJSON under --json. --include-poll adds raw poll-tick events for \
-                      forensics; it requires --json because the volume is too high to render \
-                      usefully in human mode."
+                      Emits NDJSON under --json."
     )]
-    Watch {
-        #[arg(long, help = "Also emit raw poll-tick events (requires --json)")]
-        include_poll: bool,
-    },
+    Watch,
     #[command(about = "List profiles on the volume with name, kind, size, and modified time")]
     List,
     #[command(about = "Pretty-print the parsed structure of a profile")]
@@ -78,8 +73,6 @@ pub enum Commands {
         name: String,
         #[arg(help = "Destination path (defaults to ./<name>.csv)")]
         dest: Option<PathBuf>,
-        #[arg(long, help = "Byte-identical copy without re-serialization")]
-        raw: bool,
     },
     #[command(about = "Copy a local file to the volume")]
     Push {

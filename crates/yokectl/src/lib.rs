@@ -71,9 +71,7 @@ fn run_with_volume(
         Commands::List => commands::profile::run_list(provider, out),
         Commands::Show { target, raw } => commands::profile::run_show(provider, out, &target, raw),
         Commands::Validate { target } => commands::profile::run_validate(provider, out, &target),
-        Commands::Pull { name, dest, raw } => {
-            commands::profile::run_pull(provider, out, &name, dest, raw)
-        }
+        Commands::Pull { name, dest } => commands::profile::run_pull(provider, out, &name, dest),
         Commands::Push {
             src,
             name,
@@ -135,7 +133,7 @@ fn run_with_volume(
             dry_run,
             no_validate,
         ),
-        Commands::Watch { include_poll } => commands::watch::run(provider, out, include_poll),
+        Commands::Watch => commands::watch::run(provider, out),
         Commands::Subprofile { cmd } => match cmd {
             SubprofileCmd::Add {
                 target,

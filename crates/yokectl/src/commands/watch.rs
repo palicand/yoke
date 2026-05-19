@@ -7,7 +7,7 @@ use yoke_volume::VolumeProvider;
 use crate::output::{Output, OutputFormat};
 use crate::runtime;
 
-pub fn run(provider: &Arc<dyn VolumeProvider>, out: &Output, _include_poll: bool) -> Result<()> {
+pub fn run(provider: &Arc<dyn VolumeProvider>, out: &Output) -> Result<()> {
     if out.format == OutputFormat::Json {
         runtime::block_on(watch_json(provider.clone(), std::io::stdout()))
     } else {
