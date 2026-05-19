@@ -64,3 +64,12 @@ jobs:
           nix develop --command cargo run --quiet -p yokectl -- docs --format md  --out target/ci-docs
           test -s target/ci-docs/man/yokectl.1
           test -s target/ci-docs/markdown/yokectl.md
+
+      # Catches upstream-sheet drift (e.g. column renames) that unit tests
+      # cannot see. Lives in the same job because Google Sheets uptime is
+      # the only thing that can flake it; a separate job adds no isolation.
+      - name: real-network community-index smoke
+        if: ${{ hashFiles('crates/yoke-index/Cargo.toml') != '' }}
+        env:
+          YOKE_REAL_NETWORK: "1"
+        run: nix develop --command cargo test -p yoke-index --test integration -- --ignored --nocapture real_community_index_fetches_when_env_set
