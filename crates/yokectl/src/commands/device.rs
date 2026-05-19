@@ -3,13 +3,13 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use yoke_volume::VolumeProvider;
-use yoke_volume::state::{MountState, VidPid};
+use yoke_volume::state::MountState;
 
 use crate::output::Output;
 
 pub fn run_device(provider: &Arc<dyn VolumeProvider>, out: &Output) -> Result<()> {
     let state = provider.current_state();
-    out.emit(&serde_json::json!({"state": state_to_json(&state)}), |w| {
+    out.emit(&serde_json::json!({"state": state}), |w| {
         writeln!(w, "{}", state_human(&state))
     })
 }
@@ -22,8 +22,8 @@ pub fn run_debug(provider: &Arc<dyn VolumeProvider>, out: &Output) -> Result<()>
     });
     out.emit(
         &serde_json::json!({
-            "device": state_to_json(&state),
-            "mount": state_to_json(&state),
+            "device": state,
+            "mount": state,
             "profiles": entries.iter().map(|e| serde_json::json!({
                 "name": e.name.as_filename(),
                 "kind": format!("{:?}", e.kind),
@@ -35,31 +35,6 @@ pub fn run_debug(provider: &Arc<dyn VolumeProvider>, out: &Output) -> Result<()>
             writeln!(w, "profiles: {}", entries.len())
         },
     )
-}
-
-fn state_to_json(s: &MountState) -> serde_json::Value {
-    match s {
-        MountState::Absent => serde_json::json!({"kind": "Absent"}),
-        MountState::DeviceVisibleNoVolume { vid_pid, mode_hint } => serde_json::json!({
-            "kind": "DeviceVisibleNoVolume",
-            "vid_pid": vid_pid_json(*vid_pid),
-            "mode_hint": mode_hint.as_ref().map(|h| format!("{h:?}")),
-        }),
-        MountState::Present {
-            mount_point,
-            vid_pid,
-            label,
-        } => serde_json::json!({
-            "kind": "Present",
-            "mount_point": mount_point.to_string_lossy(),
-            "vid_pid": vid_pid_json(*vid_pid),
-            "label": label,
-        }),
-    }
-}
-
-fn vid_pid_json(v: VidPid) -> serde_json::Value {
-    serde_json::json!({"vendor": v.vendor, "product": v.product})
 }
 
 fn state_human(s: &MountState) -> String {
