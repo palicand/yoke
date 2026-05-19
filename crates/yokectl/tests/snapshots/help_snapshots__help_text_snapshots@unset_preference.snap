@@ -1,0 +1,18 @@
+---
+source: crates/yokectl/tests/help_snapshots.rs
+expression: stdout
+---
+Remove a top-level preference
+
+Usage: yokectl unset-preference [OPTIONS] <TARGET> <KEY>
+
+Arguments:
+  <TARGET>  Profile name, file path, or '-' for stdin
+  <KEY>     Preference key
+
+Options:
+      --fake-volume <FAKE_VOLUME>  Use a directory as a fake volume backend instead of the platform device
+      --json                       Emit machine-readable JSON on stdout (NDJSON for watch)
+  -v, --verbose...                 Increase tracing verbosity on stderr; repeat (-vv reveals info, -vvv debug)
+      --no-color                   Disable ANSI styling (NO_COLOR=1 or non-TTY stdout also disable)
+  -h, --help                       Print help

@@ -1,0 +1,36 @@
+---
+source: crates/yokectl/tests/help_snapshots.rs
+expression: stdout
+---
+Install a profile from a local file path, an HTTP(S) URL, or a bare community-index name. The source is auto-classified: an existing local file becomes a path source; a parseable http(s) URL becomes a URL source (Google Sheets URLs are rewritten to their CSV-export form); anything else is resolved through the community index. Parse and validate gate the write by default; --no-validate is an escape hatch.
+
+Usage: yokectl install [OPTIONS] <SOURCE>
+
+Arguments:
+  <SOURCE>
+          Local path, URL, or community-index name
+
+Options:
+      --as <AS_NAME>
+          Destination filename on the volume (overrides default)
+
+      --fake-volume <FAKE_VOLUME>
+          Use a directory as a fake volume backend instead of the platform device
+
+      --dry-run
+          Print the destination without writing
+
+      --json
+          Emit machine-readable JSON on stdout (NDJSON for watch)
+
+      --no-validate
+          Skip parse and validate (escape hatch; warns on stderr)
+
+  -v, --verbose...
+          Increase tracing verbosity on stderr; repeat (-vv reveals info, -vvv debug)
+
+      --no-color
+          Disable ANSI styling (NO_COLOR=1 or non-TTY stdout also disable)
+
+  -h, --help
+          Print help (see a summary with '-h')

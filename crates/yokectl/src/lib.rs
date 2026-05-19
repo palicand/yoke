@@ -28,10 +28,13 @@ pub fn entry() -> ! {
 
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
-    // Completions doesn't need a mounted volume; resolving the backend here
-    // would make `yokectl completions` fail on hosts without a device.
+    // Completions and Docs don't need a mounted volume; resolving the backend
+    // here would make them fail on hosts without a device.
     if let Commands::Completions { shell } = cli.command {
         return commands::completions::run(shell);
+    }
+    if let Commands::Docs { format, out } = cli.command {
+        return commands::docs::run(format, &out);
     }
     let provider = backend::open(cli.fake_volume.clone())?;
     match cli.command {
@@ -149,7 +152,9 @@ pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
                 commands::subprofile::run_clone(&provider, out, &target, &from, &to)
             }
         },
-        Commands::Completions { .. } => unreachable!("handled before backend open"),
+        Commands::Completions { .. } | Commands::Docs { .. } => {
+            unreachable!("handled before backend open")
+        }
     }
 }
 

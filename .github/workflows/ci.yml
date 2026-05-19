@@ -55,3 +55,12 @@ jobs:
           for shell in bash zsh fish powershell elvish; do
             nix develop --command cargo run -p yokectl -- completions "$shell" > /dev/null
           done
+
+      - name: verify docs generate (man + markdown)
+        if: ${{ hashFiles('crates/yokectl/Cargo.toml') != '' }}
+        run: |
+          mkdir -p target/ci-docs
+          nix develop --command cargo run --quiet -p yokectl -- docs --format man --out target/ci-docs
+          nix develop --command cargo run --quiet -p yokectl -- docs --format md  --out target/ci-docs
+          test -s target/ci-docs/man/yokectl.1
+          test -s target/ci-docs/markdown/yokectl.md

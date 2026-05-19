@@ -2,6 +2,7 @@ pub mod apply;
 pub mod catalog;
 pub mod completions;
 pub mod device;
+pub mod docs;
 pub mod edit;
 pub mod index;
 pub mod install;
