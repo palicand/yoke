@@ -1,6 +1,5 @@
 use yoke_config::catalog::{
-    DPadDir, GamepadButton, Input, JoyAxis, JoyOutput, KbKey, Modifier, MouseAction, Output,
-    PreferenceKey, PreferenceSpec, PreferenceValueKind, SipPuff, SystemAction, UsbHost,
+    Input, Modifier, Output, PreferenceKey, PreferenceSpec, PreferenceValueKind,
 };
 use yoke_config::model::{
     Binding, PreferenceEntry, PreferenceOverride, Preferences, Profile, SubProfile,
@@ -176,90 +175,28 @@ fn apply_clear_binding(
 
 fn parse_input(raw: &str) -> Result<Input, EditError> {
     match Input::from_csv(raw) {
-        Input::Unknown(_) => Err(EditError::UnknownInput {
-            input: raw.to_owned(),
-            suggestions: suggestions(raw, input_csv_names().iter().map(String::as_str)),
-        }),
+        Input::Unknown(_) => {
+            let names: Vec<String> = Input::all_csv_names().collect();
+            Err(EditError::UnknownInput {
+                input: raw.to_owned(),
+                suggestions: suggestions(raw, names.iter().map(String::as_str)),
+            })
+        }
         ok => Ok(ok),
     }
 }
 
 fn parse_output(raw: &str) -> Result<Output, EditError> {
     match Output::from_csv(raw) {
-        Output::Unknown(_) => Err(EditError::UnknownOutput {
-            output: raw.to_owned(),
-            suggestions: suggestions(raw, output_csv_names().iter().map(String::as_str)),
-        }),
+        Output::Unknown(_) => {
+            let names: Vec<String> = Output::all_csv_names().collect();
+            Err(EditError::UnknownOutput {
+                output: raw.to_owned(),
+                suggestions: suggestions(raw, names.iter().map(String::as_str)),
+            })
+        }
         ok => Ok(ok),
     }
-}
-
-fn input_csv_names() -> Vec<String> {
-    use yoke_config::catalog::MpPosition;
-    let mut out: Vec<String> = Vec::new();
-    for dir in SipPuff::ALL {
-        for soft in [false, true] {
-            let suffix = if soft { "_soft" } else { "" };
-            for pos in MpPosition::ALL {
-                out.push(format!("mp_{}_{}{suffix}", pos.as_csv(), dir.as_csv()));
-            }
-            out.push(format!("right_{}{suffix}", dir.as_csv()));
-        }
-        out.push(format!("right_{}_long", dir.as_csv()));
-    }
-    out.push("lip".into());
-    out.push("lip_soft".into());
-    for ax in JoyAxis::ALL {
-        out.push((*ax).as_csv().to_owned());
-    }
-    out.push("any_direction".into());
-    out.push("center".into());
-    out.push("constant".into());
-    for d in DPadDir::ALL {
-        out.push((*d).as_csv().to_owned());
-        out.push(format!("{}_inner", d.as_csv()));
-    }
-    for host in UsbHost::ALL {
-        let h = host.as_csv_index();
-        for ax in JoyAxis::ALL {
-            out.push(format!("usb_{h}_{}", ax.as_csv()));
-        }
-        for d in DPadDir::ALL {
-            out.push(format!("usb_{h}_{}", d.as_csv()));
-            out.push(format!("usb_{h}_{}_inner", d.as_csv()));
-        }
-        for n in 1u8..=15 {
-            out.push(format!("usb_{h}_button_{n}"));
-        }
-    }
-    for n in 1u8..=8 {
-        out.push(format!("digital_in_{n}"));
-    }
-    out
-}
-
-fn output_csv_names() -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for k in KbKey::ALL {
-        out.push((*k).as_csv().to_owned());
-    }
-    for m in MouseAction::ALL {
-        out.push((*m).as_csv().to_owned());
-    }
-    for g in GamepadButton::ALL {
-        out.push((*g).as_csv().to_owned());
-    }
-    for d in DPadDir::ALL {
-        out.push(format!("dpad_{}", d.as_csv()));
-    }
-    for j in JoyOutput::ALL {
-        out.push((*j).as_csv().to_owned());
-    }
-    for s in SystemAction::ALL {
-        out.push((*s).as_csv().to_owned());
-    }
-    out.push("touch".into());
-    out
 }
 
 fn sub_profile_index(profile: &Profile, name: &str) -> Result<usize, EditError> {
