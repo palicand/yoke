@@ -18,16 +18,20 @@ pub fn parse_index(bytes: &[u8]) -> Result<(Vec<IndexEntry>, usize), IndexError>
         .headers()
         .map_err(|e| IndexError::IndexFormat(e.to_string()))?
         .clone();
-    let name_col = headers
+    let lower_headers: Vec<String> = headers.iter().map(str::to_ascii_lowercase).collect();
+    let name_col = lower_headers
         .iter()
-        .position(|h| h.eq_ignore_ascii_case("name"))
+        .position(|h| h.split_whitespace().next_back() == Some("name"))
         .ok_or_else(|| IndexError::IndexFormat("missing 'name' column".into()))?;
-    let url_col = headers
+    let url_col = lower_headers
         .iter()
-        .position(|h| {
-            let h = h.to_ascii_lowercase();
-            h.contains("csv") || h.contains("link") || h.contains("url")
+        .position(|h| h.split_whitespace().any(|w| w == "url"))
+        .or_else(|| {
+            lower_headers
+                .iter()
+                .position(|h| h.split_whitespace().any(|w| w == "link"))
         })
+        .or_else(|| lower_headers.iter().position(|h| h.contains("csv")))
         .ok_or_else(|| IndexError::IndexFormat("missing csv/link/url column".into()))?;
 
     let mut entries = Vec::new();
@@ -96,5 +100,29 @@ mod tests {
     fn rejects_missing_name_column() {
         let csv = b"Foo,CSV URL\nx,https://x.example\n";
         assert!(matches!(parse_index(csv), Err(IndexError::IndexFormat(_))));
+    }
+
+    // Mirrors the live upstream header at the time of writing:
+    // "Configuration Spreadsheet Name" qualifies as the name column,
+    // "Spreadsheet URL" must win over "CSV Filename" for the fetch URL.
+    #[test]
+    fn parses_upstream_header_with_qualified_name() {
+        let csv = b"Configuration Spreadsheet Name,,CSV Filename,Spreadsheet URL,Channel\n\
+                    Destiny 2,,d2.csv,https://docs.google.com/example,USB\n";
+        let (entries, skipped) = parse_index(csv).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Destiny 2");
+        assert_eq!(
+            entries[0].csv_url.as_str(),
+            "https://docs.google.com/example"
+        );
+        assert_eq!(skipped, 0);
+    }
+
+    #[test]
+    fn url_word_beats_csv_substring() {
+        let csv = b"Name,CSV Filename,Source URL\nx,foo.csv,https://x.example\n";
+        let (entries, _) = parse_index(csv).unwrap();
+        assert_eq!(entries[0].csv_url.as_str(), "https://x.example/");
     }
 }
