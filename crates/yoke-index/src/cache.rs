@@ -45,7 +45,10 @@ impl Cache {
         if let Some(parent) = self.path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        tokio::fs::write(&self.path, bytes).await?;
+        // Tmp + rename keeps concurrent readers from observing a torn write.
+        let tmp = self.path.with_extension("csv.tmp");
+        tokio::fs::write(&tmp, bytes).await?;
+        tokio::fs::rename(&tmp, &self.path).await?;
         Ok(())
     }
 }
