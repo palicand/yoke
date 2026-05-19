@@ -42,20 +42,34 @@ pub fn load_apply_save(
     Ok(())
 }
 
+fn apply_single<F>(
+    provider: &Arc<dyn VolumeProvider>,
+    out: &Output,
+    target: &str,
+    op: EditOp,
+    envelope: &serde_json::Value,
+    human: F,
+) -> Result<()>
+where
+    F: FnOnce(&mut std::io::Stdout) -> std::io::Result<()>,
+{
+    load_apply_save(provider.as_ref(), target, &[op])?;
+    out.emit(envelope, human)
+}
+
 pub fn run_set_title(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
     title: &str,
 ) -> Result<()> {
-    load_apply_save(
-        provider.as_ref(),
+    apply_single(
+        provider,
+        out,
         target,
-        &[EditOp::SetTitle {
+        EditOp::SetTitle {
             title: title.to_string(),
-        }],
-    )?;
-    out.emit(
+        },
         &serde_json::json!({"action": "set-title", "title": title}),
         |w| writeln!(w, "title set to {title}"),
     )
@@ -68,15 +82,14 @@ pub fn run_set_preference(
     key: &str,
     value: &str,
 ) -> Result<()> {
-    load_apply_save(
-        provider.as_ref(),
+    apply_single(
+        provider,
+        out,
         target,
-        &[EditOp::SetPreference {
+        EditOp::SetPreference {
             key: key.to_string(),
             value: parse_pref_value(value),
-        }],
-    )?;
-    out.emit(
+        },
         &serde_json::json!({"action": "set-preference", "key": key, "value": value}),
         |w| writeln!(w, "preference {key} = {value}"),
     )
@@ -88,14 +101,13 @@ pub fn run_unset_preference(
     target: &str,
     key: &str,
 ) -> Result<()> {
-    load_apply_save(
-        provider.as_ref(),
+    apply_single(
+        provider,
+        out,
         target,
-        &[EditOp::UnsetPreference {
+        EditOp::UnsetPreference {
             key: key.to_string(),
-        }],
-    )?;
-    out.emit(
+        },
         &serde_json::json!({"action": "unset-preference", "key": key}),
         |w| writeln!(w, "preference {key} cleared"),
     )
@@ -109,16 +121,15 @@ pub fn run_set_override(
     key: &str,
     value: &str,
 ) -> Result<()> {
-    load_apply_save(
-        provider.as_ref(),
+    apply_single(
+        provider,
+        out,
         target,
-        &[EditOp::SetOverride {
+        EditOp::SetOverride {
             sub_profile: sp.to_string(),
             key: key.to_string(),
             value: parse_pref_value(value),
-        }],
-    )?;
-    out.emit(
+        },
         &serde_json::json!({"action": "set-override", "sub_profile": sp, "key": key}),
         |w| writeln!(w, "override {sp}.{key} = {value}"),
     )
@@ -131,15 +142,14 @@ pub fn run_unset_override(
     sp: &str,
     key: &str,
 ) -> Result<()> {
-    load_apply_save(
-        provider.as_ref(),
+    apply_single(
+        provider,
+        out,
         target,
-        &[EditOp::UnsetOverride {
+        EditOp::UnsetOverride {
             sub_profile: sp.to_string(),
             key: key.to_string(),
-        }],
-    )?;
-    out.emit(
+        },
         &serde_json::json!({"action": "unset-override", "sub_profile": sp, "key": key}),
         |w| writeln!(w, "override {sp}.{key} cleared"),
     )
@@ -153,18 +163,18 @@ pub fn run_set_binding(
     input: &str,
     output_s: &str,
 ) -> Result<()> {
-    load_apply_save(
-        provider.as_ref(),
+    apply_single(
+        provider,
+        out,
         target,
-        &[EditOp::SetBinding {
+        EditOp::SetBinding {
             sub_profile: sp.to_string(),
             input: input.to_string(),
             output: output_s.to_string(),
-        }],
-    )?;
-    out.emit(&serde_json::json!({"action": "set-binding"}), |w| {
-        writeln!(w, "binding set")
-    })
+        },
+        &serde_json::json!({"action": "set-binding"}),
+        |w| writeln!(w, "binding set"),
+    )
 }
 
 pub fn run_clear_binding(
@@ -174,15 +184,15 @@ pub fn run_clear_binding(
     sp: &str,
     input: &str,
 ) -> Result<()> {
-    load_apply_save(
-        provider.as_ref(),
+    apply_single(
+        provider,
+        out,
         target,
-        &[EditOp::ClearBinding {
+        EditOp::ClearBinding {
             sub_profile: sp.to_string(),
             input: input.to_string(),
-        }],
-    )?;
-    out.emit(&serde_json::json!({"action": "clear-binding"}), |w| {
-        writeln!(w, "binding cleared")
-    })
+        },
+        &serde_json::json!({"action": "clear-binding"}),
+        |w| writeln!(w, "binding cleared"),
+    )
 }
