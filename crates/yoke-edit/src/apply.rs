@@ -65,15 +65,7 @@ fn apply_add_sub_profile(
     sub_mode: &str,
     channel: yoke_config::catalog::Channel,
 ) -> Result<Profile, EditError> {
-    if profile
-        .sub_profiles
-        .iter()
-        .any(|sp| sp.header.profile_name == name)
-    {
-        return Err(EditError::SubProfileExists {
-            name: name.to_owned(),
-        });
-    }
+    require_unique_sub_profile_name(&profile, name)?;
     profile.sub_profiles.push(SubProfile {
         header: SubProfileHeader {
             profile_name: name.to_owned(),
@@ -101,15 +93,7 @@ fn apply_rename_sub_profile(
     from: &str,
     to: &str,
 ) -> Result<Profile, EditError> {
-    if profile
-        .sub_profiles
-        .iter()
-        .any(|sp| sp.header.profile_name == to)
-    {
-        return Err(EditError::SubProfileExists {
-            name: to.to_owned(),
-        });
-    }
+    require_unique_sub_profile_name(&profile, to)?;
     let pos = sub_profile_index(&profile, from)?;
     to.clone_into(&mut profile.sub_profiles[pos].header.profile_name);
     Ok(profile)
@@ -120,20 +104,25 @@ fn apply_clone_sub_profile(
     from: &str,
     to: &str,
 ) -> Result<Profile, EditError> {
-    if profile
-        .sub_profiles
-        .iter()
-        .any(|sp| sp.header.profile_name == to)
-    {
-        return Err(EditError::SubProfileExists {
-            name: to.to_owned(),
-        });
-    }
+    require_unique_sub_profile_name(&profile, to)?;
     let pos = sub_profile_index(&profile, from)?;
     let mut cloned = profile.sub_profiles[pos].clone();
     to.clone_into(&mut cloned.header.profile_name);
     profile.sub_profiles.push(cloned);
     Ok(profile)
+}
+
+fn require_unique_sub_profile_name(profile: &Profile, name: &str) -> Result<(), EditError> {
+    if profile
+        .sub_profiles
+        .iter()
+        .any(|sp| sp.header.profile_name == name)
+    {
+        return Err(EditError::SubProfileExists {
+            name: name.to_owned(),
+        });
+    }
+    Ok(())
 }
 
 fn apply_set_binding(
