@@ -11,6 +11,10 @@ pub struct Output {
 }
 
 impl Output {
+    pub const fn is_json(&self) -> bool {
+        matches!(self.format, OutputFormat::Json)
+    }
+
     pub const fn from_flags(json: bool) -> Self {
         let format = if json {
             OutputFormat::Json

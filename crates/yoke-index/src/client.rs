@@ -18,17 +18,20 @@ pub struct IndexClient {
 
 impl IndexClient {
     pub fn new() -> Result<Self, IndexError> {
+        // YOKECTL_CACHE_DIR and YOKECTL_INDEX_URL let tests bypass the platform cache + URL.
         let cache = if let Some(p) = std::env::var_os(CACHE_DIR_ENV) {
             Cache::default_in(&PathBuf::from(p))
         } else {
             Cache::from_project_dirs().ok_or(IndexError::NoCacheDir)?
         };
+        let index_url =
+            std::env::var("YOKECTL_INDEX_URL").unwrap_or_else(|_| COMMUNITY_INDEX_URL.to_string());
         Ok(Self {
             http: reqwest::Client::builder()
                 .user_agent(concat!("yokectl/", env!("CARGO_PKG_VERSION")))
                 .build()?,
             cache,
-            index_url: COMMUNITY_INDEX_URL.to_string(),
+            index_url,
         })
     }
 

@@ -123,6 +123,12 @@ pub enum Commands {
     Completions {
         shell: clap_complete::Shell,
     },
+    Manual {
+        topic: Option<String>,
+    },
+    Topic {
+        name: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -166,6 +172,8 @@ pub enum IndexCmd {
         name: String,
     },
     Update,
+    #[command(about = "Open the community index sheet in the default browser")]
+    Browse,
 }
 
 #[derive(Subcommand, Debug)]

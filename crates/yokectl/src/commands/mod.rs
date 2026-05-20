@@ -1,9 +1,14 @@
 pub mod apply;
+pub(crate) mod browser;
 pub mod catalog;
 pub mod device;
 pub mod edit;
+pub mod index;
+pub mod install;
+pub mod manual;
 pub mod profile;
 pub mod subprofile;
+pub mod topic;
 
 use yoke_volume::profile::ProfileEntry;
 

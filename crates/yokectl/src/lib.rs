@@ -3,10 +3,11 @@ pub mod cli;
 pub mod commands;
 pub mod error;
 pub mod output;
+pub mod runtime;
 pub mod target;
 
 use clap::Parser;
-use cli::{CatalogCmd, Commands, SubprofileCmd};
+use cli::{CatalogCmd, Commands, IndexCmd, SubprofileCmd};
 
 /// Process-level entry point. Calls `std::process::exit`.
 pub fn entry() -> ! {
@@ -36,6 +37,15 @@ pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
         ..
     } = cli;
     match command {
+        Commands::Manual { topic } => commands::manual::run(out, topic.as_deref()),
+        Commands::Topic { name } => commands::topic::run(out, name.as_deref()),
+        Commands::Index { cmd } => match cmd {
+            IndexCmd::List { refresh } => commands::index::run_list(out, refresh),
+            IndexCmd::Search { query } => commands::index::run_search(out, &query),
+            IndexCmd::Show { name } => commands::index::run_show(out, &name),
+            IndexCmd::Update => commands::index::run_update(out),
+            IndexCmd::Browse => commands::index::run_browse(out),
+        },
         Commands::Catalog { cmd } => match cmd {
             CatalogCmd::Inputs => commands::catalog::run_inputs(out),
             CatalogCmd::Outputs => commands::catalog::run_outputs(out),
@@ -108,6 +118,19 @@ fn run_with_volume(
             edits,
             dry_run,
         } => commands::apply::run(provider, out, &target, &edits, dry_run),
+        Commands::Install {
+            source,
+            as_name,
+            dry_run,
+            no_validate,
+        } => commands::install::run(
+            provider,
+            out,
+            &source,
+            as_name.as_deref(),
+            dry_run,
+            no_validate,
+        ),
         Commands::Subprofile { cmd } => match cmd {
             SubprofileCmd::Add {
                 target,
