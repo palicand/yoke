@@ -181,6 +181,10 @@ pub enum SideKind {
     Long,
 }
 
+impl SideKind {
+    pub const ALL: &'static [Self] = &[Self::Hard, Self::Soft, Self::Long];
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Input {
     Mouthpiece {
@@ -227,6 +231,72 @@ impl Input {
     pub fn from_csv(s: &str) -> Self {
         debug_assert!(!s.is_empty(), "Input::from_csv called with empty string");
         parse_input(s).unwrap_or_else(|| Self::Unknown(s.to_owned()))
+    }
+
+    /// Enumerate every canonical `Input` value (everything except `Unknown`).
+    /// Used by higher layers to seed typo-suggestion candidates and to drive
+    /// drift-detection tests when new variants are added.
+    pub fn iter_known() -> impl Iterator<Item = Self> {
+        let mouthpiece = MpPosition::ALL.iter().flat_map(|pos| {
+            SipPuff::ALL.iter().flat_map(move |dir| {
+                [false, true].iter().map(move |&soft| Self::Mouthpiece {
+                    pos: *pos,
+                    dir: *dir,
+                    soft,
+                })
+            })
+        });
+        let side = SipPuff::ALL.iter().flat_map(|dir| {
+            SideKind::ALL.iter().map(move |kind| Self::Side {
+                dir: *dir,
+                kind: *kind,
+            })
+        });
+        let lip = [false, true].iter().map(|&soft| Self::Lip { soft });
+        let joy_axis = JoyAxis::ALL.iter().copied().map(Self::JoystickAxis);
+        let joy_dpad = DPadDir::ALL.iter().flat_map(|dir| {
+            [false, true]
+                .iter()
+                .map(move |&inner| Self::JoystickDpad { dir: *dir, inner })
+        });
+        let misc = [Self::JoystickAnyDirection, Self::Center, Self::Constant];
+        let usb_axis = UsbHost::ALL.iter().flat_map(|host| {
+            JoyAxis::ALL.iter().map(move |axis| Self::UsbHostAxis {
+                host: *host,
+                axis: *axis,
+            })
+        });
+        let usb_dpad = UsbHost::ALL.iter().flat_map(|host| {
+            DPadDir::ALL.iter().flat_map(move |dir| {
+                [false, true].iter().map(move |&inner| Self::UsbHostDpad {
+                    host: *host,
+                    dir: *dir,
+                    inner,
+                })
+            })
+        });
+        let usb_button = UsbHost::ALL.iter().flat_map(|host| {
+            (1u8..=15).map(move |button| Self::UsbHostButton {
+                host: *host,
+                button,
+            })
+        });
+        let digital = (1u8..=8).map(Self::DigitalIn);
+        mouthpiece
+            .chain(side)
+            .chain(lip)
+            .chain(joy_axis)
+            .chain(joy_dpad)
+            .chain(misc)
+            .chain(usb_axis)
+            .chain(usb_dpad)
+            .chain(usb_button)
+            .chain(digital)
+    }
+
+    /// CSV identifiers for every known `Input` variant (`iter_known().map(to_csv)`).
+    pub fn all_csv_names() -> impl Iterator<Item = String> {
+        Self::iter_known().map(|i| i.to_csv())
     }
 
     pub fn to_csv(&self) -> String {
@@ -616,5 +686,25 @@ mod input_enum_tests {
             Input::from_csv("mp_center_sip_long"),
             Input::Unknown(_)
         ));
+    }
+
+    #[test]
+    fn iter_known_covers_every_documented_id() {
+        let enumerated: std::collections::HashSet<String> = Input::all_csv_names().collect();
+        for id in ALL_INPUT_IDS {
+            assert!(
+                enumerated.contains(*id),
+                "iter_known missing documented id: {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn iter_known_round_trips_every_variant() {
+        for variant in Input::iter_known() {
+            let csv = variant.to_csv();
+            let parsed = Input::from_csv(&csv);
+            assert_eq!(parsed, variant, "round-trip failed for {csv}");
+        }
     }
 }
