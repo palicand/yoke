@@ -5,24 +5,23 @@ use anyhow::{Context, Result};
 use yoke_volume::VolumeProvider;
 use yoke_volume::profile::ProfileName;
 
-#[allow(dead_code)]
 pub enum Target {
     VolumeName(ProfileName),
     LocalFile(PathBuf),
     Stdin,
 }
 
-#[allow(dead_code)]
 impl Target {
     pub fn classify(raw: &str) -> Self {
         if raw == "-" {
             return Self::Stdin;
         }
-        let p = PathBuf::from(raw);
-        if p.exists() {
-            return Self::LocalFile(p);
+        // Path separators force the LocalFile interpretation even if the basename is a valid
+        // ProfileName — otherwise `./foo.csv` would silently be looked up on the volume.
+        if raw.contains('/') || raw.contains('\\') {
+            return Self::LocalFile(PathBuf::from(raw));
         }
-        ProfileName::new(raw).map_or(Self::LocalFile(p), Self::VolumeName)
+        ProfileName::new(raw).map_or_else(|_| Self::LocalFile(PathBuf::from(raw)), Self::VolumeName)
     }
 
     pub fn read_bytes(&self, provider: &dyn VolumeProvider) -> Result<Vec<u8>> {
@@ -72,5 +71,13 @@ mod tests {
     #[test]
     fn valid_name_classifies_as_volume() {
         assert!(matches!(Target::classify("default"), Target::VolumeName(_)));
+    }
+
+    #[test]
+    fn path_with_separator_classifies_as_local_regardless_of_existence() {
+        assert!(matches!(
+            Target::classify("./does-not-exist.csv"),
+            Target::LocalFile(_)
+        ));
     }
 }
