@@ -92,14 +92,9 @@ fn run_with_volume(
             sub_profile,
             input,
             output: output_s,
-        } => commands::edit::run_set_binding(
-            provider,
-            out,
-            &target,
-            &sub_profile,
-            &input,
-            &output_s,
-        ),
+        } => {
+            commands::edit::run_set_binding(provider, out, &target, &sub_profile, &input, &output_s)
+        }
         Commands::ClearBinding {
             target,
             sub_profile,

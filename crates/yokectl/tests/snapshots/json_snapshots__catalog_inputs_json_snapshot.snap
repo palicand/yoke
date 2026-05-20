@@ -1,0 +1,27 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+expression: v
+---
+{
+  "inputs": [
+    "sip",
+    "puff",
+    "left",
+    "left_center",
+    "center",
+    "right_center",
+    "right",
+    "left_right",
+    "triple",
+    "N",
+    "NE",
+    "E",
+    "SE",
+    "S",
+    "SW",
+    "W",
+    "NW",
+    "1",
+    "2"
+  ]
+}

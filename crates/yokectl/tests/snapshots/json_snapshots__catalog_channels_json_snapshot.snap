@@ -1,0 +1,10 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+expression: v
+---
+{
+  "channels": [
+    "usb",
+    "Bluetooth"
+  ]
+}

@@ -1,0 +1,9 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+expression: v
+---
+{
+  "action": "set-preference",
+  "key": "volume",
+  "value": "55"
+}
