@@ -9,7 +9,8 @@ pub mod target;
 use clap::Parser;
 use cli::{CatalogCmd, Commands, IndexCmd, SubprofileCmd};
 
-/// Process-level entry point. Calls `std::process::exit`.
+/// Process-level entry point shared by the binary and any integration harness
+/// that wants to drive the CLI in-process. Calls `std::process::exit`.
 pub fn entry() -> ! {
     let cli = cli::Cli::parse();
     if cli.no_color {
@@ -29,7 +30,7 @@ pub fn entry() -> ! {
     std::process::exit(code);
 }
 
-#[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)]
 pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
     let cli::Cli {
         fake_volume,
@@ -37,6 +38,11 @@ pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
         ..
     } = cli;
     match command {
+        Commands::Completions { shell } => commands::completions::run(shell),
+        Commands::Docs {
+            format,
+            out: out_dir,
+        } => commands::docs::run(format, &out_dir),
         Commands::Manual { topic } => commands::manual::run(out, topic.as_deref()),
         Commands::Topic { name } => commands::topic::run(out, name.as_deref()),
         Commands::Index { cmd } => match cmd {
@@ -133,6 +139,7 @@ fn run_with_volume(
             no_validate,
             force,
         ),
+        Commands::Watch => commands::watch::run(provider, out),
         Commands::Subprofile { cmd } => match cmd {
             SubprofileCmd::Add {
                 target,
@@ -159,11 +166,19 @@ fn run_with_volume(
                 commands::subprofile::run_clone(provider, out, &target, &from, &to)
             }
         },
-        _ => anyhow::bail!("not implemented yet"),
+        Commands::Completions { .. }
+        | Commands::Docs { .. }
+        | Commands::Manual { .. }
+        | Commands::Topic { .. }
+        | Commands::Index { .. }
+        | Commands::Catalog { .. } => unreachable!("handled before backend open"),
     }
 }
 
-pub fn init_tracing(verbose: u8) {
+fn init_tracing(verbose: u8) {
+    if verbose == 0 && std::env::var_os("RUST_LOG").is_none() {
+        return;
+    }
     let level = match verbose {
         0 => "warn",
         1 => "info",

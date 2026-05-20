@@ -2820,6 +2820,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "walkdir",
  "wiremock",
  "yoke-config",
  "yoke-edit",
