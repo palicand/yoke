@@ -375,7 +375,7 @@ The transformer is a pure function with unit tests over each row of this table. 
 
 The index is a published Google Sheet. yoke-index parses it as CSV with header row matching:
 
-- Required columns: a column whose header matches `(?i)^name$` and a column whose header matches `(?i)(csv|link|url)`.
+- Required columns: a column whose header's last whitespace-separated token is `name` (case-insensitive) — this matches both the bare `Name` header and qualified variants like `Configuration Spreadsheet Name` used by the live upstream sheet — and a URL column picked by priority: a header containing the word `url` wins, then `link`, then any header containing the substring `csv`. The priority ordering disambiguates sheets that carry both a fetchable URL column and a separate filename column (e.g. `CSV Filename` alongside `Spreadsheet URL`).
 - All other columns become `IndexEntry.fields` (preserved verbatim).
 - Rows with an empty name or unparseable URL are skipped with a `tracing::warn!` and counted; the count is surfaced by `index list --json` so downstream consumers can detect index drift.
 - Header matching is name-based (not positional) so the upstream sheet can add or reorder columns without breaking the parser.
