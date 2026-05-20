@@ -193,7 +193,7 @@ Each command constructs a one-element `Vec<EditOp>`, applies via `yoke_edit::app
 
 | Command | Effect |
 |---|---|
-| `install <source> [--as <name>]` | Auto-classify `<source>`: local path → read; URL → fetch (Google-Sheets rewrite if applicable); bare name → resolve via `yoke-index`. Parse, validate, write to the volume. `--as` overrides the destination filename. `--dry-run` parses and prints destination but does not write. `--no-validate` is an escape hatch; prints a warning to stderr. |
+| `install <source> [--as <name>]` | Auto-classify `<source>`: local path → read; URL → fetch (Google-Sheets rewrite if applicable); bare name → resolve via `yoke-index`. Parse, validate, write to the volume. `--as` overrides the destination filename. `--dry-run` parses and prints destination but does not write. `--no-validate` is an escape hatch; prints a warning to stderr. The auto-classification rules are also paraphrased for operators via `yokectl topic install-sources` (see [2026-05-19-yokectl-browse-and-topics-addendum.md](./2026-05-19-yokectl-browse-and-topics-addendum.md)). |
 
 #### 3.8 Community index
 
@@ -203,6 +203,7 @@ Each command constructs a one-element `Vec<EditOp>`, applies via `yoke_edit::app
 | `index search <query>` | Fuzzy filter over `name`. |
 | `index show <name>` | Print the resolved row, including the underlying CSV URL. |
 | `index update` | Force-refresh the cache. |
+| `index browse` | Open the community index sheet in the default browser (HTML form); see [2026-05-19-yokectl-browse-and-topics-addendum.md](./2026-05-19-yokectl-browse-and-topics-addendum.md). |
 
 #### 3.9 Device-channel (reserved names)
 
