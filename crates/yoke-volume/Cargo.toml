@@ -8,6 +8,9 @@ description = "QuadStick FAT-volume discovery, listing, and atomic profile I/O."
 [lints]
 workspace = true
 
+[features]
+test-utils = []
+
 [dependencies]
 rand = { version = "0.10.1", features = ["std_rng"] }
 serde = { version = "1.0.228", features = ["derive"] }
