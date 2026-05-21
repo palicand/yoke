@@ -90,8 +90,7 @@ yoke-volume  -> (no change, but gains a `test-utils` feature; see § 13)
 - `tokio` with `["rt", "macros", "sync"]` — current-thread runtime for the async commands only.
 - `tracing` + `tracing-subscriber` with `["fmt", "env-filter"]` — stderr-only logging.
 - `serde` and `serde_json` — JSON output and the `apply --edits` reader.
-- `is-terminal` — color / no-color decision.
-- `console` — minimal ANSI styling (no `crossterm`; we don't need TTY input).
+- `console` — minimal ANSI styling plus its `Term::features().is_attended()` for the color / no-color decision (no `crossterm`; we don't need TTY input).
 
 `yokectl` dev-deps:
 

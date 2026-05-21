@@ -43,16 +43,20 @@ impl FsBackend {
         } else {
             MountState::Absent
         };
-        let mut emitted_events: Vec<MountEvent> = Vec::new();
+        self.publish_state(&new_state);
+    }
+
+    fn publish_state(&self, new_state: &MountState) {
+        let mut emitted: Vec<MountEvent> = Vec::new();
         self.inner.state_tx.send_if_modified(|cur| {
-            if *cur == new_state {
+            if cur == new_state {
                 return false;
             }
-            emitted_events = state_transition_events(cur, &new_state);
+            emitted = state_transition_events(cur, new_state);
             *cur = new_state.clone();
             true
         });
-        for evt in emitted_events {
+        for evt in emitted {
             let _ = self.inner.event_tx.send(evt);
         }
     }
@@ -75,6 +79,17 @@ fn compute_state(root: &Path) -> MountState {
         }
     } else {
         MountState::Absent
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+impl FsBackend {
+    pub fn simulate_state(&self, state: &MountState) {
+        self.publish_state(state);
+    }
+
+    pub fn simulate_event(&self, event: MountEvent) {
+        let _ = self.inner.event_tx.send(event);
     }
 }
 
@@ -201,5 +216,26 @@ mod tests {
         let backend = FsBackend::new(dir.path().to_path_buf());
         let rx = backend.subscribe_state();
         assert_eq!(*rx.borrow(), backend.current_state());
+    }
+
+    #[test]
+    fn simulate_state_forces_publication() {
+        let dir = tempdir().unwrap();
+        let backend = FsBackend::new(dir.path().to_path_buf());
+        backend.simulate_state(&MountState::Absent);
+        assert!(matches!(backend.current_state(), MountState::Absent));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn simulate_event_pushes_to_broadcast() {
+        let dir = tempdir().unwrap();
+        let backend = FsBackend::new(dir.path().to_path_buf());
+        let mut rx = backend.subscribe_events();
+        backend.simulate_event(MountEvent::DeviceDisappeared);
+        let evt = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(evt, MountEvent::DeviceDisappeared));
     }
 }

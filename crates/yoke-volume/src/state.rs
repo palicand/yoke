@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind")]
 pub enum MountState {
     Absent,
     DeviceVisibleNoVolume {
