@@ -7,6 +7,8 @@ pub enum Channel {
 }
 
 impl Channel {
+    pub const ALL: &'static [Self] = &[Self::Usb, Self::Bluetooth];
+
     pub fn from_csv(s: &str) -> Option<Self> {
         let s = s.trim();
         if s.eq_ignore_ascii_case("usb") {
