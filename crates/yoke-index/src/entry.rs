@@ -10,7 +10,13 @@ pub struct IndexEntry {
     pub fields: BTreeMap<String, String>,
 }
 
-pub fn parse_index(bytes: &[u8]) -> Result<(Vec<IndexEntry>, usize), IndexError> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexListing {
+    pub entries: Vec<IndexEntry>,
+    pub skipped: usize,
+}
+
+pub fn parse_index(bytes: &[u8]) -> Result<IndexListing, IndexError> {
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(true)
         .from_reader(bytes);
@@ -65,7 +71,7 @@ pub fn parse_index(bytes: &[u8]) -> Result<(Vec<IndexEntry>, usize), IndexError>
             fields,
         });
     }
-    Ok((entries, skipped))
+    Ok(IndexListing { entries, skipped })
 }
 
 #[cfg(test)]
@@ -75,25 +81,25 @@ mod tests {
     #[test]
     fn parses_minimal_index() {
         let csv = b"Name,CSV URL\nDestiny 2,https://example.org/d2.csv\n";
-        let (entries, skipped) = parse_index(csv).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].name, "Destiny 2");
-        assert_eq!(skipped, 0);
+        let parsed = parse_index(csv).unwrap();
+        assert_eq!(parsed.entries.len(), 1);
+        assert_eq!(parsed.entries[0].name, "Destiny 2");
+        assert_eq!(parsed.skipped, 0);
     }
 
     #[test]
     fn preserves_extra_columns_in_fields() {
         let csv = b"Name,CSV URL,Author,Updated\nD2,https://x.example/d2.csv,Alice,2026-01-01\n";
-        let (entries, _) = parse_index(csv).unwrap();
-        assert_eq!(entries[0].fields.get("Author").unwrap(), "Alice");
+        let parsed = parse_index(csv).unwrap();
+        assert_eq!(parsed.entries[0].fields.get("Author").unwrap(), "Alice");
     }
 
     #[test]
     fn skips_unparseable_rows_and_counts_them() {
         let csv = b"Name,CSV URL\n,\nOk,https://example.org/ok.csv\nBad,not-a-url\n";
-        let (entries, skipped) = parse_index(csv).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(skipped, 2);
+        let parsed = parse_index(csv).unwrap();
+        assert_eq!(parsed.entries.len(), 1);
+        assert_eq!(parsed.skipped, 2);
     }
 
     #[test]
@@ -102,27 +108,24 @@ mod tests {
         assert!(matches!(parse_index(csv), Err(IndexError::IndexFormat(_))));
     }
 
-    // Mirrors the live upstream header at the time of writing:
-    // "Configuration Spreadsheet Name" qualifies as the name column,
-    // "Spreadsheet URL" must win over "CSV Filename" for the fetch URL.
     #[test]
     fn parses_upstream_header_with_qualified_name() {
         let csv = b"Configuration Spreadsheet Name,,CSV Filename,Spreadsheet URL,Channel\n\
                     Destiny 2,,d2.csv,https://docs.google.com/example,USB\n";
-        let (entries, skipped) = parse_index(csv).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].name, "Destiny 2");
+        let parsed = parse_index(csv).unwrap();
+        assert_eq!(parsed.entries.len(), 1);
+        assert_eq!(parsed.entries[0].name, "Destiny 2");
         assert_eq!(
-            entries[0].csv_url.as_str(),
+            parsed.entries[0].csv_url.as_str(),
             "https://docs.google.com/example"
         );
-        assert_eq!(skipped, 0);
+        assert_eq!(parsed.skipped, 0);
     }
 
     #[test]
     fn url_word_beats_csv_substring() {
         let csv = b"Name,CSV Filename,Source URL\nx,foo.csv,https://x.example\n";
-        let (entries, _) = parse_index(csv).unwrap();
-        assert_eq!(entries[0].csv_url.as_str(), "https://x.example/");
+        let parsed = parse_index(csv).unwrap();
+        assert_eq!(parsed.entries[0].csv_url.as_str(), "https://x.example/");
     }
 }

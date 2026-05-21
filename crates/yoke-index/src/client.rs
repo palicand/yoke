@@ -3,10 +3,12 @@ use std::time::Duration;
 use url::Url;
 
 use crate::cache::Cache;
-use crate::entry::{IndexEntry, parse_index};
+use crate::entry::{IndexEntry, IndexListing, parse_index};
 use crate::source::ProfileSource;
 use crate::url_transform::to_csv_export;
 use crate::{COMMUNITY_INDEX_URL, IndexError};
+
+pub const CACHE_DIR_ENV: &str = "YOKECTL_CACHE_DIR";
 
 pub struct IndexClient {
     http: reqwest::Client,
@@ -16,11 +18,10 @@ pub struct IndexClient {
 
 impl IndexClient {
     pub fn new() -> Result<Self, IndexError> {
-        // YOKECTL_CACHE_DIR lets tests bypass the platform cache location.
-        let cache = if let Some(p) = std::env::var_os("YOKECTL_CACHE_DIR") {
-            Cache::with_path(PathBuf::from(p).join("index.csv"), Duration::from_hours(24))
+        let cache = if let Some(p) = std::env::var_os(CACHE_DIR_ENV) {
+            Cache::default_in(&PathBuf::from(p))
         } else {
-            Cache::default().ok_or(IndexError::NoCacheDir)?
+            Cache::from_project_dirs().ok_or(IndexError::NoCacheDir)?
         };
         Ok(Self {
             http: reqwest::Client::builder()
@@ -43,7 +44,7 @@ impl IndexClient {
         self
     }
 
-    pub async fn list(&self, refresh: bool) -> Result<Vec<IndexEntry>, IndexError> {
+    pub async fn list(&self, refresh: bool) -> Result<IndexListing, IndexError> {
         let cached = if refresh {
             None
         } else {
@@ -62,13 +63,13 @@ impl IndexClient {
             }
             b
         };
-        let (entries, _skipped) = parse_index(&bytes)?;
-        Ok(entries)
+        parse_index(&bytes)
     }
 
     pub async fn resolve(&self, name: &str) -> Result<IndexEntry, IndexError> {
-        let entries = self.list(false).await?;
-        entries
+        let listing = self.list(false).await?;
+        listing
+            .entries
             .into_iter()
             .find(|e| e.name.eq_ignore_ascii_case(name))
             .ok_or_else(|| IndexError::NotFound(name.to_string()))

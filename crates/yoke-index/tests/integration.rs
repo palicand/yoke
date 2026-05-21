@@ -31,10 +31,11 @@ async fn list_fetches_and_caches_index() {
         .await;
 
     let c = client_against(&server, dir.path());
-    let entries = c.list(false).await.unwrap();
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].name, "Destiny 2");
-    let _entries2 = c.list(false).await.unwrap();
+    let listing = c.list(false).await.unwrap();
+    assert_eq!(listing.entries.len(), 1);
+    assert_eq!(listing.entries[0].name, "Destiny 2");
+    assert_eq!(listing.skipped, 0);
+    let _listing2 = c.list(false).await.unwrap();
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -89,16 +90,13 @@ async fn fetch_404_returns_fetch_failed() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "opt-in: requires YOKE_REAL_NETWORK=1 and live internet"]
-async fn real_community_index_fetches_when_env_set() {
-    if std::env::var("YOKE_REAL_NETWORK").as_deref() != Ok("1") {
-        return;
-    }
+#[ignore = "live-network: opt in via --ignored"]
+async fn real_community_index_fetches() {
     let dir = tempdir().unwrap();
     let c = IndexClient::new()
         .unwrap()
         .with_cache(dir.path().join("idx.csv"), Duration::from_mins(1));
-    let entries = c.list(true).await.expect("network fetch failed");
-    assert!(!entries.is_empty(), "index empty");
-    eprintln!("fetched {} entries", entries.len());
+    let listing = c.list(true).await.expect("network fetch failed");
+    assert!(!listing.entries.is_empty(), "index empty");
+    eprintln!("fetched {} entries", listing.entries.len());
 }

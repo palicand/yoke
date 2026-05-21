@@ -8,7 +8,7 @@ pub mod source;
 pub mod url_transform;
 
 pub use client::IndexClient;
-pub use entry::IndexEntry;
+pub use entry::{IndexEntry, IndexListing};
 pub use error::IndexError;
 pub use source::ProfileSource;
 

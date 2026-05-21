@@ -1,8 +1,13 @@
 use std::io;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use tempfile::NamedTempFile;
+
 use crate::IndexError;
+
+const INDEX_FILENAME: &str = "index.csv";
 
 pub struct Cache {
     pub(crate) path: PathBuf,
@@ -10,13 +15,19 @@ pub struct Cache {
 }
 
 impl Cache {
-    // Shadows Default::default because ProjectDirs lookup can fail.
-    #[allow(clippy::should_implement_trait)]
-    pub fn default() -> Option<Self> {
-        directories::ProjectDirs::from("com", "Yoke", "yokectl").map(|p| Self {
-            path: p.cache_dir().join("index.csv"),
-            ttl: Duration::from_hours(24),
-        })
+    pub const DEFAULT_TTL: Duration = Duration::from_hours(24);
+
+    pub fn from_project_dirs() -> Option<Self> {
+        directories::ProjectDirs::from("com", "Yoke", "yokectl")
+            .map(|p| Self::default_in(p.cache_dir()))
+    }
+
+    #[must_use]
+    pub fn default_in(base: &Path) -> Self {
+        Self {
+            path: base.join(INDEX_FILENAME),
+            ttl: Self::DEFAULT_TTL,
+        }
     }
 
     #[must_use]
@@ -45,10 +56,20 @@ impl Cache {
         if let Some(parent) = self.path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        // Tmp + rename keeps concurrent readers from observing a torn write.
-        let tmp = self.path.with_extension("csv.tmp");
-        tokio::fs::write(&tmp, bytes).await?;
-        tokio::fs::rename(&tmp, &self.path).await?;
+        // NamedTempFile gets a unique name in the destination dir and is auto-deleted
+        // if persist() fails or the process dies mid-write, so concurrent writers can't
+        // trample each other and a torn write never becomes visible.
+        let dest = self.path.clone();
+        let bytes = bytes.to_vec();
+        tokio::task::spawn_blocking(move || -> io::Result<()> {
+            let parent = dest.parent().unwrap_or_else(|| Path::new("."));
+            let mut tmp = NamedTempFile::new_in(parent)?;
+            tmp.write_all(&bytes)?;
+            tmp.persist(&dest).map_err(|e| e.error)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| IndexError::Io(io::Error::other(e)))??;
         Ok(())
     }
 }
