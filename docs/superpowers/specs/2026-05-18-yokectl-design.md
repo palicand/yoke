@@ -328,7 +328,7 @@ impl IndexClient {
     pub fn new() -> Result<Self, IndexError>;
     pub fn with_cache(cache_path: PathBuf, ttl: Duration) -> Result<Self, IndexError>;
 
-    pub async fn list(&self, refresh: bool) -> Result<Vec<IndexEntry>, IndexError>;
+    pub async fn list(&self, refresh: bool) -> Result<IndexListing, IndexError>;
     pub async fn resolve(&self, name: &str) -> Result<IndexEntry, IndexError>;
     pub async fn fetch_profile(&self, src: ProfileSource) -> Result<Vec<u8>, IndexError>;
 }
@@ -343,6 +343,11 @@ pub struct IndexEntry {
     pub name: String,
     pub csv_url: Url,
     pub fields: std::collections::BTreeMap<String, String>,
+}
+
+pub struct IndexListing {
+    pub entries: Vec<IndexEntry>,
+    pub skipped: usize,
 }
 ```
 
@@ -375,7 +380,7 @@ The transformer is a pure function with unit tests over each row of this table. 
 
 The index is a published Google Sheet. yoke-index parses it as CSV with header row matching:
 
-- Required columns: a column whose header matches `(?i)^name$` and a column whose header matches `(?i)(csv|link|url)`.
+- Required columns: a column whose header's last whitespace-separated token is `name` (case-insensitive) — this matches both the bare `Name` header and qualified variants like `Configuration Spreadsheet Name` used by the live upstream sheet — and a URL column picked by priority: a header containing the word `url` wins, then `link`, then any header containing the substring `csv`. The priority ordering disambiguates sheets that carry both a fetchable URL column and a separate filename column (e.g. `CSV Filename` alongside `Spreadsheet URL`).
 - All other columns become `IndexEntry.fields` (preserved verbatim).
 - Rows with an empty name or unparseable URL are skipped with a `tracing::warn!` and counted; the count is surfaced by `index list --json` so downstream consumers can detect index drift.
 - Header matching is name-based (not positional) so the upstream sheet can add or reorder columns without breaking the parser.
@@ -648,7 +653,7 @@ The test surface is organized by layer. Every test is runnable on every supporte
 - Wrong content-type → `IndexError::FetchFailed` with the unexpected MIME.
 - Connection refused → `IndexError::Network`.
 
-One `#[ignore]` test fetches the real community index when `YOKE_REAL_NETWORK=1` is set. CI does not set it.
+One `#[ignore]` test fetches the real community index. CI runs it as a smoke canary on **push to `main` only** so column renames in the live sheet surface quickly without forcing network access on PRs (especially from fork contributors); see § 15. Locally it stays opt-in via the single `#[ignore]` gate — devs running `cargo test -- --ignored` (or naming the test under `--ignored`) accept the network access by doing so.
 
 #### 14.4 `yokectl` unit tests
 
@@ -711,7 +716,7 @@ CI does not set `YOKE_CORPUS_DIR`; the corpus is local-only per the workspace co
 - (No change to existing `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all --check`, or `cargo build --workspace`. The new crates ride those.)
 - A small step generates each completion file (`bash`, `zsh`, `fish`, `powershell`, `elvish`) and asserts each is non-empty. Catches regressions in clap_complete bumps.
 
-CI does **not** set `YOKE_REAL_NETWORK` or `YOKE_REAL_DEVICE` or `YOKE_CORPUS_DIR`. All integration coverage runs offline against fixtures and `wiremock`.
+CI runs the community-index smoke step (above) only on push to `main` — PR runs (including from forks) stay fully offline. CI does **not** set `YOKE_REAL_DEVICE` or `YOKE_CORPUS_DIR`. All other integration coverage runs offline against fixtures and `wiremock`.
 
 ### 16. Acceptance criteria
 

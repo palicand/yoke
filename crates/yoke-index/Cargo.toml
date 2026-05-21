@@ -1,0 +1,23 @@
+[package]
+name = "yoke-index"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "QuadStick community index + Google-Sheets fetch."
+
+[lints]
+workspace = true
+
+[dependencies]
+csv = "1.4.0"
+directories = "6.0.0"
+reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "gzip"] }
+tempfile = "3.27.0"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["fs", "rt-multi-thread"] }
+tracing = "0.1.44"
+url = "2.5.8"
+
+[dev-dependencies]
+tokio = { version = "1.52.3", features = ["macros", "rt", "time"] }
+wiremock = "0.6.5"

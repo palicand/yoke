@@ -44,3 +44,14 @@ jobs:
       - name: cargo build --target wasm32-unknown-unknown (yoke-config)
         if: ${{ hashFiles('crates/yoke-config/Cargo.toml') != '' }}
         run: nix develop --command cargo build -p yoke-config --target wasm32-unknown-unknown
+
+      - name: cargo build --target wasm32-unknown-unknown (yoke-edit)
+        if: ${{ hashFiles('crates/yoke-edit/Cargo.toml') != '' }}
+        run: nix develop --command cargo build -p yoke-edit --target wasm32-unknown-unknown
+
+      # Main-only: PRs from forks/contributors should not trigger live network
+      # access without consent, and Google Sheets uptime is the only thing that
+      # can flake this step.
+      - name: real-network community-index smoke
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && hashFiles('crates/yoke-index/Cargo.toml') != '' }}
+        run: nix develop --command cargo test -p yoke-index --test integration -- --ignored --nocapture real_community_index_fetches
