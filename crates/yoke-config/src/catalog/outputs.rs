@@ -149,6 +149,27 @@ impl Output {
             Self::Unknown(s) => s.clone(),
         }
     }
+
+    /// Enumerate every canonical `Output` value (everything except `Unknown`).
+    pub fn iter_known() -> impl Iterator<Item = Self> {
+        let kb = KbKey::ALL.iter().copied().map(Self::Keyboard);
+        let mouse = MouseAction::ALL.iter().copied().map(Self::Mouse);
+        let gamepad = GamepadButton::ALL.iter().copied().map(Self::Gamepad);
+        let dpad = DPadDir::ALL.iter().copied().map(Self::Dpad);
+        let joy = JoyOutput::ALL.iter().copied().map(Self::Joystick);
+        let sys = SystemAction::ALL.iter().copied().map(Self::System);
+        kb.chain(mouse)
+            .chain(gamepad)
+            .chain(dpad)
+            .chain(joy)
+            .chain(sys)
+            .chain(std::iter::once(Self::Touch))
+    }
+
+    /// CSV identifiers for every known `Output` variant (`iter_known().map(to_csv)`).
+    pub fn all_csv_names() -> impl Iterator<Item = String> {
+        Self::iter_known().map(|o| o.to_csv())
+    }
 }
 
 #[cfg(test)]
@@ -316,5 +337,25 @@ mod tests {
     #[test]
     fn touch_is_a_dedicated_variant() {
         assert_eq!(Output::from_csv("touch"), Output::Touch);
+    }
+
+    #[test]
+    fn iter_known_covers_every_documented_id() {
+        let enumerated: std::collections::HashSet<String> = Output::all_csv_names().collect();
+        for id in ALL_OUTPUT_IDS {
+            assert!(
+                enumerated.contains(*id),
+                "iter_known missing documented id: {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn iter_known_round_trips_every_variant() {
+        for variant in Output::iter_known() {
+            let csv = variant.to_csv();
+            let parsed = Output::from_csv(&csv);
+            assert_eq!(parsed, variant, "round-trip failed for {csv}");
+        }
     }
 }
