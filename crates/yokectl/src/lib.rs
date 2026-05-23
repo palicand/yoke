@@ -3,7 +3,6 @@ pub mod cli;
 pub mod commands;
 pub mod error;
 pub mod output;
-pub mod runtime;
 pub mod target;
 
 use clap::Parser;
@@ -12,7 +11,11 @@ use cli::{CatalogCmd, Commands, SubprofileCmd};
 /// Process-level entry point. Calls `std::process::exit`.
 pub fn entry() -> ! {
     let cli = cli::Cli::parse();
-    let out = output::Output::from_flags(cli.json, cli.no_color);
+    if cli.no_color {
+        console::set_colors_enabled(false);
+        console::set_colors_enabled_stderr(false);
+    }
+    let out = output::Output::from_flags(cli.json);
     init_tracing(cli.verbose);
     let code = match run(cli, &out) {
         Ok(()) => 0,

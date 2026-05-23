@@ -20,7 +20,8 @@ pub enum WriteError {
     InvariantViolation(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind")]
 pub enum Warning {
     UnknownOutput {
         id: String,

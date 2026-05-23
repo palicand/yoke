@@ -315,10 +315,9 @@ fn catalog_channels_lists_usb() {
 
 #[test]
 fn subprofile_add_then_delete_round_trips_through_canonical_write_fallback() {
-    // Adding a sub-profile changes the CSV section count, which the
-    // template-fidelity writer rejects with InvariantViolation;
-    // load_apply_save must fall back to the canonical writer. This test pins
-    // the end-to-end round-trip so a regression in either path surfaces.
+    // Pins the template->canonical writer fallback: adding a sub-profile changes the section
+    // count, so the template-fidelity writer must surface InvariantViolation and load_apply_save
+    // must retry through the canonical writer.
     let dir = tempdir().unwrap();
     seed_profile(dir.path(), "default.csv", FIXTURE_WITH_SUB);
     yokectl()

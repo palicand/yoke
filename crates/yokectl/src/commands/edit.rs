@@ -11,11 +11,13 @@ fn parse_pref_value(raw: &str) -> PreferenceValue {
     if let Ok(n) = raw.parse::<i64>() {
         return PreferenceValue::Number(n);
     }
-    match raw.to_ascii_lowercase().as_str() {
-        "true" => PreferenceValue::Bool(true),
-        "false" => PreferenceValue::Bool(false),
-        _ => PreferenceValue::Text(raw.to_string()),
+    if raw.eq_ignore_ascii_case("true") {
+        return PreferenceValue::Bool(true);
     }
+    if raw.eq_ignore_ascii_case("false") {
+        return PreferenceValue::Bool(false);
+    }
+    PreferenceValue::Text(raw.to_string())
 }
 
 pub fn load_apply_save(
@@ -37,7 +39,7 @@ pub fn load_apply_save(
     Ok(())
 }
 
-fn apply_single<F>(
+pub(crate) fn apply_single<F>(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,

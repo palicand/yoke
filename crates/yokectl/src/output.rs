@@ -11,18 +11,12 @@ pub struct Output {
 }
 
 impl Output {
-    pub fn from_flags(json: bool, no_color: bool) -> Self {
+    pub const fn from_flags(json: bool) -> Self {
         let format = if json {
             OutputFormat::Json
         } else {
             OutputFormat::Human
         };
-        // Disable colors immediately when --no-color is passed; honoring NO_COLOR and
-        // is_attended() is left to console's defaults when --no-color is absent.
-        if no_color {
-            console::set_colors_enabled(false);
-            console::set_colors_enabled_stderr(false);
-        }
         Self { format }
     }
 

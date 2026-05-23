@@ -1,38 +1,21 @@
 use std::io::Write;
 
 use anyhow::Result;
-use yoke_config::catalog::{
-    Channel, DPadDir, GamepadButton, JoyOutput, KbKey, MouseAction, MpPosition, PreferenceSpec,
-    SipPuff, SubProfileMode, SystemAction, UsbHost,
-};
+use yoke_config::catalog::{Channel, Input, Output, PreferenceSpec, SubProfileMode};
 
-use crate::output::Output;
+use crate::output::Output as CliOutput;
 
-pub fn run_inputs(out: &Output) -> Result<()> {
-    let entries: Vec<String> = SipPuff::ALL
-        .iter()
-        .map(|v| v.as_csv().to_string())
-        .chain(MpPosition::ALL.iter().map(|v| v.as_csv().to_string()))
-        .chain(DPadDir::ALL.iter().map(|v| v.as_csv().to_string()))
-        .chain(UsbHost::ALL.iter().map(|v| v.as_csv_index().to_string()))
-        .collect();
+pub fn run_inputs(out: &CliOutput) -> Result<()> {
+    let entries: Vec<String> = Input::all_csv_names().collect();
     emit(out, "inputs", &entries)
 }
 
-pub fn run_outputs(out: &Output) -> Result<()> {
-    let entries: Vec<String> = KbKey::ALL
-        .iter()
-        .map(|v| v.as_csv().to_string())
-        .chain(MouseAction::ALL.iter().map(|v| v.as_csv().to_string()))
-        .chain(GamepadButton::ALL.iter().map(|v| v.as_csv().to_string()))
-        .chain(JoyOutput::ALL.iter().map(|v| v.as_csv().to_string()))
-        .chain(SystemAction::ALL.iter().map(|v| v.as_csv().to_string()))
-        .chain(std::iter::once("touch".to_string()))
-        .collect();
+pub fn run_outputs(out: &CliOutput) -> Result<()> {
+    let entries: Vec<String> = Output::all_csv_names().collect();
     emit(out, "outputs", &entries)
 }
 
-pub fn run_preferences(out: &Output) -> Result<()> {
+pub fn run_preferences(out: &CliOutput) -> Result<()> {
     let entries: Vec<String> = PreferenceSpec::ALL
         .iter()
         .map(|s| s.id.to_string())
@@ -40,7 +23,7 @@ pub fn run_preferences(out: &Output) -> Result<()> {
     emit(out, "preferences", &entries)
 }
 
-pub fn run_modes(out: &Output) -> Result<()> {
+pub fn run_modes(out: &CliOutput) -> Result<()> {
     let entries: Vec<String> = SubProfileMode::KNOWN
         .iter()
         .map(SubProfileMode::canonical_csv)
@@ -48,7 +31,7 @@ pub fn run_modes(out: &Output) -> Result<()> {
     emit(out, "modes", &entries)
 }
 
-pub fn run_channels(out: &Output) -> Result<()> {
+pub fn run_channels(out: &CliOutput) -> Result<()> {
     let entries: Vec<String> = Channel::ALL
         .iter()
         .map(|c| c.canonical_csv().to_string())
@@ -56,7 +39,7 @@ pub fn run_channels(out: &Output) -> Result<()> {
     emit(out, "channels", &entries)
 }
 
-fn emit(out: &Output, key: &str, entries: &[String]) -> Result<()> {
+fn emit(out: &CliOutput, key: &str, entries: &[String]) -> Result<()> {
     out.emit(&serde_json::json!({ key: entries }), |w| {
         for e in entries {
             writeln!(w, "{e}")?;

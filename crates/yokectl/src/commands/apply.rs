@@ -1,12 +1,14 @@
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use yoke_edit::EditOp;
 use yoke_volume::VolumeProvider;
 
+use crate::error::CliError;
 use crate::output::Output;
+use crate::target::Target;
 
 #[derive(serde::Deserialize)]
 struct EditsFile {
@@ -20,28 +22,24 @@ pub fn run(
     edits: &Path,
     dry_run: bool,
 ) -> Result<()> {
-    let edits_is_stdin = edits == Path::new("-");
-    if edits_is_stdin && target == "-" {
-        anyhow::bail!("--edits - and target - both consume stdin; pick one");
+    let target_obj = Target::classify(target);
+    let edits_source = Target::classify(edits.to_str().unwrap_or(""));
+    if matches!(target_obj, Target::Stdin) && matches!(edits_source, Target::Stdin) {
+        return Err(CliError::StdinConflict.into());
     }
-    let json = if edits_is_stdin {
-        let mut s = String::new();
-        std::io::stdin().read_to_string(&mut s)?;
-        s
-    } else {
-        std::fs::read_to_string(edits).with_context(|| format!("read {}", edits.display()))?
-    };
-    let parsed: EditsFile = serde_json::from_str(&json)?;
+    let bytes = edits_source.read_bytes(provider.as_ref())?;
+    let parsed: EditsFile =
+        serde_json::from_slice(&bytes).map_err(|e| CliError::MalformedEdits {
+            message: e.to_string(),
+        })?;
     if dry_run {
-        let target_obj = crate::target::Target::classify(target);
-        let bytes = target_obj.read_bytes(provider.as_ref())?;
-        let pr = yoke_config::parse(&bytes)?;
+        let profile_bytes = target_obj.read_bytes(provider.as_ref())?;
+        let pr = yoke_config::parse(&profile_bytes)?;
         yoke_edit::apply(pr.model, &parsed.edits).map_err(anyhow::Error::from)?;
-        out.emit(
+        return out.emit(
             &serde_json::json!({"action": "apply-dry-run", "ops": parsed.edits.len()}),
             |w| writeln!(w, "dry-run ok ({} ops)", parsed.edits.len()),
-        )?;
-        return Ok(());
+        );
     }
     crate::commands::edit::load_apply_save(provider.as_ref(), target, &parsed.edits)?;
     out.emit(&serde_json::json!({"action": "apply"}), |w| {

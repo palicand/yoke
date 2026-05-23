@@ -24,11 +24,7 @@ pub fn run_debug(provider: &Arc<dyn VolumeProvider>, out: &Output) -> Result<()>
     out.emit(
         &serde_json::json!({
             "device": state,
-            "profiles": entries.iter().map(|e| serde_json::json!({
-                "name": e.name.as_filename(),
-                "kind": e.kind,
-                "byte_len": e.byte_len,
-            })).collect::<Vec<_>>(),
+            "profiles": entries.iter().map(super::profile_entry_json).collect::<Vec<_>>(),
         }),
         |w| {
             writeln!(w, "device: {}", state_human(&state))?;

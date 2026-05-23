@@ -1,5 +1,6 @@
 ---
 source: crates/yokectl/tests/json_snapshots.rs
+assertion_line: 140
 expression: v
 ---
 {
@@ -109,6 +110,14 @@ expression: v
     "back",
     "guide",
     "capture",
+    "dpad_N",
+    "dpad_NE",
+    "dpad_E",
+    "dpad_SE",
+    "dpad_S",
+    "dpad_SW",
+    "dpad_W",
+    "dpad_NW",
     "left_joy_left",
     "left_joy_right",
     "left_joy_up",

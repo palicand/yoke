@@ -5,8 +5,8 @@ use tempfile::tempdir;
 
 #[test]
 fn not_present_exits_3() {
-    let missing = std::env::temp_dir().join("yokectl-exit-codes-nonexistent-zzz");
-    let _ = std::fs::remove_dir_all(&missing);
+    let dir = tempdir().unwrap();
+    let missing = dir.path().join("missing");
     yokectl()
         .args(["--fake-volume", missing.to_str().unwrap(), "list"])
         .assert()
@@ -56,9 +56,9 @@ fn edit_unknown_input_exits_5_with_suggestion() {
 #[test]
 fn parse_error_exits_4() {
     let dir = tempdir().unwrap();
-    // Invalid UTF-8 triggers ParseError::Encoding inside yoke_config::parse,
-    // which the classifier maps to exit 4.
-    std::fs::write(dir.path().join("bad.csv"), [0xff, 0xfe, 0xff, 0xfe]).unwrap();
+    // 0xc3 0x28 is a well-formed UTF-8 prefix followed by an invalid continuation byte;
+    // unambiguously fails UTF-8 decode (unlike 0xff 0xfe, which is a valid UTF-16 BOM).
+    std::fs::write(dir.path().join("bad.csv"), [0xc3, 0x28]).unwrap();
     yokectl()
         .args([
             "--fake-volume",

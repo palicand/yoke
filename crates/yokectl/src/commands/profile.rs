@@ -12,11 +12,7 @@ pub fn run_list(provider: &Arc<dyn VolumeProvider>, out: &Output) -> Result<()> 
     let entries = provider.list_profiles()?;
     out.emit(
         &serde_json::json!({
-            "profiles": entries.iter().map(|e| serde_json::json!({
-                "name": e.name.stem(),
-                "kind": e.kind,
-                "byte_len": e.byte_len,
-            })).collect::<Vec<_>>(),
+            "profiles": entries.iter().map(super::profile_entry_json).collect::<Vec<_>>(),
         }),
         |w| {
             for e in &entries {
@@ -58,8 +54,10 @@ pub fn run_show(
             for sp in &p.sub_profiles {
                 writeln!(
                     w,
-                    "  sub-profile {}: {:?} / {:?}",
-                    sp.header.profile_name, sp.header.mode, sp.header.channel
+                    "  sub-profile {}: {} / {}",
+                    sp.header.profile_name,
+                    sp.header.mode.canonical_csv(),
+                    sp.header.channel.canonical_csv()
                 )?;
             }
             Ok(())
@@ -71,12 +69,9 @@ pub fn run_validate(provider: &Arc<dyn VolumeProvider>, out: &Output, target: &s
     let t = crate::target::Target::classify(target);
     let bytes = t.read_bytes(provider.as_ref())?;
     let parsed = yoke_config::parse(&bytes)?;
-    out.emit(
-        &serde_json::json!({
-            "warnings": parsed.warnings.iter().map(|w| format!("{w:?}")).collect::<Vec<_>>(),
-        }),
-        |w| writeln!(w, "ok ({} warnings)", parsed.warnings.len()),
-    )
+    out.emit(&serde_json::json!({ "warnings": &parsed.warnings }), |w| {
+        writeln!(w, "ok ({} warnings)", parsed.warnings.len())
+    })
 }
 
 pub fn run_pull(
@@ -169,7 +164,10 @@ pub fn run_delete(
 ) -> Result<()> {
     let pn = ProfileName::new(name)?;
     if !force {
-        anyhow::bail!("refusing to delete {} without --force", pn.stem());
+        return Err(crate::error::CliError::RequiresForce {
+            name: pn.stem().to_string(),
+        }
+        .into());
     }
     provider.delete_profile(&pn)?;
     out.emit(&serde_json::json!({"deleted": pn.stem()}), |w| {
