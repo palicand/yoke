@@ -1,0 +1,17 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+assertion_line: 28
+expression: v
+---
+{
+  "device": {
+    "kind": "Present",
+    "label": "[REDACTED]",
+    "mount_point": "[REDACTED]",
+    "vid_pid": {
+      "product": 0,
+      "vendor": 0
+    }
+  },
+  "profiles": []
+}

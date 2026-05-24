@@ -1,16 +1,21 @@
 pub mod backend;
 pub mod cli;
+pub mod commands;
 pub mod error;
 pub mod output;
-pub mod runtime;
 pub mod target;
 
 use clap::Parser;
+use cli::{CatalogCmd, Commands, SubprofileCmd};
 
 /// Process-level entry point. Calls `std::process::exit`.
 pub fn entry() -> ! {
     let cli = cli::Cli::parse();
-    let out = output::Output::from_flags(cli.json, cli.no_color);
+    if cli.no_color {
+        console::set_colors_enabled(false);
+        console::set_colors_enabled_stderr(false);
+    }
+    let out = output::Output::from_flags(cli.json);
     init_tracing(cli.verbose);
     let code = match run(cli, &out) {
         Ok(()) => 0,
@@ -23,10 +28,114 @@ pub fn entry() -> ! {
     std::process::exit(code);
 }
 
-#[allow(clippy::needless_pass_by_value)]
-pub fn run(cli: cli::Cli, _out: &output::Output) -> anyhow::Result<()> {
-    let _provider = backend::open(cli.fake_volume)?;
-    anyhow::bail!("not implemented yet")
+#[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
+pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
+    let cli::Cli {
+        fake_volume,
+        command,
+        ..
+    } = cli;
+    match command {
+        Commands::Catalog { cmd } => match cmd {
+            CatalogCmd::Inputs => commands::catalog::run_inputs(out),
+            CatalogCmd::Outputs => commands::catalog::run_outputs(out),
+            CatalogCmd::Preferences => commands::catalog::run_preferences(out),
+            CatalogCmd::Modes => commands::catalog::run_modes(out),
+            CatalogCmd::Channels => commands::catalog::run_channels(out),
+        },
+        other => run_with_volume(out, &backend::open(fake_volume)?, other),
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+fn run_with_volume(
+    out: &output::Output,
+    provider: &std::sync::Arc<dyn yoke_volume::VolumeProvider>,
+    command: Commands,
+) -> anyhow::Result<()> {
+    match command {
+        Commands::Device => commands::device::run_device(provider, out),
+        Commands::Debug => commands::device::run_debug(provider, out),
+        Commands::List => commands::profile::run_list(provider, out),
+        Commands::Show { target, raw } => commands::profile::run_show(provider, out, &target, raw),
+        Commands::Validate { target } => commands::profile::run_validate(provider, out, &target),
+        Commands::Pull { name, dest } => commands::profile::run_pull(provider, out, &name, dest),
+        Commands::Push {
+            src,
+            name,
+            validate,
+        } => commands::profile::run_push(provider, out, &src, name.as_deref(), validate),
+        Commands::Copy { from, to } => commands::profile::run_copy(provider, out, &from, &to),
+        Commands::Rename { from, to } => commands::profile::run_rename(provider, out, &from, &to),
+        Commands::Delete { name, force } => {
+            commands::profile::run_delete(provider, out, &name, force)
+        }
+        Commands::SetTitle { target, title } => {
+            commands::edit::run_set_title(provider, out, &target, &title)
+        }
+        Commands::SetPreference { target, key, value } => {
+            commands::edit::run_set_preference(provider, out, &target, &key, &value)
+        }
+        Commands::UnsetPreference { target, key } => {
+            commands::edit::run_unset_preference(provider, out, &target, &key)
+        }
+        Commands::SetOverride {
+            target,
+            sub_profile,
+            key,
+            value,
+        } => commands::edit::run_set_override(provider, out, &target, &sub_profile, &key, &value),
+        Commands::UnsetOverride {
+            target,
+            sub_profile,
+            key,
+        } => commands::edit::run_unset_override(provider, out, &target, &sub_profile, &key),
+        Commands::SetBinding {
+            target,
+            sub_profile,
+            input,
+            output: output_s,
+        } => {
+            commands::edit::run_set_binding(provider, out, &target, &sub_profile, &input, &output_s)
+        }
+        Commands::ClearBinding {
+            target,
+            sub_profile,
+            input,
+        } => commands::edit::run_clear_binding(provider, out, &target, &sub_profile, &input),
+        Commands::Apply {
+            target,
+            edits,
+            dry_run,
+        } => commands::apply::run(provider, out, &target, &edits, dry_run),
+        Commands::Subprofile { cmd } => match cmd {
+            SubprofileCmd::Add {
+                target,
+                name,
+                mode,
+                channel,
+                sub_mode,
+            } => commands::subprofile::run_add(
+                provider,
+                out,
+                &target,
+                &name,
+                &mode,
+                &channel,
+                sub_mode.as_deref(),
+            ),
+            SubprofileCmd::Delete { target, name } => {
+                commands::subprofile::run_delete(provider, out, &target, &name)
+            }
+            SubprofileCmd::Rename { target, from, to } => {
+                commands::subprofile::run_rename(provider, out, &target, &from, &to)
+            }
+            SubprofileCmd::Clone { target, from, to } => {
+                commands::subprofile::run_clone(provider, out, &target, &from, &to)
+            }
+        },
+        _ => anyhow::bail!("not implemented yet"),
+    }
 }
 
 pub fn init_tracing(verbose: u8) {

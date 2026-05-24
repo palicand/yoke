@@ -37,8 +37,6 @@ pub enum Commands {
     Pull {
         name: String,
         dest: Option<PathBuf>,
-        #[arg(long)]
-        raw: bool,
     },
     Push {
         src: PathBuf,

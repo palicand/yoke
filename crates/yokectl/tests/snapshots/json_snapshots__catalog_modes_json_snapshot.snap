@@ -1,0 +1,14 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+expression: v
+---
+{
+  "modes": [
+    "Mouse",
+    "Mouse Scroll",
+    "Left Analog",
+    "Right Analog",
+    "Mixed Analog",
+    "D-Pad"
+  ]
+}

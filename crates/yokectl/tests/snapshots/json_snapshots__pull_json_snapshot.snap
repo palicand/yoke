@@ -1,0 +1,10 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+assertion_line: 80
+expression: v
+---
+{
+  "bytes": 81,
+  "dest": "[REDACTED]",
+  "pulled": "default"
+}

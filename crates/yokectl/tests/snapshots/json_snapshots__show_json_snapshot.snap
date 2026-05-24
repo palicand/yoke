@@ -1,0 +1,18 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+assertion_line: 47
+expression: v
+---
+{
+  "preferences": 0,
+  "sub_profiles": [
+    {
+      "bindings": 1,
+      "channel": "usb",
+      "mode": "Mouse",
+      "name": "Main",
+      "overrides": 0
+    }
+  ],
+  "title": "Default"
+}

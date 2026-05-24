@@ -11,7 +11,7 @@ pub struct Output {
 }
 
 impl Output {
-    pub const fn from_flags(json: bool, _no_color: bool) -> Self {
+    pub const fn from_flags(json: bool) -> Self {
         let format = if json {
             OutputFormat::Json
         } else {

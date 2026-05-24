@@ -1,4 +1,5 @@
 use anyhow::Error;
+use thiserror::Error;
 
 pub struct ExitInfo {
     pub code: i32,
@@ -6,8 +7,29 @@ pub struct ExitInfo {
     pub details: serde_json::Value,
 }
 
+/// User-input policy errors raised by the CLI itself.
+///
+/// Distinct from library-side errors so they can be mapped to exit 2 (usage) and
+/// keep "internal" (exit 1) for genuinely unexpected failures.
+#[derive(Debug, Error)]
+pub enum CliError {
+    #[error("refusing to delete {name} without --force")]
+    RequiresForce { name: String },
+    #[error("--edits - and target - both consume stdin; pick one")]
+    StdinConflict,
+    #[error("unknown sub-profile mode: {value}")]
+    UnknownMode { value: String },
+    #[error("unknown channel: {value}")]
+    UnknownChannel { value: String },
+    #[error("malformed edits file: {message}")]
+    MalformedEdits { message: String },
+}
+
 pub fn classify(err: &Error) -> ExitInfo {
     for cause in err.chain() {
+        if let Some(ce) = cause.downcast_ref::<CliError>() {
+            return classify_cli(ce);
+        }
         if let Some(ve) = cause.downcast_ref::<yoke_volume::error::VolumeError>() {
             return classify_volume(ve);
         }
@@ -32,6 +54,33 @@ pub fn classify(err: &Error) -> ExitInfo {
         code: 1,
         envelope_code: "internal".into(),
         details: serde_json::json!({"message": err.to_string()}),
+    }
+}
+
+fn classify_cli(err: &CliError) -> ExitInfo {
+    let (code, envelope_code, details) = match err {
+        CliError::RequiresForce { name } => {
+            (2, "cli-requires-force", serde_json::json!({"name": name}))
+        }
+        CliError::StdinConflict => (2, "cli-stdin-conflict", serde_json::json!({})),
+        CliError::UnknownMode { value } => {
+            (2, "cli-unknown-mode", serde_json::json!({"value": value}))
+        }
+        CliError::UnknownChannel { value } => (
+            2,
+            "cli-unknown-channel",
+            serde_json::json!({"value": value}),
+        ),
+        CliError::MalformedEdits { message } => (
+            4,
+            "cli-malformed-edits",
+            serde_json::json!({"message": message}),
+        ),
+    };
+    ExitInfo {
+        code,
+        envelope_code: envelope_code.into(),
+        details,
     }
 }
 

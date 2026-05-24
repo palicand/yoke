@@ -1,0 +1,7 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+expression: v
+---
+{
+  "warnings": []
+}
