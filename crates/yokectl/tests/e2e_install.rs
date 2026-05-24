@@ -1,11 +1,9 @@
-use assert_cmd::Command;
+mod common;
+
+use common::yokectl;
 use tempfile::tempdir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-fn yokectl() -> Command {
-    Command::cargo_bin("yokectl").unwrap()
-}
 
 const FIXTURE: &str =
     "QuadStick Configuration,Version 1.4,Mock,Destiny 2,,\n,,,,\n*Main,sip_puff,,A,inputs\n";
@@ -32,11 +30,13 @@ async fn install_list_show_set_binding_pull_diff() {
     let cache_dir = tempdir().unwrap();
     let index_url = format!("{}/index.csv", server.uri());
 
-    // Isolated XDG_CACHE_HOME keeps the index cache out of the user's home and avoids
-    // a hot cache from a prior run masking the wiremock fetch.
+    // YOKECTL_CACHE_DIR is what IndexClient::new actually honors; XDG_CACHE_HOME
+    // is ignored on macOS where directories::ProjectDirs routes to
+    // ~/Library/Caches/. Pointing the cache at a fresh tempdir per test keeps
+    // the install index hermetic.
     yokectl()
         .env("YOKECTL_INDEX_URL", &index_url)
-        .env("XDG_CACHE_HOME", cache_dir.path())
+        .env("YOKECTL_CACHE_DIR", cache_dir.path())
         .args(["--fake-volume", vol, "install", "Destiny 2"])
         .assert()
         .success();
@@ -52,7 +52,10 @@ async fn install_list_show_set_binding_pull_diff() {
         .assert()
         .success();
 
-    let dest = dir.path().join("pulled.csv");
+    // A separate tempdir for the pull destination keeps the volume root clean
+    // — pulling into the volume itself would leave a non-.csv side file there.
+    let pull_dir = tempdir().unwrap();
+    let dest = pull_dir.path().join("pulled.csv");
     yokectl()
         .args([
             "--fake-volume",

@@ -4,9 +4,18 @@
 
 use assert_cmd::Command;
 
+/// `assert_cmd::Command` with the install-stack env vars pre-scrubbed.
+///
+/// `YOKECTL_INDEX_URL` and `YOKECTL_CACHE_DIR` are inherited from the
+/// developer's shell otherwise: a stale URL would silently redirect a test
+/// to the real community sheet, and a stale cache dir lets one test's
+/// fixture surface in another.
 #[must_use]
 pub fn yokectl() -> Command {
-    Command::cargo_bin("yokectl").unwrap()
+    let mut cmd = Command::cargo_bin("yokectl").unwrap();
+    cmd.env_remove("YOKECTL_INDEX_URL")
+        .env_remove("YOKECTL_CACHE_DIR");
+    cmd
 }
 
 pub fn seed_profile(dir: &std::path::Path, name: &str, body: &str) {

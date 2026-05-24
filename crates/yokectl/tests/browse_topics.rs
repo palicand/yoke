@@ -1,10 +1,8 @@
-use assert_cmd::Command;
+mod common;
+
+use common::yokectl;
 use predicates::prelude::*;
 use serde_json::Value;
-
-fn yokectl() -> Command {
-    Command::cargo_bin("yokectl").unwrap()
-}
 
 fn run_json(args: &[&str]) -> Value {
     let out = yokectl().args(args).assert().success().get_output().clone();
@@ -70,6 +68,16 @@ fn manual_list_returns_root_and_topics() {
             "bad url: {url}"
         );
     }
+}
+
+#[test]
+fn manual_no_topic_human_mode_prints_listing() {
+    yokectl()
+        .args(["manual"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("preferences"))
+        .stdout(predicate::str::contains("configuration"));
 }
 
 #[test]
