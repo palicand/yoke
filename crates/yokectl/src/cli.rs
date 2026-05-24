@@ -111,6 +111,8 @@ pub enum Commands {
         dry_run: bool,
         #[arg(long)]
         no_validate: bool,
+        #[arg(long)]
+        force: bool,
     },
     Index {
         #[command(subcommand)]

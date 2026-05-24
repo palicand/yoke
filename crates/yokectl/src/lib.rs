@@ -123,6 +123,7 @@ fn run_with_volume(
             as_name,
             dry_run,
             no_validate,
+            force,
         } => commands::install::run(
             provider,
             out,
@@ -130,6 +131,7 @@ fn run_with_volume(
             as_name.as_deref(),
             dry_run,
             no_validate,
+            force,
         ),
         Commands::Subprofile { cmd } => match cmd {
             SubprofileCmd::Add {

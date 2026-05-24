@@ -49,15 +49,6 @@ pub fn classify(err: &Error) -> ExitInfo {
         if let Some(ie) = cause.downcast_ref::<yoke_index::IndexError>() {
             return classify_index(ie);
         }
-        // Malformed --edits JSON should surface as a parse error, not a generic
-        // internal exit code.
-        if cause.downcast_ref::<serde_json::Error>().is_some() {
-            return ExitInfo {
-                code: 4,
-                envelope_code: "parse-error".into(),
-                details: serde_json::json!({"message": cause.to_string()}),
-            };
-        }
     }
     ExitInfo {
         code: 1,

@@ -22,12 +22,14 @@ clap_complete = "4.6.5"
 clap_mangen = "0.3.0"
 console = "0.16.3"
 opener = "0.8.4"
+percent-encoding = "2.3.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["rt", "macros", "sync", "fs"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter"] }
+url = "2.5.8"
 yoke-config = { version = "0.1.0", path = "../yoke-config" }
 yoke-edit = { version = "0.1.0", path = "../yoke-edit" }
 yoke-index = { version = "0.1.0", path = "../yoke-index" }

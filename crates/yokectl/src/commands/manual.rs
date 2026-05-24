@@ -26,8 +26,11 @@ const MANUAL_TOPICS: &[(&str, &str)] = &[
 
 pub fn run(out: &Output, topic: Option<&str>) -> Result<()> {
     match topic {
-        None if out.is_json() => emit_listing(out),
-        None => open_or_emit(out, &json!({ "url": root_url() }), &root_url()),
+        // No slug → the listing is the discoverable surface in both formats.
+        // Launching a browser without a slug would hide the topic list from
+        // human-mode users and the listing's stable URLs from script-mode
+        // users.
+        None => emit_listing(out),
         Some(slug) => {
             let filename = MANUAL_TOPICS
                 .iter()
@@ -40,11 +43,24 @@ pub fn run(out: &Output, topic: Option<&str>) -> Result<()> {
 }
 
 fn emit_listing(out: &Output) -> Result<()> {
-    let topics: Vec<_> = MANUAL_TOPICS
+    let topics: Vec<(&'static str, String)> = MANUAL_TOPICS
         .iter()
-        .map(|(slug, file)| json!({ "slug": slug, "url": format!("{MANUAL_ROOT}{file}") }))
+        .map(|(slug, file)| (*slug, format!("{MANUAL_ROOT}{file}")))
         .collect();
-    out.emit(&json!({ "root": root_url(), "topics": topics }), |_| Ok(()))
+    let json_topics: Vec<_> = topics
+        .iter()
+        .map(|(slug, url)| json!({ "slug": slug, "url": url }))
+        .collect();
+    out.emit(
+        &json!({ "root": root_url(), "topics": json_topics }),
+        |w| {
+            use std::io::Write;
+            for (slug, url) in &topics {
+                writeln!(w, "{slug:24}  {url}")?;
+            }
+            Ok(())
+        },
+    )
 }
 
 fn root_url() -> String {
