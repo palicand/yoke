@@ -43,7 +43,10 @@ mod tests {
     }
 
     fn token_after_e(url: &Url) -> String {
-        let segments: Vec<&str> = url.path_segments().map(Iterator::collect).unwrap_or_default();
+        let segments: Vec<&str> = url
+            .path_segments()
+            .map(Iterator::collect)
+            .unwrap_or_default();
         let i = segments
             .iter()
             .position(|s| *s == "e")

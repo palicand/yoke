@@ -209,7 +209,10 @@ mod tests {
 
     #[test]
     fn sanitize_replaces_fat_illegal_chars() {
-        assert_eq!(sanitize_for_profile_name("Half-Life: Alyx"), "half-life_alyx");
+        assert_eq!(
+            sanitize_for_profile_name("Half-Life: Alyx"),
+            "half-life_alyx"
+        );
         assert_eq!(sanitize_for_profile_name("a/b"), "a_b");
         assert_eq!(sanitize_for_profile_name("a\\b"), "a_b");
         assert_eq!(sanitize_for_profile_name("a<b>c"), "a_b_c");

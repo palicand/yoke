@@ -131,7 +131,8 @@ mod tests {
     #[test]
     fn url_derivation_falls_back_when_basename_is_sheets_verb() {
         for verb in ["pub", "pubhtml", "edit", "export"] {
-            let src = ProfileSource::Url(Url::parse(&format!("https://docs.google.com/{verb}")).unwrap());
+            let src =
+                ProfileSource::Url(Url::parse(&format!("https://docs.google.com/{verb}")).unwrap());
             assert_eq!(derive_name(&src), "profile", "verb {verb}");
         }
     }

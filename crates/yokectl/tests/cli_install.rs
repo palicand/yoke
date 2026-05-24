@@ -147,10 +147,10 @@ async fn install_bare_name_does_not_shadow_with_cwd_file() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/index.csv"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-            "Name,CSV URL\nDestiny 2,{}/d2.csv\n",
-            server.uri()
-        )))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(format!("Name,CSV URL\nDestiny 2,{}/d2.csv\n", server.uri())),
+        )
         .mount(&server)
         .await;
     Mock::given(method("GET"))
