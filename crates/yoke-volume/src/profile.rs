@@ -19,6 +19,55 @@ pub struct ProfileEntry {
     pub modified: SystemTime,
 }
 
+/// Coerce a free-form string into a token that `ProfileName::new` will always
+/// accept.
+///
+/// The transform is lossy by design: callers reach for it after the user has
+/// expressed intent via a bare name (`Half-Life: Alyx`, an URL basename with
+/// percent-encoded spaces, a community-index title), so the result is a
+/// best-effort filesystem-safe stem rather than a round-trip. The rules
+/// stay aligned with `ProfileName::new` so the two cannot drift: anything
+/// `ProfileName::new` rejects, this function replaces. If the entire input
+/// collapses to nothing usable, the helper returns `"profile"` instead of
+/// failing so the caller can still produce a default filename and surface
+/// the collision via the existence check.
+#[must_use]
+pub fn sanitize_for_profile_name(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        let bad = ch.is_whitespace()
+            || ch.is_control()
+            || matches!(
+                ch,
+                '/' | '\\' | '\0' | ':' | '<' | '>' | '|' | '?' | '*' | '"'
+            );
+        if bad {
+            out.push('_');
+        } else {
+            out.extend(ch.to_lowercase());
+        }
+    }
+    // Collapse runs of '_' so `"a / b"` doesn't become `"a___b"`.
+    let mut collapsed = String::with_capacity(out.len());
+    let mut prev_underscore = false;
+    for ch in out.chars() {
+        if ch == '_' {
+            if !prev_underscore {
+                collapsed.push('_');
+            }
+            prev_underscore = true;
+        } else {
+            collapsed.push(ch);
+            prev_underscore = false;
+        }
+    }
+    let trimmed = collapsed.trim_matches('_').to_string();
+    if trimmed.is_empty() {
+        return "profile".into();
+    }
+    trimmed
+}
+
 impl ProfileName {
     pub fn new(raw: &str) -> Result<Self, VolumeError> {
         let stem =
@@ -150,6 +199,51 @@ mod tests {
         ));
         let max = "a".repeat(64);
         assert!(ProfileName::new(&max).is_ok());
+    }
+
+    #[test]
+    fn sanitize_lowercases_and_replaces_whitespace() {
+        assert_eq!(sanitize_for_profile_name("Destiny 2"), "destiny_2");
+        assert_eq!(sanitize_for_profile_name("My\tProfile"), "my_profile");
+    }
+
+    #[test]
+    fn sanitize_replaces_fat_illegal_chars() {
+        assert_eq!(
+            sanitize_for_profile_name("Half-Life: Alyx"),
+            "half-life_alyx"
+        );
+        assert_eq!(sanitize_for_profile_name("a/b"), "a_b");
+        assert_eq!(sanitize_for_profile_name("a\\b"), "a_b");
+        assert_eq!(sanitize_for_profile_name("a<b>c"), "a_b_c");
+        assert_eq!(sanitize_for_profile_name("a|b?c*d\"e"), "a_b_c_d_e");
+    }
+
+    #[test]
+    fn sanitize_collapses_runs_and_trims() {
+        assert_eq!(sanitize_for_profile_name("a   b"), "a_b");
+        assert_eq!(sanitize_for_profile_name("  spaced  "), "spaced");
+        assert_eq!(sanitize_for_profile_name("___"), "profile");
+    }
+
+    #[test]
+    fn sanitize_falls_back_to_profile_when_empty() {
+        assert_eq!(sanitize_for_profile_name(""), "profile");
+        assert_eq!(sanitize_for_profile_name("///"), "profile");
+    }
+
+    #[test]
+    fn sanitize_output_is_accepted_by_profile_name_new() {
+        for raw in [
+            "Destiny 2",
+            "Half-Life: Alyx",
+            "  spaced  ",
+            "My\tProfile",
+            "a/b\\c:d<e>f|g?h*i\"j",
+        ] {
+            let s = sanitize_for_profile_name(raw);
+            ProfileName::new(&s).unwrap_or_else(|e| panic!("rejected {s:?}: {e:?}"));
+        }
     }
 
     #[test]

@@ -111,6 +111,8 @@ pub enum Commands {
         dry_run: bool,
         #[arg(long)]
         no_validate: bool,
+        #[arg(long)]
+        force: bool,
     },
     Index {
         #[command(subcommand)]
@@ -122,6 +124,12 @@ pub enum Commands {
     },
     Completions {
         shell: clap_complete::Shell,
+    },
+    Manual {
+        topic: Option<String>,
+    },
+    Topic {
+        name: Option<String>,
     },
 }
 
@@ -166,6 +174,8 @@ pub enum IndexCmd {
         name: String,
     },
     Update,
+    #[command(about = "Open the community index sheet in the default browser")]
+    Browse,
 }
 
 #[derive(Subcommand, Debug)]

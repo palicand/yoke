@@ -42,9 +42,12 @@ pub fn to_csv_export(url: &Url) -> Result<Url, IndexError> {
             return Url::parse(&out).map_err(|e| IndexError::InvalidUrl(e.to_string()));
         }
     }
-    Err(IndexError::InvalidUrl(format!(
-        "unrecognized Google Sheets URL: {url}"
-    )))
+    // Unknown docs.google.com path shapes (e.g. `/uc?id=...` direct downloads)
+    // pass through unchanged; the HTTP fetch then either returns the bytes
+    // verbatim or surfaces a meaningful status. Returning an error here would
+    // block legitimate Google-hosted CSV URLs that don't live under
+    // /spreadsheets/d/.
+    Ok(url.clone())
 }
 
 #[cfg(test)]
@@ -86,6 +89,13 @@ mod tests {
     #[test]
     fn non_google_url_passes_through() {
         let inp = u("https://example.org/foo.csv");
+        let out = to_csv_export(&inp).unwrap();
+        assert_eq!(out, inp);
+    }
+
+    #[test]
+    fn unrecognized_google_url_passes_through() {
+        let inp = u("https://docs.google.com/uc?id=ABC&export=download");
         let out = to_csv_export(&inp).unwrap();
         assert_eq!(out, inp);
     }

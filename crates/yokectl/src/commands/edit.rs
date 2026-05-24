@@ -33,7 +33,12 @@ pub fn load_apply_save(
     // add/delete sub-profile ops change the section count, so fall back to canonical.
     let out_bytes = match yoke_config::write(&updated, Some(&parsed.raw)) {
         Ok(b) => b,
-        Err(yoke_config::WriteError::InvariantViolation(_)) => yoke_config::write(&updated, None)?,
+        Err(yoke_config::WriteError::InvariantViolation(_)) => {
+            tracing::warn!(
+                "template invalidated by structural edit; falling back to canonical layout"
+            );
+            yoke_config::write(&updated, None)?
+        }
     };
     target.write_bytes(provider, &out_bytes)?;
     Ok(())
