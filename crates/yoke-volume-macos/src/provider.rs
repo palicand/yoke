@@ -521,6 +521,10 @@ impl VolumeProvider for MacOsVolumeProvider {
         self.require_present(|root| io::read_profile(root, name))
     }
 
+    fn profile_exists(&self, name: &ProfileName) -> Result<bool, VolumeError> {
+        self.require_present(|root| Ok(root.join(name.as_filename()).try_exists()?))
+    }
+
     fn write_profile(&self, name: &ProfileName, bytes: &[u8]) -> Result<(), VolumeError> {
         self.require_present(|root| io::write_profile(root, name, bytes))
     }

@@ -114,6 +114,10 @@ impl VolumeProvider for FsBackend {
         self.require_present(|root| io::read_profile(root, name))
     }
 
+    fn profile_exists(&self, name: &ProfileName) -> Result<bool, VolumeError> {
+        self.require_present(|root| Ok(root.join(name.as_filename()).try_exists()?))
+    }
+
     fn write_profile(&self, name: &ProfileName, bytes: &[u8]) -> Result<(), VolumeError> {
         self.require_present(|root| io::write_profile(root, name, bytes))
     }
@@ -197,6 +201,26 @@ mod tests {
         ));
         assert!(matches!(
             backend.rename_profile(&pname("x"), &pname("y")),
+            Err(VolumeError::NotPresent)
+        ));
+    }
+
+    #[test]
+    fn profile_exists_reports_presence() {
+        let dir = tempdir().unwrap();
+        let backend = FsBackend::new(dir.path().to_path_buf());
+        assert!(!backend.profile_exists(&pname("absent")).unwrap());
+        backend.write_profile(&pname("present"), b"x").unwrap();
+        assert!(backend.profile_exists(&pname("present")).unwrap());
+    }
+
+    #[test]
+    fn profile_exists_errors_when_absent() {
+        let missing = std::env::temp_dir().join("does-not-exist-yoke-test-pexists");
+        let _ = std::fs::remove_dir_all(&missing);
+        let backend = FsBackend::new(missing);
+        assert!(matches!(
+            backend.profile_exists(&pname("x")),
             Err(VolumeError::NotPresent)
         ));
     }
