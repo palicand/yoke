@@ -81,23 +81,51 @@ impl IndexClient {
     pub async fn fetch_profile(&self, src: ProfileSource) -> Result<Vec<u8>, IndexError> {
         match src {
             ProfileSource::LocalPath(p) => Ok(tokio::fs::read(p).await?),
-            ProfileSource::Url(u) => self.fetch_url(&to_csv_export(&u)?).await,
+            ProfileSource::Url(u) => fetch_url_with(&self.http, &to_csv_export(&u)?).await,
             ProfileSource::IndexEntry(name) => {
                 let entry = self.resolve(&name).await?;
-                self.fetch_url(&to_csv_export(&entry.csv_url)?).await
+                fetch_url_with(&self.http, &to_csv_export(&entry.csv_url)?).await
             }
         }
     }
 
     async fn fetch_url(&self, url: &Url) -> Result<Vec<u8>, IndexError> {
-        let resp = self.http.get(url.clone()).send().await?;
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(IndexError::FetchFailed {
-                url: url.clone(),
-                status: status.as_u16(),
-            });
+        fetch_url_with(&self.http, url).await
+    }
+}
+
+fn http_client() -> Result<reqwest::Client, IndexError> {
+    Ok(reqwest::Client::builder()
+        .user_agent(concat!("yokectl/", env!("CARGO_PKG_VERSION")))
+        .build()?)
+}
+
+async fn fetch_url_with(http: &reqwest::Client, url: &Url) -> Result<Vec<u8>, IndexError> {
+    let resp = http.get(url.clone()).send().await?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(IndexError::FetchFailed {
+            url: url.clone(),
+            status: status.as_u16(),
+        });
+    }
+    Ok(resp.bytes().await?.to_vec())
+}
+
+/// Fetch profile bytes for `src` without forcing a cache directory.
+///
+/// Only `IndexEntry` constructs an `IndexClient` (and therefore only that arm
+/// needs `YOKECTL_CACHE_DIR` / `directories::ProjectDirs`). `LocalPath` reads
+/// the file directly; `Url` runs a single anonymous HTTP GET. Tests can use
+/// `IndexClient::new` directly when they want the cached / index-resolving
+/// path.
+pub async fn fetch_profile_bytes(src: ProfileSource) -> Result<Vec<u8>, IndexError> {
+    match src {
+        ProfileSource::LocalPath(p) => Ok(tokio::fs::read(p).await?),
+        ProfileSource::Url(u) => {
+            let http = http_client()?;
+            fetch_url_with(&http, &to_csv_export(&u)?).await
         }
-        Ok(resp.bytes().await?.to_vec())
+        ProfileSource::IndexEntry(_) => IndexClient::new()?.fetch_profile(src).await,
     }
 }
