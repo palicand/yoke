@@ -1,3 +1,5 @@
+pub mod backend;
+
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 
