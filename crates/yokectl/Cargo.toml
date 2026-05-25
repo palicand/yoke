@@ -38,6 +38,7 @@ yoke-volume = { version = "0.1.0", path = "../yoke-volume" }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
+proptest = "1.6.0"
 insta = { version = "1.47.2", features = ["json", "redactions"] }
 predicates = "3.1.4"
 tempfile = "3.27.0"
