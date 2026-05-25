@@ -1,0 +1,33 @@
+[package]
+name = "yoke-tauri"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Tauri 2 desktop shell hosting the Yoke Leptos UI."
+
+[lints]
+workspace = true
+
+[features]
+default = []
+fake-volume = []
+
+[dependencies]
+anyhow = "1.0.102"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+tauri = "2"
+tauri-plugin-dialog = "2"
+tokio = { version = "1.52.3", features = ["sync", "rt-multi-thread", "macros"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+yoke-config = { version = "0.1.0", path = "../yoke-config" }
+yoke-index = { version = "0.1.0", path = "../yoke-index" }
+yoke-ipc = { version = "0.1.0", path = "../yoke-ipc" }
+yoke-volume = { version = "0.1.0", path = "../yoke-volume" }
+
+[build-dependencies]
+tauri-build = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+yoke-volume-macos = { version = "0.1.0", path = "../yoke-volume-macos" }

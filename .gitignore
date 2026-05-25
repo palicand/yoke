@@ -6,6 +6,9 @@
 /dist/
 **/dist/
 
+# Tauri build-time generated artifacts (schemas, capabilities).
+crates/yoke-tauri/gen/
+
 # Nix
 result
 result-*
