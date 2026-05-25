@@ -10,6 +10,8 @@
 //! for sized type erasure. Implementations whose state lives behind `Arc` can
 //! clone the `Arc` into the future to produce a `'static` future when needed.
 
+pub mod mock;
+
 use std::path::PathBuf;
 use std::pin::Pin;
 
@@ -17,37 +19,23 @@ use futures::Stream;
 use yoke_ipc::{BackendError, CommunityEntry, DeviceProfileEntry, Profile, VolumePresence};
 
 pub type BackendResult<T> = Result<T, BackendError>;
-pub type VolumeStream = Pin<Box<dyn Stream<Item = VolumePresence>>>;
+pub type VolumeStream = Pin<Box<dyn Stream<Item = VolumePresence> + Send>>;
+pub type BackendFuture<'a, T> = Pin<Box<dyn Future<Output = BackendResult<T>> + Send + 'a>>;
 
-pub trait Backend {
-    fn volume_state(&self) -> Pin<Box<dyn Future<Output = BackendResult<VolumePresence>> + '_>>;
+pub trait Backend: Send + Sync {
+    fn volume_state(&self) -> BackendFuture<'_, VolumePresence>;
 
     fn watch_volume_state(&self) -> VolumeStream;
 
-    fn list_device_profiles(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = BackendResult<Vec<DeviceProfileEntry>>> + '_>>;
+    fn list_device_profiles(&self) -> BackendFuture<'_, Vec<DeviceProfileEntry>>;
 
-    fn read_device_profile(
-        &self,
-        name: String,
-    ) -> Pin<Box<dyn Future<Output = BackendResult<Profile>> + '_>>;
+    fn read_device_profile(&self, name: String) -> BackendFuture<'_, Profile>;
 
-    fn pick_file_dialog(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = BackendResult<Option<PathBuf>>> + '_>>;
+    fn pick_file_dialog(&self) -> BackendFuture<'_, Option<PathBuf>>;
 
-    fn read_file_profile(
-        &self,
-        path: PathBuf,
-    ) -> Pin<Box<dyn Future<Output = BackendResult<Profile>> + '_>>;
+    fn read_file_profile(&self, path: PathBuf) -> BackendFuture<'_, Profile>;
 
-    fn list_community_profiles(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = BackendResult<Vec<CommunityEntry>>> + '_>>;
+    fn list_community_profiles(&self) -> BackendFuture<'_, Vec<CommunityEntry>>;
 
-    fn fetch_community_profile(
-        &self,
-        url: String,
-    ) -> Pin<Box<dyn Future<Output = BackendResult<Profile>> + '_>>;
+    fn fetch_community_profile(&self, url: String) -> BackendFuture<'_, Profile>;
 }
