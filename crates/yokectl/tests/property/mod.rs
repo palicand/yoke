@@ -23,7 +23,7 @@ pub fn dispatch_in_process(cli: Cli, provider: Arc<dyn VolumeProvider>) -> Captu
     let stderr_writer: Box<dyn Write + Send> = Box::new(InspectableBuffer::default());
     let out = Output::with_writers(cli.json, stdout_writer, stderr_writer);
     let _ = (provider, &out, cli, stdout_buf, stderr_buf);
-    todo!("complete in Task 21")
+    todo!()
 }
 
 #[derive(Default)]
