@@ -1,4 +1,5 @@
 pub mod backend;
+pub mod components;
 pub mod effects;
 pub mod state;
 
@@ -49,5 +50,9 @@ fn App() -> impl IntoView {
     effects::spawn_community_fetch(&state);
     provide_context(state);
     let mode = if detect_tauri() { "tauri" } else { "mock" };
-    view! { <div class="qs-app">{format!("Yoke UI ({mode} backend)")}</div> }
+    view! {
+        <components::app_shell::AppShell>
+            <div class="qs-main">{format!("main column placeholder ({mode} backend)")}</div>
+        </components::app_shell::AppShell>
+    }
 }
