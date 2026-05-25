@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::too_many_lines)]
 
 use std::io::Write;
 use std::sync::Arc;
@@ -189,9 +189,13 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         .iter()
         .map(|s| s.id.to_string())
         .collect();
+    let modes: Vec<SubProfileMode> = SubProfileMode::KNOWN.to_vec();
+    let channels: Vec<Channel> = Channel::ALL.to_vec();
     let input_strat = prop::sample::select(inputs);
     let output_strat = prop::sample::select(outputs);
     let pref_key_strat = prop::sample::select(pref_keys);
+    let mode_strat = prop::sample::select(modes);
+    let channel_strat = prop::sample::select(channels);
     let pref_value = prop_oneof![
         Just(PreferenceValue::Bool(true)),
         Just(PreferenceValue::Bool(false)),
@@ -199,15 +203,115 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         "[a-zA-Z]{1,8}".prop_map(PreferenceValue::Text),
     ];
 
-    prop_oneof![
-        (name_or_unknown.clone(), input_strat, output_strat).prop_map(|(t, i, o)| {
-            Action::SetBinding {
-                target: t,
+    // EditOp strategy for Apply
+    let edit_input_strat =
+        prop::sample::select(yoke_config::catalog::Input::all_csv_names().collect::<Vec<_>>());
+    let edit_output_strat =
+        prop::sample::select(yoke_config::catalog::Output::all_csv_names().collect::<Vec<_>>());
+    let edit_pref_key_strat = prop::sample::select(
+        yoke_config::catalog::PreferenceSpec::ALL
+            .iter()
+            .map(|s| s.id.to_string())
+            .collect::<Vec<_>>(),
+    );
+    let edit_pref_value = prop_oneof![
+        Just(PreferenceValue::Bool(true)),
+        Just(PreferenceValue::Bool(false)),
+        (0i64..=100).prop_map(PreferenceValue::Number),
+        "[a-zA-Z]{1,8}".prop_map(PreferenceValue::Text),
+    ];
+    let edit_op_strat = prop_oneof![
+        "[a-zA-Z]{1,8}".prop_map(|title| EditOp::SetTitle { title }),
+        (edit_pref_key_strat.clone(), edit_pref_value.clone())
+            .prop_map(|(key, value)| EditOp::SetPreference { key, value }),
+        edit_pref_key_strat
+            .clone()
+            .prop_map(|key| EditOp::UnsetPreference { key }),
+        (edit_input_strat.clone(), edit_output_strat).prop_map(|(input, output)| {
+            EditOp::SetBinding {
                 sub_profile: "Main".into(),
-                input: i,
-                output: o,
+                input,
+                output,
             }
         }),
+        edit_input_strat.prop_map(|input| EditOp::ClearBinding {
+            sub_profile: "Main".into(),
+            input,
+        }),
+        (edit_pref_key_strat.clone(), edit_pref_value.clone()).prop_map(|(key, value)| {
+            EditOp::SetOverride {
+                sub_profile: "Main".into(),
+                key,
+                value,
+            }
+        }),
+        edit_pref_key_strat.prop_map(|key| EditOp::UnsetOverride {
+            sub_profile: "Main".into(),
+            key,
+        }),
+        "[a-zA-Z]{1,8}".prop_map(|name| EditOp::DeleteSubProfile { name }),
+        ("[a-zA-Z]{1,8}", "[a-zA-Z]{1,8}")
+            .prop_map(|(from, to)| EditOp::RenameSubProfile { from, to }),
+        ("[a-zA-Z]{1,8}", "[a-zA-Z]{1,8}")
+            .prop_map(|(from, to)| EditOp::CloneSubProfile { from, to }),
+    ];
+
+    let push_bytes = Just(
+        b"QuadStick Configuration,Version 1.4,Mock,PushTest\r\n,,,\r\n*Main,sip_puff,,A\r\n"
+            .to_vec(),
+    );
+
+    prop_oneof![
+        // --- read-only / catalog ---
+        Just(Action::List),
+        Just(Action::Device),
+        Just(Action::CatalogInputs),
+        Just(Action::CatalogOutputs),
+        Just(Action::CatalogPreferences),
+        Just(Action::CatalogModes),
+        Just(Action::CatalogChannels),
+        // --- profile read ---
+        name_or_unknown.clone().prop_map(|t| Action::Show {
+            target: t,
+            raw: false
+        }),
+        name_or_unknown.clone().prop_map(|t| Action::Show {
+            target: t,
+            raw: true
+        }),
+        name_or_unknown
+            .clone()
+            .prop_map(|t| Action::Validate { target: t }),
+        name_or_unknown.clone().prop_map(|t| Action::Bindings {
+            target: t,
+            sub_profile: None
+        }),
+        name_or_unknown.clone().prop_map(|t| Action::Preferences {
+            target: t,
+            sub_profile: None,
+            raw: false
+        }),
+        name_or_unknown.clone().prop_map(|t| Action::Preferences {
+            target: t,
+            sub_profile: None,
+            raw: true
+        }),
+        // --- profile write ---
+        name_or_unknown
+            .clone()
+            .prop_map(|name| Action::Pull { name }),
+        (name_or_unknown.clone(), push_bytes)
+            .prop_map(|(name, bytes)| Action::Push { name, bytes }),
+        (name_or_unknown.clone(), name_or_unknown.clone())
+            .prop_map(|(from, to)| Action::Copy { from, to }),
+        (name_or_unknown.clone(), name_or_unknown.clone())
+            .prop_map(|(from, to)| Action::Rename { from, to }),
+        name_or_unknown
+            .clone()
+            .prop_map(|name| Action::Delete { name, force: true }),
+        // --- edit single-op ---
+        (name_or_unknown.clone(), "[a-zA-Z]{1,8}")
+            .prop_map(|(t, title)| Action::SetTitle { target: t, title }),
         (
             name_or_unknown.clone(),
             pref_key_strat.clone(),
@@ -218,25 +322,102 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
                 key: k,
                 value: v
             }),
-        (name_or_unknown.clone(), pref_key_strat)
+        (name_or_unknown.clone(), pref_key_strat.clone())
             .prop_map(|(t, k)| Action::UnsetPreference { target: t, key: k }),
-        Just(Action::List),
-        Just(Action::CatalogInputs),
-        Just(Action::CatalogChannels),
-        name_or_unknown.clone().prop_map(|t| Action::Show {
-            target: t,
-            raw: false
+        (name_or_unknown.clone(), input_strat, output_strat).prop_map(|(t, i, o)| {
+            Action::SetBinding {
+                target: t,
+                sub_profile: "Main".into(),
+                input: i,
+                output: o,
+            }
         }),
-        name_or_unknown.clone().prop_map(|t| Action::Bindings {
+        (
+            name_or_unknown.clone(),
+            prop::sample::select(yoke_config::catalog::Input::all_csv_names().collect::<Vec<_>>())
+        )
+            .prop_map(|(t, i)| Action::ClearBinding {
+                target: t,
+                sub_profile: "Main".into(),
+                input: i
+            }),
+        (
+            name_or_unknown.clone(),
+            pref_key_strat.clone(),
+            pref_value.clone()
+        )
+            .prop_map(|(t, k, v)| Action::SetOverride {
+                target: t,
+                sub_profile: "Main".into(),
+                key: k,
+                value: v
+            }),
+        (name_or_unknown.clone(), pref_key_strat).prop_map(|(t, k)| Action::UnsetOverride {
             target: t,
-            sub_profile: None
+            sub_profile: "Main".into(),
+            key: k
         }),
-        name_or_unknown.prop_map(|t| Action::Preferences {
-            target: t,
-            sub_profile: None,
-            raw: false
+        // --- sub-profile management ---
+        (
+            name_or_unknown.clone(),
+            "[a-zA-Z]{1,8}",
+            mode_strat,
+            channel_strat
+        )
+            .prop_map(|(t, name, mode, channel)| Action::AddSubProfile {
+                target: t,
+                name,
+                mode,
+                channel,
+                sub_mode: None,
+            }),
+        (name_or_unknown.clone(), "[a-zA-Z]{1,8}")
+            .prop_map(|(t, name)| Action::DeleteSubProfile { target: t, name }),
+        (name_or_unknown.clone(), "[a-zA-Z]{1,8}", "[a-zA-Z]{1,8}").prop_map(|(t, from, to)| {
+            Action::RenameSubProfile {
+                target: t,
+                from,
+                to,
+            }
+        }),
+        (name_or_unknown.clone(), "[a-zA-Z]{1,8}", "[a-zA-Z]{1,8}").prop_map(|(t, from, to)| {
+            Action::CloneSubProfile {
+                target: t,
+                from,
+                to,
+            }
+        }),
+        // --- batch apply ---
+        (
+            name_or_unknown.clone(),
+            prop::collection::vec(edit_op_strat, 1..4)
+        )
+            .prop_map(|(t, ops)| Action::Apply { target: t, ops }),
+        // --- install (local path only to avoid network) ---
+        name_or_unknown.prop_map(|source| Action::Install {
+            source: ProfileSource::IndexEntry(source),
         }),
     ]
+}
+
+fn pref_value_to_string(v: &PreferenceValue) -> String {
+    match v {
+        PreferenceValue::Bool(b) => b.to_string(),
+        PreferenceValue::Number(n) => n.to_string(),
+        PreferenceValue::Text(s) => s.clone(),
+    }
+}
+
+fn uuid_like(bytes: &[u8]) -> String {
+    let mut h: u64 = 0;
+    for b in bytes {
+        h = h.wrapping_mul(31).wrapping_add(u64::from(*b));
+    }
+    format!("{h:x}")
+}
+
+fn uuid_like_str(s: &str) -> String {
+    uuid_like(s.as_bytes())
 }
 
 pub fn action_to_cli(action: &Action, base: &Cli) -> Cli {
@@ -278,19 +459,153 @@ pub fn action_to_cli(action: &Action, base: &Cli) -> Cli {
             input: input.clone(),
             output: output.clone(),
         },
+        Action::ClearBinding {
+            target,
+            sub_profile,
+            input,
+        } => Commands::ClearBinding {
+            target: target.clone(),
+            sub_profile: sub_profile.clone(),
+            input: input.clone(),
+        },
         Action::SetPreference { target, key, value } => Commands::SetPreference {
             target: target.clone(),
             key: key.clone(),
-            value: match value {
-                PreferenceValue::Bool(b) => b.to_string(),
-                PreferenceValue::Number(n) => n.to_string(),
-                PreferenceValue::Text(s) => s.clone(),
-            },
+            value: pref_value_to_string(value),
         },
         Action::UnsetPreference { target, key } => Commands::UnsetPreference {
             target: target.clone(),
             key: key.clone(),
         },
+        Action::SetOverride {
+            target,
+            sub_profile,
+            key,
+            value,
+        } => Commands::SetOverride {
+            target: target.clone(),
+            sub_profile: sub_profile.clone(),
+            key: key.clone(),
+            value: pref_value_to_string(value),
+        },
+        Action::UnsetOverride {
+            target,
+            sub_profile,
+            key,
+        } => Commands::UnsetOverride {
+            target: target.clone(),
+            sub_profile: sub_profile.clone(),
+            key: key.clone(),
+        },
+        Action::SetTitle { target, title } => Commands::SetTitle {
+            target: target.clone(),
+            title: title.clone(),
+        },
+        Action::Pull { name } => Commands::Pull {
+            name: name.clone(),
+            dest: None,
+        },
+        Action::Push { name, bytes } => {
+            let mut key = name.as_bytes().to_vec();
+            key.extend_from_slice(bytes);
+            let path = std::env::temp_dir().join(format!("yokectl-prop-{}.csv", uuid_like(&key)));
+            let _ = std::fs::write(&path, bytes);
+            Commands::Push {
+                src: path,
+                name: Some(name.clone()),
+                validate: false,
+            }
+        }
+        Action::Copy { from, to } => Commands::Copy {
+            from: from.clone(),
+            to: to.clone(),
+        },
+        Action::Rename { from, to } => Commands::Rename {
+            from: from.clone(),
+            to: to.clone(),
+        },
+        Action::Delete { name, force } => Commands::Delete {
+            name: name.clone(),
+            force: *force,
+        },
+        Action::AddSubProfile {
+            target,
+            name,
+            mode,
+            channel,
+            sub_mode,
+        } => Commands::Subprofile {
+            cmd: yokectl::cli::SubprofileCmd::Add {
+                target: target.clone(),
+                name: name.clone(),
+                mode: mode.canonical_csv(),
+                channel: channel.canonical_csv().to_string(),
+                sub_mode: sub_mode.clone(),
+            },
+        },
+        Action::DeleteSubProfile { target, name } => Commands::Subprofile {
+            cmd: yokectl::cli::SubprofileCmd::Delete {
+                target: target.clone(),
+                name: name.clone(),
+            },
+        },
+        Action::RenameSubProfile { target, from, to } => Commands::Subprofile {
+            cmd: yokectl::cli::SubprofileCmd::Rename {
+                target: target.clone(),
+                from: from.clone(),
+                to: to.clone(),
+            },
+        },
+        Action::CloneSubProfile { target, from, to } => Commands::Subprofile {
+            cmd: yokectl::cli::SubprofileCmd::Clone {
+                target: target.clone(),
+                from: from.clone(),
+                to: to.clone(),
+            },
+        },
+        Action::Apply { target, ops } => {
+            let doc = serde_json::json!({ "edits": ops });
+            let content = doc.to_string();
+            let mut key = target.as_bytes().to_vec();
+            key.extend_from_slice(content.as_bytes());
+            let hash = uuid_like(&key);
+            let path = std::env::temp_dir().join(format!("yokectl-edits-{hash}.json"));
+            let _ = std::fs::write(&path, &content);
+            Commands::Apply {
+                target: target.clone(),
+                edits: path,
+                dry_run: false,
+            }
+        }
+        Action::Install { source } => {
+            // Materialise a temp file for all Install variants so the harness
+            // never reaches the network. LocalPath is passed through; IndexEntry
+            // and Url are redirected to a known-good local CSV identified by a
+            // hash of the source description.
+            let src_str = match source {
+                ProfileSource::LocalPath(p) => p.to_string_lossy().into_owned(),
+                ProfileSource::IndexEntry(n) => n.clone(),
+                ProfileSource::Url(u) => u.to_string(),
+            };
+            let path = if let ProfileSource::LocalPath(p) = source {
+                p.clone()
+            } else {
+                let tmp = std::env::temp_dir()
+                    .join(format!("yokectl-install-{}.csv", uuid_like_str(&src_str)));
+                let _ = std::fs::write(
+                    &tmp,
+                    b"QuadStick Configuration,Version 1.4,Mock,Install\r\n,,,\r\n*Main,sip_puff,,A\r\n",
+                );
+                tmp
+            };
+            Commands::Install {
+                source: path.to_string_lossy().into_owned(),
+                as_name: None,
+                dry_run: true,
+                no_validate: true,
+                force: false,
+            }
+        }
         Action::CatalogInputs => Commands::Catalog {
             cmd: yokectl::cli::CatalogCmd::Inputs,
         },
@@ -306,7 +621,6 @@ pub fn action_to_cli(action: &Action, base: &Cli) -> Cli {
         Action::CatalogChannels => Commands::Catalog {
             cmd: yokectl::cli::CatalogCmd::Channels,
         },
-        other => panic!("action_to_cli: variant not yet mapped: {other:?}"),
     };
     cli
 }
