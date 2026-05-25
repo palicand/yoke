@@ -32,13 +32,27 @@ pub fn entry() -> ! {
     std::process::exit(code);
 }
 
-#[allow(clippy::too_many_lines)]
 pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
-    let cli::Cli {
-        fake_volume,
-        command,
-        ..
-    } = cli;
+    let provider = match &cli.command {
+        Commands::Completions { .. }
+        | Commands::Docs { .. }
+        | Commands::Manual { .. }
+        | Commands::Topic { .. }
+        | Commands::Index { .. }
+        | Commands::Catalog { .. } => dummy_provider(),
+        _ => backend::open(cli.fake_volume.clone())?,
+    };
+    run_with_provider(cli, out, &provider)
+}
+
+/// Public entry for in-process callers (tests, GUIs) that already have a provider.
+#[allow(clippy::too_many_lines)]
+pub fn run_with_provider(
+    cli: cli::Cli,
+    out: &output::Output,
+    provider: &std::sync::Arc<dyn yoke_volume::VolumeProvider>,
+) -> anyhow::Result<()> {
+    let cli::Cli { command, .. } = cli;
     match command {
         Commands::Completions { shell } => commands::completions::run(shell),
         Commands::Docs {
@@ -61,8 +75,14 @@ pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
             CatalogCmd::Modes => commands::catalog::run_modes(out),
             CatalogCmd::Channels => commands::catalog::run_channels(out),
         },
-        other => run_with_volume(out, &backend::open(fake_volume)?, other),
+        other => run_with_volume(out, provider, other),
     }
+}
+
+fn dummy_provider() -> std::sync::Arc<dyn yoke_volume::VolumeProvider> {
+    let dir = std::env::temp_dir().join("yokectl-dummy-noop");
+    let _ = std::fs::create_dir_all(&dir);
+    std::sync::Arc::new(yoke_volume::fs_backend::FsBackend::new(dir))
 }
 
 #[allow(clippy::too_many_lines)]

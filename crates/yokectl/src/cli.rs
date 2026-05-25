@@ -14,7 +14,7 @@ pub enum DocsFormat {
     Md,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(name = "yokectl", version, about)]
 pub struct Cli {
     #[arg(
@@ -47,7 +47,7 @@ pub struct Cli {
     pub command: Commands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
     #[command(about = "Print the current MountState: VID/PID, location-ID, mode hint, mount point")]
     Device,
@@ -291,7 +291,7 @@ pub enum Commands {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum SubprofileCmd {
     #[command(about = "Add a sub-profile")]
     Add {
@@ -333,7 +333,7 @@ pub enum SubprofileCmd {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum IndexCmd {
     #[command(about = "List the cached community index as a table")]
     List {
@@ -356,7 +356,7 @@ pub enum IndexCmd {
     Browse,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CatalogCmd {
     #[command(about = "List valid input phrases")]
     Inputs,
