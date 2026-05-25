@@ -21,6 +21,7 @@ tauri-plugin-dialog = "2"
 tokio = { version = "1.52.3", features = ["sync", "rt-multi-thread", "macros"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+url = "2.5.8"
 yoke-config = { version = "0.1.0", path = "../yoke-config" }
 yoke-index = { version = "0.1.0", path = "../yoke-index" }
 yoke-ipc = { version = "0.1.0", path = "../yoke-ipc" }

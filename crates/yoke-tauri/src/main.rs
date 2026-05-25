@@ -22,11 +22,17 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState { volume })
+        .manage(
+            commands::community::CommunityState::new()
+                .expect("failed to initialize community client"),
+        )
         .invoke_handler(tauri::generate_handler![
             commands::volume::volume_state,
             commands::profiles::list_device_profiles,
             commands::profiles::read_device_profile,
             commands::profiles::read_file_profile,
+            commands::community::list_community_profiles,
+            commands::community::fetch_community_profile,
         ])
         .setup(move |app| {
             volume_watch::spawn(app.handle().clone(), &volume_for_setup);
