@@ -52,7 +52,6 @@ fn emit_listing(out: &Output) -> Result<()> {
         .map(|(slug, url)| json!({ "slug": slug, "url": url }))
         .collect();
     out.emit(&json!({ "root": root_url(), "topics": json_topics }), |w| {
-        use std::io::Write;
         for (slug, url) in &topics {
             writeln!(w, "{slug:24}  {url}")?;
         }

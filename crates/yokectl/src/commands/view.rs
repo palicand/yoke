@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::io::Write;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
