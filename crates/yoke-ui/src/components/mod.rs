@@ -1,4 +1,6 @@
 pub mod app_shell;
+pub mod binding_row;
+pub mod bindings_panel;
 pub mod device_map;
 pub mod editor_header;
 pub mod left_rail;
