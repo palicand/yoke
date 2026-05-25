@@ -7,17 +7,9 @@ pub mod views;
 use std::sync::Arc;
 
 use leptos::prelude::*;
-use wasm_bindgen::prelude::*;
 
 use backend::{Backend, mock::MockBackend};
 use state::AppState;
-
-#[wasm_bindgen(start)]
-pub fn start() {
-    console_error_panic_hook::set_once();
-    tracing_wasm::set_as_global_default();
-    leptos::mount::mount_to_body(App);
-}
 
 #[cfg(target_arch = "wasm32")]
 fn make_backend() -> Arc<dyn Backend> {
@@ -34,7 +26,7 @@ fn make_backend() -> Arc<dyn Backend> {
 }
 
 #[component]
-fn App() -> impl IntoView {
+pub fn App() -> impl IntoView {
     let backend: Arc<dyn Backend> = make_backend();
     let state = AppState::new(backend);
     effects::spawn_volume_subscription(&state);
