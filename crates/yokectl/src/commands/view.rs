@@ -1,5 +1,12 @@
+use std::io::Write;
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
 use yoke_config::catalog::Input;
 use yoke_config::model::Profile;
+use yoke_volume::VolumeProvider;
+
+use crate::output::Output;
 
 /// One sub-profile worth of bindings, ready to render.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +52,55 @@ pub fn group_bindings(profile: &Profile) -> Vec<GroupedSubProfile<'_>> {
             }
         })
         .collect()
+}
+
+pub fn run_bindings(
+    provider: &Arc<dyn VolumeProvider>,
+    out: &Output,
+    target: &str,
+    sub_profile: Option<&str>,
+) -> Result<()> {
+    let t = crate::target::Target::classify(target);
+    let bytes = t.read_bytes(provider.as_ref())?;
+    let parsed = yoke_config::parse(&bytes).context("parsing profile")?;
+    let mut groups = group_bindings(&parsed.model);
+    if let Some(filter) = sub_profile {
+        if !groups.iter().any(|g| g.name == filter) {
+            return Err(anyhow::Error::from(yoke_edit::EditError::SubProfileNotFound {
+                name: filter.to_string(),
+            }));
+        }
+        groups.retain(|g| g.name == filter);
+    }
+    out.emit(
+        &serde_json::json!({
+            "sub_profiles": groups.iter().map(|g| serde_json::json!({
+                "name": g.name,
+                "mode": g.mode,
+                "channel": g.channel,
+                "sub_mode": if g.sub_mode.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(g.sub_mode.to_string()) },
+                "bindings": g.bindings.iter().map(|b| serde_json::json!({
+                    "input": b.input, "output": b.output,
+                })).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
+        }),
+        |w| {
+            for (i, g) in groups.iter().enumerate() {
+                if i > 0 {
+                    writeln!(w)?;
+                }
+                writeln!(w, "{} (mode={} channel={})", g.name, g.mode, g.channel)?;
+                if g.bindings.is_empty() {
+                    writeln!(w, "  (no bindings)")?;
+                } else {
+                    for b in &g.bindings {
+                        writeln!(w, "  {:<15} -> {}", b.input, b.output)?;
+                    }
+                }
+            }
+            Ok(())
+        },
+    )
 }
 
 #[cfg(test)]
