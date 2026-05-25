@@ -49,6 +49,19 @@ jobs:
         if: ${{ hashFiles('crates/yoke-edit/Cargo.toml') != '' }}
         run: nix develop --command cargo build -p yoke-edit --target wasm32-unknown-unknown
 
+      - name: cargo build --target wasm32-unknown-unknown (yoke-ui)
+        if: ${{ hashFiles('crates/yoke-ui/Cargo.toml') != '' }}
+        run: nix develop --command cargo build -p yoke-ui --target wasm32-unknown-unknown
+
+      - name: trunk build --release (yoke-ui)
+        if: ${{ hashFiles('crates/yoke-ui/Cargo.toml') != '' }}
+        working-directory: crates/yoke-ui
+        run: nix develop --command trunk build --release
+
+      - name: cargo tauri build --no-bundle
+        if: ${{ hashFiles('crates/yoke-tauri/Cargo.toml') != '' }}
+        run: nix develop --command cargo tauri build --no-bundle
+
       - name: verify completions generate
         if: ${{ hashFiles('crates/yokectl/Cargo.toml') != '' }}
         run: |
