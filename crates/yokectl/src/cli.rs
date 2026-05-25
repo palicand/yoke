@@ -73,7 +73,10 @@ pub enum Commands {
         target: String,
         #[arg(long, help = "Restrict output to a single sub-profile by name")]
         sub_profile: Option<String>,
-        #[arg(long, help = "Show layered view: top-level + per-sub-profile overrides, no resolution")]
+        #[arg(
+            long,
+            help = "Show layered view: top-level + per-sub-profile overrides, no resolution"
+        )]
         raw: bool,
     },
     #[command(about = "Copy a volume-backed profile to a local path")]
