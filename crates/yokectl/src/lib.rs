@@ -124,9 +124,10 @@ fn run_with_volume(
             edits,
             dry_run,
         } => commands::apply::run(provider, out, &target, &edits, dry_run),
-        Commands::Bindings { target, sub_profile } => {
-            commands::view::run_bindings(provider, out, &target, sub_profile.as_deref())
-        }
+        Commands::Bindings {
+            target,
+            sub_profile,
+        } => commands::view::run_bindings(provider, out, &target, sub_profile.as_deref()),
         Commands::Install {
             source,
             as_name,

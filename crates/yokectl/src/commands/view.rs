@@ -66,9 +66,11 @@ pub fn run_bindings(
     let mut groups = group_bindings(&parsed.model);
     if let Some(filter) = sub_profile {
         if !groups.iter().any(|g| g.name == filter) {
-            return Err(anyhow::Error::from(yoke_edit::EditError::SubProfileNotFound {
-                name: filter.to_string(),
-            }));
+            return Err(anyhow::Error::from(
+                yoke_edit::EditError::SubProfileNotFound {
+                    name: filter.to_string(),
+                },
+            ));
         }
         groups.retain(|g| g.name == filter);
     }

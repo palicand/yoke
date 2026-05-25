@@ -1,5 +1,5 @@
 mod common;
-use common::{seed_profile, yokectl, FIXTURE_WITH_SUB};
+use common::{FIXTURE_WITH_SUB, seed_profile, yokectl};
 use tempfile::tempdir;
 
 #[test]
