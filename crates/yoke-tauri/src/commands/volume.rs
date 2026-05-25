@@ -85,4 +85,43 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn mode_hint_label_covers_all_variants() {
+        for (hint, expected) in [
+            (ModeHint::Ps4OrHori, "Ps4OrHori"),
+            (ModeHint::MassStorageDisabled, "MassStorageDisabled"),
+            (ModeHint::Emulation, "Emulation"),
+        ] {
+            let s = MountState::DeviceVisibleNoVolume {
+                vid_pid: VidPid {
+                    vendor: 0x16D0,
+                    product: 0x092B,
+                },
+                mode_hint: Some(hint),
+            };
+            assert_eq!(
+                presence_from(&s),
+                VolumePresence::DeviceVisibleNoVolume {
+                    mode_hint: Some(expected.into()),
+                },
+                "mode_hint_label mismatch for {hint:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn device_visible_without_hint_maps_to_none() {
+        let s = MountState::DeviceVisibleNoVolume {
+            vid_pid: VidPid {
+                vendor: 0x16D0,
+                product: 0x092B,
+            },
+            mode_hint: None,
+        };
+        assert_eq!(
+            presence_from(&s),
+            VolumePresence::DeviceVisibleNoVolume { mode_hint: None },
+        );
+    }
 }
