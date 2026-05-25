@@ -45,7 +45,7 @@ fn App() -> impl IntoView {
         <components::app_shell::AppShell>
             <Show
                 when=move || open.get().is_none()
-                fallback=|| view! { <p>"Editor placeholder (Task 19)"</p> }
+                fallback=|| view! { <views::editor::EditorView/> }
             >
                 <views::library::LibraryView/>
             </Show>
