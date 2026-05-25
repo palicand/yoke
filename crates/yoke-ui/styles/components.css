@@ -6,21 +6,14 @@
 
 /* Chrome ------------------------------------------------------------- */
 .qs-chrome {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
+  justify-content: flex-end;
   align-items: center;
   padding: 8px 16px;
   background: var(--bg-0);
   border-bottom: 1px solid var(--line);
 }
-.qs-lights { display: flex; gap: 8px; }
-.qs-light { width: 12px; height: 12px; border-radius: 50%; }
-.qs-light-r { background: #ff5f57; }
-.qs-light-y { background: #febc2e; }
-.qs-light-g { background: #28c840; }
-.qs-title { font-family: var(--font-mono); color: var(--ink-2); font-size: 12px; }
 .qs-pill {
-  justify-self: end;
   display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 10px;
   border-radius: 999px;
@@ -33,6 +26,7 @@
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--accent);
 }
+.qs-pill-warning .qs-pill-dot { background: #febc2e; }
 .qs-pill-disconnected .qs-pill-dot { background: var(--ink-3); }
 
 /* Shell -------------------------------------------------------------- */
