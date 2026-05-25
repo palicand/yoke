@@ -1,0 +1,43 @@
+:root,
+[data-theme="console"] {
+  --bg-0: #0A0B0D;
+  --bg-1: #14161A;
+  --bg-2: #1B1E23;
+  --bg-3: #20242A;
+  --bg-4: #2A2F36;
+  --bg-binding: #20242A;
+
+  --ink-1: #E8E6E0;
+  --ink-2: #9AA0A8;
+  --ink-3: #5E646C;
+
+  --line: #2A2F36;
+  --line-strong: #3B4148;
+
+  --accent:    oklch(0.78 0.16 145);
+  --accent-2:  oklch(0.32 0.06 145);
+
+  --ac-blue:   oklch(0.78 0.13 248);
+  --ac-amber:  oklch(0.82 0.14 75);
+  --ac-green:  oklch(0.80 0.13 145);
+  --ac-violet: oklch(0.74 0.16 295);
+  --ac-pink:   oklch(0.78 0.16 12);
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+
+  --font-sans: 'Manrope', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-display: 'Instrument Serif', ui-serif, serif;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-1);
+  color: var(--ink-1);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
