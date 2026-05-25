@@ -5,10 +5,13 @@
 //! `state.device_profiles` in sync with the backend's volume-state stream;
 //! [`spawn_community_fetch`] is a one-shot loader for the community catalog.
 
+use std::sync::Arc;
+
 use futures::StreamExt;
 use leptos::prelude::*;
-use yoke_ipc::VolumePresence;
+use yoke_ipc::{DeviceProfileEntry, VolumePresence};
 
+use crate::backend::Backend;
 use crate::state::AppState;
 
 /// Subscribes to the backend volume-state stream and mirrors changes into
@@ -20,18 +23,36 @@ pub fn spawn_volume_subscription(state: &AppState) {
     let device_profiles = state.device_profiles;
 
     leptos::task::spawn_local(async move {
+        // The host emits an initial volume event from its `setup` callback,
+        // but that fires before the webview attaches a listener — so the
+        // first event is lost and subsequent USB polls only publish on
+        // change. Pull the current state explicitly so the UI matches
+        // reality on first paint regardless of timing.
+        if let Ok(initial) = backend.volume_state().await {
+            apply(&backend, volume, device_profiles, initial).await;
+        }
+
         let mut stream = backend.watch_volume_state();
         while let Some(p) = stream.next().await {
-            volume.set(p.clone());
-            if matches!(p, VolumePresence::Present { .. }) {
-                if let Ok(entries) = backend.list_device_profiles().await {
-                    device_profiles.set(entries);
-                }
-            } else {
-                device_profiles.set(Vec::new());
-            }
+            apply(&backend, volume, device_profiles, p).await;
         }
     });
+}
+
+async fn apply(
+    backend: &Arc<dyn Backend>,
+    volume: RwSignal<VolumePresence>,
+    device_profiles: RwSignal<Vec<DeviceProfileEntry>>,
+    p: VolumePresence,
+) {
+    volume.set(p.clone());
+    if matches!(p, VolumePresence::Present { .. }) {
+        if let Ok(entries) = backend.list_device_profiles().await {
+            device_profiles.set(entries);
+        }
+    } else {
+        device_profiles.set(Vec::new());
+    }
 }
 
 /// Loads the community profile catalog once at boot.
