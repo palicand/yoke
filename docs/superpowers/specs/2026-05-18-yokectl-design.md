@@ -749,7 +749,7 @@ This sub-project is done when:
 - **H — Windows port:** `yoke-volume-windows` lands; `yokectl`'s `cfg(target_os = "windows")` arm of `backend::open` is wired up.
 - **I — Live device push** replaces volume-only writes with HID commands where possible; `install` learns to push live when the device is in HID mode.
 - **J — Firmware flashing.** Stays out, as planned. Lives behind `yoke-firmware` once `yoke-device` is `confirmed(…)` on every relevant fact.
-- **K — Distribution / packaging.** Homebrew tap, MSI installer, signed binaries, completion-script installers. Man pages from `clap_mangen` ship here.
+- **K — Distribution / packaging.** Homebrew tap, MSI installer, signed binaries, completion-script installers. Man-page and markdown artifacts are produced by `yokectl docs` (see [2026-05-19-yokectl-docs-addendum.md](./2026-05-19-yokectl-docs-addendum.md)); K installs them to platform-appropriate locations and ships richer HTML if needed (e.g., `mandoc -Thtml` over the man pages).
 - **Dynamic completion** of profile names and catalog values. Hidden `--complete <shell> <args>...` command that the static scripts call back into.
 
 ## Forward references

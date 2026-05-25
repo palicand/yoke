@@ -62,6 +62,29 @@ async fn fetch_profile_by_index_entry_chains_two_gets() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn resolve_is_unicode_case_insensitive() {
+    let server = MockServer::start().await;
+    let dir = tempdir().unwrap();
+    let body = format!("Name,CSV URL\nCafé Racer,{}/cafe.csv\n", server.uri());
+    Mock::given(method("GET"))
+        .and(path("/index.csv"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/cafe.csv"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(PROFILE_CSV))
+        .mount(&server)
+        .await;
+    let c = client_against(&server, dir.path());
+    let bytes = c
+        .fetch_profile(ProfileSource::IndexEntry("café racer".into()))
+        .await
+        .unwrap();
+    assert_eq!(bytes, PROFILE_CSV.as_bytes());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn fetch_profile_local_path_skips_network() {
     let server = MockServer::start().await;
     let dir = tempdir().unwrap();
@@ -70,6 +93,26 @@ async fn fetch_profile_local_path_skips_network() {
     let c = client_against(&server, dir.path());
     let bytes = c.fetch_profile(ProfileSource::LocalPath(p)).await.unwrap();
     assert_eq!(bytes, PROFILE_CSV.as_bytes());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn fetch_returns_html_yields_html_response_error() {
+    let server = MockServer::start().await;
+    let dir = tempdir().unwrap();
+    Mock::given(method("GET"))
+        .and(path("/index.csv"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_raw("<html><body>nope</body></html>", "text/html; charset=utf-8"),
+        )
+        .mount(&server)
+        .await;
+    let c = client_against(&server, dir.path());
+    let err = c.list(true).await.unwrap_err();
+    assert!(
+        matches!(err, yoke_index::IndexError::HtmlResponse { .. }),
+        "expected HtmlResponse, got: {err:?}"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -95,6 +138,7 @@ async fn real_community_index_fetches() {
     let dir = tempdir().unwrap();
     let c = IndexClient::new()
         .unwrap()
+        .with_index_url(yoke_index::COMMUNITY_INDEX_URL)
         .with_cache(dir.path().join("idx.csv"), Duration::from_mins(1));
     let listing = c.list(true).await.expect("network fetch failed");
     assert!(!listing.entries.is_empty(), "index empty");

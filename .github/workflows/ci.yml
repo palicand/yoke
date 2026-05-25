@@ -49,6 +49,22 @@ jobs:
         if: ${{ hashFiles('crates/yoke-edit/Cargo.toml') != '' }}
         run: nix develop --command cargo build -p yoke-edit --target wasm32-unknown-unknown
 
+      - name: verify completions generate
+        if: ${{ hashFiles('crates/yokectl/Cargo.toml') != '' }}
+        run: |
+          for shell in bash zsh fish powershell elvish; do
+            nix develop --command cargo run -p yokectl -- completions "$shell" > /dev/null
+          done
+
+      - name: verify docs generate (man + markdown)
+        if: ${{ hashFiles('crates/yokectl/Cargo.toml') != '' }}
+        run: |
+          mkdir -p target/ci-docs
+          nix develop --command cargo run --quiet -p yokectl -- docs --format man --out target/ci-docs
+          nix develop --command cargo run --quiet -p yokectl -- docs --format md  --out target/ci-docs
+          test -s target/ci-docs/man/yokectl.1
+          test -s target/ci-docs/markdown/yokectl.md
+
       # Main-only: PRs from forks/contributors should not trigger live network
       # access without consent, and Google Sheets uptime is the only thing that
       # can flake this step.

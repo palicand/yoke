@@ -9,14 +9,17 @@ argument looks like:
    its CSV-export form via the table in `yoke-index::url_transform`; an
    unrecognized `docs.google.com` path (e.g. `/uc?id=...`) passes through
    unchanged.
-2. Otherwise, if the argument is path-like — absolute, starts with `./` or
-   `../`, or contains `/` or `\` — the source is treated as a local file
-   regardless of whether it currently exists. The bytes are read directly,
-   parsed (unless `--no-validate`), and written to the volume.
-3. Otherwise (a bare token like `Destiny 2`), the argument is treated as a
-   community-index name even if a cwd file happens to share the name. The
-   index is resolved (using the cached community sheet, refreshing if stale)
-   and the entry's underlying CSV URL is fetched.
+2. Otherwise, if the argument is path-like — absolute or starts with `./`,
+   `../`, `.\`, or `..\` — the source is treated as a local file regardless
+   of whether it currently exists. The bytes are read directly, parsed
+   (unless `--no-validate`), and written to the volume.
+3. Otherwise (a bare token like `Destiny 2` or a community-index name
+   containing `/` like `Star Wars: Jedi/Survivor`), the argument is treated
+   as a community-index name even if a cwd file happens to share the name.
+   To force a relative path that contains no leading `./`, prefix it
+   explicitly (e.g. `./sub/dir/profile.csv`). The index is resolved (using
+   the cached community sheet, refreshing if stale) and the entry's
+   underlying CSV URL is fetched.
 
 This means the same command serves three different intents:
 

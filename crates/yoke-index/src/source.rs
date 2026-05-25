@@ -33,8 +33,6 @@ fn is_path_like(raw: &str) -> bool {
         || raw.starts_with("../")
         || raw.starts_with(r".\")
         || raw.starts_with(r"..\")
-        || raw.contains('/')
-        || raw.contains('\\')
 }
 
 #[cfg(test)]
@@ -62,9 +60,15 @@ mod tests {
     }
 
     #[test]
-    fn embedded_slash_classifies_as_local() {
+    fn embedded_slash_without_prefix_classifies_as_index_entry() {
         let s = ProfileSource::classify("sub/dir/profile.csv").unwrap();
-        assert!(matches!(s, ProfileSource::LocalPath(_)));
+        assert!(matches!(s, ProfileSource::IndexEntry(_)));
+    }
+
+    #[test]
+    fn index_entry_with_slash_in_name() {
+        let s = ProfileSource::classify("Star Wars: Jedi/Survivor").unwrap();
+        assert!(matches!(s, ProfileSource::IndexEntry(_)));
     }
 
     #[test]

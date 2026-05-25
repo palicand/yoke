@@ -21,14 +21,14 @@ pub fn run(
     force: bool,
 ) -> Result<()> {
     let src = ProfileSource::classify(source).context("classify source")?;
-    let bytes = runtime::block_on(yoke_index::fetch_profile_bytes(src.clone()))?;
+    let dest_name = as_name.map_or_else(|| derive_name(&src), str::to_string);
+    let pn = ProfileName::new(&dest_name)?;
+    let bytes = runtime::block_on(yoke_index::fetch_profile_bytes(src))?;
     if no_validate {
         tracing::warn!("--no-validate: skipping profile schema parse before write");
     } else {
         yoke_config::parse(&bytes).context("validate fetched profile")?;
     }
-    let dest_name = as_name.map_or_else(|| derive_name(&src), str::to_string);
-    let pn = ProfileName::new(&dest_name)?;
     if dry_run {
         return out.emit(
             &serde_json::json!({

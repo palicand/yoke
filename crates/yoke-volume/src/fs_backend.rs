@@ -91,6 +91,10 @@ impl FsBackend {
     pub fn simulate_event(&self, event: MountEvent) {
         let _ = self.inner.event_tx.send(event);
     }
+
+    pub fn event_subscriber_count(&self) -> usize {
+        self.inner.event_tx.receiver_count()
+    }
 }
 
 impl VolumeProvider for FsBackend {

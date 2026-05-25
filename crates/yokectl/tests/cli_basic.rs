@@ -158,7 +158,7 @@ fn copy_then_rename_then_delete() {
 }
 
 #[test]
-fn delete_without_force_fails_even_in_json_mode() {
+fn delete_in_json_mode_implies_force() {
     let dir = tempdir().unwrap();
     seed_profile(dir.path(), "default.csv", FIXTURE);
     yokectl()
@@ -170,8 +170,8 @@ fn delete_without_force_fails_even_in_json_mode() {
             "default",
         ])
         .assert()
-        .failure();
-    assert!(dir.path().join("default.csv").exists());
+        .success();
+    assert!(!dir.path().join("default.csv").exists());
 }
 
 #[test]
@@ -311,6 +311,42 @@ fn catalog_channels_lists_usb() {
         .assert()
         .success()
         .stdout(predicates::str::contains("usb"));
+}
+
+#[test]
+fn completions_bash_emits_function() {
+    yokectl()
+        .args(["completions", "bash"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("_yokectl()"));
+}
+
+#[test]
+fn completions_fish_emits_complete() {
+    yokectl()
+        .args(["completions", "fish"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("complete -c yokectl"));
+}
+
+#[test]
+fn completions_zsh_emits_compdef() {
+    yokectl()
+        .args(["completions", "zsh"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("#compdef yokectl"));
+}
+
+#[test]
+fn completions_powershell_emits_register() {
+    yokectl()
+        .args(["completions", "powershell"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Register-ArgumentCompleter"));
 }
 
 #[test]

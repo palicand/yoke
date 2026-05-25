@@ -163,7 +163,7 @@ pub fn run_delete(
     force: bool,
 ) -> Result<()> {
     let pn = ProfileName::new(name)?;
-    if !force {
+    if !force && !out.is_json() {
         return Err(crate::error::CliError::RequiresForce {
             name: pn.stem().to_string(),
         }

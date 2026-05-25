@@ -61,11 +61,24 @@ pub fn sanitize_for_profile_name(raw: &str) -> String {
             prev_underscore = false;
         }
     }
-    let trimmed = collapsed.trim_matches('_').to_string();
-    if trimmed.is_empty() {
+    let trimmed = collapsed.trim_matches('_');
+    let truncated = if trimmed.len() <= 64 {
+        trimmed
+    } else {
+        let mut cut = 0;
+        for (i, ch) in trimmed.char_indices() {
+            if i + ch.len_utf8() > 64 {
+                break;
+            }
+            cut = i + ch.len_utf8();
+        }
+        &trimmed[..cut]
+    };
+    let final_stem = truncated.trim_end_matches('_');
+    if final_stem.is_empty() {
         return "profile".into();
     }
-    trimmed
+    final_stem.to_string()
 }
 
 impl ProfileName {
@@ -230,6 +243,23 @@ mod tests {
     fn sanitize_falls_back_to_profile_when_empty() {
         assert_eq!(sanitize_for_profile_name(""), "profile");
         assert_eq!(sanitize_for_profile_name("///"), "profile");
+    }
+
+    #[test]
+    fn sanitize_truncates_to_profile_name_byte_limit() {
+        let long = "a".repeat(100);
+        let s = sanitize_for_profile_name(&long);
+        assert!(s.len() <= 64, "sanitized len {} exceeds 64", s.len());
+        ProfileName::new(&s).expect("truncated sanitize output must satisfy ProfileName::new");
+    }
+
+    #[test]
+    fn sanitize_truncates_on_utf8_boundary() {
+        let raw = "é".repeat(40);
+        let s = sanitize_for_profile_name(&raw);
+        assert!(s.len() <= 64);
+        assert!(s.is_char_boundary(s.len()));
+        ProfileName::new(&s).unwrap();
     }
 
     #[test]
