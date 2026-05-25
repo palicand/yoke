@@ -4,6 +4,7 @@
 //! instead of erroring, and never write to stderr — because the shell calls
 //! into us mid-type and any output corrupts the prompt.
 
+pub mod catalog;
 pub mod profile;
 pub mod subprofile;
 
