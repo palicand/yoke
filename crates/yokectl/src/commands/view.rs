@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::Arc;
 
@@ -105,6 +106,102 @@ pub fn run_bindings(
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectivePrefValue {
+    pub value: String,
+    pub overridden: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectivePreferences {
+    pub top_level: BTreeMap<String, String>,
+    pub per_sub_profile: Vec<(String, BTreeMap<String, EffectivePrefValue>)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawPreferences {
+    pub top_level: BTreeMap<String, String>,
+    pub per_sub_profile_overrides: Vec<(String, BTreeMap<String, String>)>,
+}
+
+#[must_use]
+pub fn effective_preferences(profile: &Profile) -> EffectivePreferences {
+    let top_level: BTreeMap<String, String> = profile
+        .preferences
+        .as_ref()
+        .map(|prefs| {
+            prefs
+                .entries
+                .iter()
+                .map(|(k, e)| (k.clone(), e.value.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let per_sub_profile = profile
+        .sub_profiles
+        .iter()
+        .map(|sp| {
+            let overrides: BTreeMap<String, String> = sp
+                .overrides()
+                .map(|o| (o.key.as_csv(), o.value.clone()))
+                .collect();
+            let mut resolved: BTreeMap<String, EffectivePrefValue> = BTreeMap::new();
+            for (k, v) in &top_level {
+                resolved.insert(
+                    k.clone(),
+                    EffectivePrefValue {
+                        value: overrides.get(k).cloned().unwrap_or_else(|| v.clone()),
+                        overridden: overrides.contains_key(k),
+                    },
+                );
+            }
+            for (k, v) in &overrides {
+                resolved
+                    .entry(k.clone())
+                    .or_insert_with(|| EffectivePrefValue {
+                        value: v.clone(),
+                        overridden: true,
+                    });
+            }
+            (sp.header.profile_name.clone(), resolved)
+        })
+        .collect();
+    EffectivePreferences {
+        top_level,
+        per_sub_profile,
+    }
+}
+
+#[must_use]
+pub fn raw_preferences(profile: &Profile) -> RawPreferences {
+    let top_level: BTreeMap<String, String> = profile
+        .preferences
+        .as_ref()
+        .map(|prefs| {
+            prefs
+                .entries
+                .iter()
+                .map(|(k, e)| (k.clone(), e.value.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let per_sub_profile_overrides = profile
+        .sub_profiles
+        .iter()
+        .map(|sp| {
+            let overrides: BTreeMap<String, String> = sp
+                .overrides()
+                .map(|o| (o.key.as_csv(), o.value.clone()))
+                .collect();
+            (sp.header.profile_name.clone(), overrides)
+        })
+        .collect();
+    RawPreferences {
+        top_level,
+        per_sub_profile_overrides,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,6 +235,69 @@ mod tests {
             preferences: None,
             infrared: vec![],
         }
+    }
+
+    use yoke_config::catalog::PreferenceKey;
+    use yoke_config::model::{PreferenceEntry, PreferenceOverride, Preferences};
+
+    fn profile_with_prefs_and_override() -> Profile {
+        Profile {
+            top_line: TopLine {
+                label: "QuadStick Configuration".into(),
+                version: "Version 1.4".into(),
+                source: String::new(),
+                title: "Default".into(),
+                trailing_cells: vec![],
+                width: 4,
+            },
+            sub_profiles: vec![SubProfile {
+                header: SubProfileHeader {
+                    profile_name: "Main".into(),
+                    mode: SubProfileMode::Mouse,
+                    sub_mode: String::new(),
+                    channel: Channel::Usb,
+                    column_header_label: "Output or Function".into(),
+                },
+                rows: vec![SubProfileRow::Override(PreferenceOverride {
+                    key: PreferenceKey::from_csv("volume"),
+                    value: "70".into(),
+                    comment: None,
+                })],
+            }],
+            preferences: Some(Preferences {
+                entries: vec![(
+                    "volume".into(),
+                    PreferenceEntry {
+                        key: PreferenceKey::from_csv("volume"),
+                        value: "55".into(),
+                        units: String::new(),
+                        description: String::new(),
+                        comment: None,
+                    },
+                )],
+            }),
+            infrared: vec![],
+        }
+    }
+
+    #[test]
+    fn effective_marks_override_when_present() {
+        let p = profile_with_prefs_and_override();
+        let eff = effective_preferences(&p);
+        assert_eq!(eff.top_level.get("volume").map(String::as_str), Some("55"));
+        let (_, sp) = &eff.per_sub_profile[0];
+        let v = sp.get("volume").expect("Main has volume override");
+        assert_eq!(v.value, "70");
+        assert!(v.overridden);
+    }
+
+    #[test]
+    fn raw_skips_resolution() {
+        let p = profile_with_prefs_and_override();
+        let raw = raw_preferences(&p);
+        assert_eq!(raw.top_level.get("volume").map(String::as_str), Some("55"));
+        let (_, ov) = &raw.per_sub_profile_overrides[0];
+        assert_eq!(ov.get("volume").map(String::as_str), Some("70"));
     }
 
     #[test]
