@@ -1,0 +1,20 @@
+---
+source: crates/yokectl/tests/preferences_json.rs
+expression: v
+---
+{
+  "sub_profiles": [
+    {
+      "name": "Main",
+      "preferences": {
+        "volume": {
+          "overridden": true,
+          "value": "70"
+        }
+      }
+    }
+  ],
+  "top_level": {
+    "volume": "55"
+  }
+}
