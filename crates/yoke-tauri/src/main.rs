@@ -24,7 +24,7 @@ fn main() {
         .manage(AppState { volume })
         .invoke_handler(tauri::generate_handler![commands::volume::volume_state])
         .setup(move |app| {
-            volume_watch::spawn(app.handle().clone(), volume_for_setup);
+            volume_watch::spawn(app.handle().clone(), &volume_for_setup);
             Ok(())
         })
         .run(tauri::generate_context!())
