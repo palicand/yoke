@@ -101,10 +101,10 @@ async fn fetch_returns_html_yields_html_response_error() {
     let dir = tempdir().unwrap();
     Mock::given(method("GET"))
         .and(path("/index.csv"))
-        .respond_with(ResponseTemplate::new(200).set_body_raw(
-            "<html><body>nope</body></html>",
-            "text/html; charset=utf-8",
-        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_raw("<html><body>nope</body></html>", "text/html; charset=utf-8"),
+        )
         .mount(&server)
         .await;
     let c = client_against(&server, dir.path());
