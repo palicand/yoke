@@ -1,6 +1,7 @@
 pub mod backend;
 pub mod cli;
 pub mod commands;
+pub mod completion;
 pub mod error;
 pub mod output;
 pub mod runtime;
