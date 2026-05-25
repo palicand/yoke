@@ -6,12 +6,13 @@ pub mod output;
 pub mod runtime;
 pub mod target;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use cli::{CatalogCmd, Commands, IndexCmd, SubprofileCmd};
 
 /// Process-level entry point shared by the binary and any integration harness
 /// that wants to drive the CLI in-process. Calls `std::process::exit`.
 pub fn entry() -> ! {
+    clap_complete::env::CompleteEnv::with_factory(cli::Cli::command).complete();
     let cli = cli::Cli::parse();
     if cli.no_color {
         console::set_colors_enabled(false);
