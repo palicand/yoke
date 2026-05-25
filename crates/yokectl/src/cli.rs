@@ -1,6 +1,12 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use clap_complete::engine::ArgValueCandidates;
+
+use crate::completion::catalog::{CatalogKind, CatalogValueCompleter};
+use crate::completion::index::IndexEntryCompleter;
+use crate::completion::profile::ProfileNameCompleter;
+use crate::completion::subprofile::SubProfileNameCompleter;
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
 pub enum DocsFormat {
@@ -57,21 +63,21 @@ pub enum Commands {
     List,
     #[command(about = "Pretty-print the parsed structure of a profile")]
     Show {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
         #[arg(long, help = "Skip parsing and emit the bytes verbatim")]
         raw: bool,
     },
     #[command(about = "Parse a profile and emit warnings and errors")]
     Validate {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
     },
     #[command(about = "List preferences on a profile (effective view by default)")]
     Preferences {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(long, help = "Restrict output to a single sub-profile by name")]
+        #[arg(long, help = "Restrict output to a single sub-profile by name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
         sub_profile: Option<String>,
         #[arg(
             long,
@@ -81,7 +87,7 @@ pub enum Commands {
     },
     #[command(about = "Copy a volume-backed profile to a local path")]
     Pull {
-        #[arg(help = "Profile name on the volume")]
+        #[arg(help = "Profile name on the volume", add = ArgValueCandidates::new(ProfileNameCompleter))]
         name: String,
         #[arg(help = "Destination path (defaults to ./<name>.csv)")]
         dest: Option<PathBuf>,
@@ -97,14 +103,14 @@ pub enum Commands {
     },
     #[command(about = "Copy a profile in place on the volume")]
     Copy {
-        #[arg(help = "Source profile name on the volume")]
+        #[arg(help = "Source profile name on the volume", add = ArgValueCandidates::new(ProfileNameCompleter))]
         from: String,
         #[arg(help = "Destination profile name on the volume")]
         to: String,
     },
     #[command(about = "Rename a profile in place on the volume")]
     Rename {
-        #[arg(help = "Existing profile name on the volume")]
+        #[arg(help = "Existing profile name on the volume", add = ArgValueCandidates::new(ProfileNameCompleter))]
         from: String,
         #[arg(help = "New profile name on the volume")]
         to: String,
@@ -116,72 +122,72 @@ pub enum Commands {
                       prompt path under machine-readable output."
     )]
     Delete {
-        #[arg(help = "Profile name on the volume")]
+        #[arg(help = "Profile name on the volume", add = ArgValueCandidates::new(ProfileNameCompleter))]
         name: String,
         #[arg(long, help = "Skip the confirmation prompt")]
         force: bool,
     },
     #[command(about = "Set a profile's top-line title")]
     SetTitle {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
         #[arg(help = "New title")]
         title: String,
     },
     #[command(about = "Set a top-level preference (type inferred from the catalog)")]
     SetPreference {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Preference key (validated against catalog::preferences)")]
+        #[arg(help = "Preference key (validated against catalog::preferences)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Preference)))]
         key: String,
         #[arg(help = "Preference value")]
         value: String,
     },
     #[command(about = "Remove a top-level preference")]
     UnsetPreference {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Preference key")]
+        #[arg(help = "Preference key", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Preference)))]
         key: String,
     },
     #[command(about = "Set a per-sub-profile preference override")]
     SetOverride {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name")]
+        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
         sub_profile: String,
-        #[arg(help = "Preference key (validated against catalog::preferences)")]
+        #[arg(help = "Preference key (validated against catalog::preferences)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Preference)))]
         key: String,
         #[arg(help = "Preference value")]
         value: String,
     },
     #[command(about = "Remove a per-sub-profile preference override")]
     UnsetOverride {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name")]
+        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
         sub_profile: String,
-        #[arg(help = "Preference key")]
+        #[arg(help = "Preference key", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Preference)))]
         key: String,
     },
     #[command(about = "Bind an input phrase to an output in a sub-profile")]
     SetBinding {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name")]
+        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
         sub_profile: String,
-        #[arg(help = "Input phrase (validated against catalog::inputs)")]
+        #[arg(help = "Input phrase (validated against catalog::inputs)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Input)))]
         input: String,
-        #[arg(help = "Output name (validated against catalog::outputs)")]
+        #[arg(help = "Output name (validated against catalog::outputs)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Output)))]
         output: String,
     },
     #[command(about = "Remove a binding from a sub-profile")]
     ClearBinding {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name")]
+        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
         sub_profile: String,
-        #[arg(help = "Input phrase to clear")]
+        #[arg(help = "Input phrase to clear", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Input)))]
         input: String,
     },
     #[command(about = "Manage sub-profiles (add, delete, rename, clone)")]
@@ -191,7 +197,7 @@ pub enum Commands {
     },
     #[command(about = "Apply a batch of edit operations atomically")]
     Apply {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
         #[arg(
             long,
@@ -203,9 +209,9 @@ pub enum Commands {
     },
     #[command(about = "List bindings on a profile, grouped by sub-profile")]
     Bindings {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(long, help = "Restrict output to a single sub-profile by name")]
+        #[arg(long, help = "Restrict output to a single sub-profile by name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
         sub_profile: Option<String>,
     },
     #[command(
@@ -218,7 +224,7 @@ pub enum Commands {
                       validate gate the write by default; --no-validate is an escape hatch."
     )]
     Install {
-        #[arg(help = "Local path, URL, or community-index name")]
+        #[arg(help = "Local path, URL, or community-index name", add = ArgValueCandidates::new(IndexEntryCompleter))]
         source: String,
         #[arg(
             long = "as",
@@ -289,38 +295,38 @@ pub enum Commands {
 pub enum SubprofileCmd {
     #[command(about = "Add a sub-profile")]
     Add {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
         #[arg(help = "Sub-profile name")]
         name: String,
-        #[arg(long, help = "SubProfileMode value (validated against catalog::modes)")]
+        #[arg(long, help = "SubProfileMode value (validated against catalog::modes)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Mode)))]
         mode: String,
-        #[arg(long, help = "Channel value (validated against catalog::channels)")]
+        #[arg(long, help = "Channel value (validated against catalog::channels)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Channel)))]
         channel: String,
         #[arg(long, help = "Optional sub-mode label")]
         sub_mode: Option<String>,
     },
     #[command(about = "Delete a sub-profile (errors on the last remaining one)")]
     Delete {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name")]
+        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
         name: String,
     },
     #[command(about = "Rename a sub-profile (header only)")]
     Rename {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Existing sub-profile name")]
+        #[arg(help = "Existing sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
         from: String,
         #[arg(help = "New sub-profile name")]
         to: String,
     },
     #[command(about = "Duplicate a sub-profile under a new name")]
     Clone {
-        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Source sub-profile name")]
+        #[arg(help = "Source sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
         from: String,
         #[arg(help = "Destination sub-profile name")]
         to: String,
@@ -341,7 +347,7 @@ pub enum IndexCmd {
     },
     #[command(about = "Print an index row, including the resolved CSV URL")]
     Show {
-        #[arg(help = "Index entry name")]
+        #[arg(help = "Index entry name", add = ArgValueCandidates::new(IndexEntryCompleter))]
         name: String,
     },
     #[command(about = "Force-refresh the cached community index")]
