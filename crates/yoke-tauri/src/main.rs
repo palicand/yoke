@@ -2,6 +2,7 @@
 
 mod commands;
 mod volume_backend;
+mod volume_watch;
 
 use std::sync::Arc;
 use yoke_volume::VolumeProvider;
@@ -16,11 +17,16 @@ fn main() {
         .init();
 
     let volume = volume_backend::build_provider().expect("failed to initialize volume backend");
+    let volume_for_setup = Arc::clone(&volume);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState { volume })
         .invoke_handler(tauri::generate_handler![commands::volume::volume_state])
+        .setup(move |app| {
+            volume_watch::spawn(app.handle().clone(), volume_for_setup);
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
