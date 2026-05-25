@@ -4,6 +4,8 @@
 //! instead of erroring, and never write to stderr — because the shell calls
 //! into us mid-type and any output corrupts the prompt.
 
+pub mod profile;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
