@@ -189,6 +189,13 @@ pub enum Commands {
         #[arg(long, help = "Validate without writing")]
         dry_run: bool,
     },
+    #[command(about = "List bindings on a profile, grouped by sub-profile")]
+    Bindings {
+        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        target: String,
+        #[arg(long, help = "Restrict output to a single sub-profile by name")]
+        sub_profile: Option<String>,
+    },
     #[command(
         about = "Install a profile from a path, URL, or community-index name",
         long_about = "Install a profile from a local file path, an HTTP(S) URL, or a bare \
