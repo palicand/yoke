@@ -106,6 +106,8 @@ pub fn run_bindings(
     )
 }
 
+/// `overridden` is set whenever the sub-profile carries an override for this key,
+/// regardless of whether a top-level entry also exists.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectivePrefValue {
     pub value: String,
