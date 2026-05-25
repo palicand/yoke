@@ -55,15 +55,18 @@ fn emit_md(root: &Command, out: &Path) -> Result<()> {
         .with_context(|| format!("creating markdown dir {}", md_dir.display()))?;
     let dest = md_dir.join("yokectl.md");
     let mut buf = String::new();
-    walk_md(&mut root.clone(), 1, &mut buf);
+    let root_name = root.get_name().to_string();
+    walk_md(root, &[root_name.as_str()], &mut buf);
     fs::write(&dest, buf).with_context(|| format!("writing {}", dest.display()))?;
     Ok(())
 }
 
-fn walk_md(cmd: &mut Command, depth: usize, out: &mut String) {
+fn walk_md(cmd: &Command, path: &[&str], out: &mut String) {
+    let depth = path.len();
     let prefix = "#".repeat(depth);
-    let name = cmd.get_name().to_string();
-    let _ = writeln!(out, "{prefix} {name}");
+    let spaced = path.join(" ");
+    let dashed = path.join("-");
+    let _ = writeln!(out, "{prefix} {spaced}");
     let _ = writeln!(out);
     if let Some(about) = cmd.get_about() {
         let _ = writeln!(out, "{about}");
@@ -73,7 +76,8 @@ fn walk_md(cmd: &mut Command, depth: usize, out: &mut String) {
         let _ = writeln!(out, "{long}");
         let _ = writeln!(out);
     }
-    let usage_raw = cmd.render_usage().to_string();
+    let mut renamed = cmd.clone().bin_name(spaced.clone()).display_name(dashed);
+    let usage_raw = renamed.render_usage().to_string();
     let usage_trimmed = usage_raw.trim();
     let usage_body = usage_trimmed
         .strip_prefix("Usage:")
@@ -98,13 +102,11 @@ fn walk_md(cmd: &mut Command, depth: usize, out: &mut String) {
         }
         let _ = writeln!(out);
     }
-    let mut subs: Vec<Command> = cmd
-        .get_subcommands()
-        .filter(|s| s.get_name() != "help")
-        .cloned()
-        .collect();
-    for sub in &mut subs {
-        walk_md(sub, depth + 1, out);
+    for sub in cmd.get_subcommands().filter(|s| s.get_name() != "help") {
+        let sub_name = sub.get_name().to_string();
+        let mut child = path.to_vec();
+        child.push(sub_name.as_str());
+        walk_md(sub, &child, out);
     }
 }
 
@@ -156,29 +158,46 @@ mod tests {
 
     #[test]
     fn markdown_nests_three_levels() {
-        let mut cmd = fixture();
+        let cmd = fixture();
         let mut buf = String::new();
-        walk_md(&mut cmd, 1, &mut buf);
+        walk_md(&cmd, &["yokectl-fixture"], &mut buf);
         assert!(buf.starts_with("# yokectl-fixture"));
-        assert!(buf.contains("\n## alpha\n"));
-        assert!(buf.contains("\n## group\n"));
-        assert!(buf.contains("\n### inner\n"));
+        assert!(buf.contains("\n## yokectl-fixture alpha\n"));
+        assert!(buf.contains("\n## yokectl-fixture group\n"));
+        assert!(buf.contains("\n### yokectl-fixture group inner\n"));
     }
 
     #[test]
     fn markdown_emits_options_block_for_args() {
-        let mut cmd = fixture();
+        let cmd = fixture();
         let mut buf = String::new();
-        walk_md(&mut cmd, 1, &mut buf);
+        walk_md(&cmd, &["yokectl-fixture"], &mut buf);
         assert!(buf.contains("`--flag` — inner flag"));
         assert!(buf.contains("`<NAME>` — alpha name"));
     }
 
     #[test]
     fn markdown_skips_help_subcommand() {
-        let mut cmd = fixture();
+        let cmd = fixture();
         let mut buf = String::new();
-        walk_md(&mut cmd, 1, &mut buf);
+        walk_md(&cmd, &["yokectl-fixture"], &mut buf);
         assert!(!buf.contains("## help"));
+    }
+
+    #[test]
+    fn markdown_disambiguates_shared_leaf_names() {
+        let cmd = Command::new("yokectl-fixture")
+            .subcommand(Command::new("alpha").subcommand(Command::new("list")))
+            .subcommand(Command::new("beta").subcommand(Command::new("list")));
+        let mut buf = String::new();
+        walk_md(&cmd, &["yokectl-fixture"], &mut buf);
+        assert!(
+            buf.contains("\n### yokectl-fixture alpha list\n"),
+            "missing alpha-scoped list heading"
+        );
+        assert!(
+            buf.contains("\n### yokectl-fixture beta list\n"),
+            "missing beta-scoped list heading"
+        );
     }
 }

@@ -176,9 +176,6 @@ fn run_with_volume(
 }
 
 fn init_tracing(verbose: u8) {
-    if verbose == 0 && std::env::var_os("RUST_LOG").is_none() {
-        return;
-    }
     let level = match verbose {
         0 => "warn",
         1 => "info",

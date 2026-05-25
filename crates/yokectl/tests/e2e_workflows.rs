@@ -84,6 +84,7 @@ fn corpus_round_trip() {
     };
     let dir = tempdir().unwrap();
     let vol = dir.path().to_str().unwrap();
+    let mut succeeded = 0_u32;
     for entry in walkdir::WalkDir::new(&corpus).into_iter().flatten() {
         if entry.path().extension().and_then(|s| s.to_str()) != Some("csv") {
             continue;
@@ -128,6 +129,8 @@ fn corpus_round_trip() {
             "byte mismatch for {}",
             entry.path().display()
         );
+        succeeded += 1;
         let _ = std::fs::remove_file(&pulled);
     }
+    assert!(succeeded > 0, "no corpus entries successfully installed");
 }

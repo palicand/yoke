@@ -2,6 +2,7 @@ use std::io::Write;
 use std::sync::Arc;
 
 use anyhow::Result;
+use tokio::sync::broadcast::error::RecvError;
 use yoke_volume::VolumeProvider;
 
 use crate::output::{Output, OutputFormat};
@@ -18,11 +19,16 @@ pub fn run(provider: &Arc<dyn VolumeProvider>, out: &Output) -> Result<()> {
 async fn watch_human(provider: Arc<dyn VolumeProvider>) -> Result<()> {
     let mut events = provider.subscribe_events();
     let mut state = provider.subscribe_state();
+    println!("[{}] state: {:?}", now_iso(), *state.borrow());
     loop {
         tokio::select! {
             evt = events.recv() => {
-                if let Ok(e) = evt {
-                    println!("[{}] {:?}", now_iso(), e);
+                match evt {
+                    Ok(e) => println!("[{}] {:?}", now_iso(), e),
+                    Err(RecvError::Closed) => break,
+                    Err(RecvError::Lagged(n)) => {
+                        println!("[{}] lagged {} events", now_iso(), n);
+                    }
                 }
             }
             res = state.changed() => {
@@ -40,16 +46,33 @@ pub async fn watch_json<W: Write + Send>(
 ) -> Result<()> {
     let mut events = provider.subscribe_events();
     let mut state = provider.subscribe_state();
+    let initial = serde_json::json!({
+        "timestamp": now_iso(),
+        "kind": "mount-state",
+        "state": format!("{:?}", *state.borrow()),
+    });
+    writeln!(w, "{initial}")?;
     loop {
         tokio::select! {
             evt = events.recv() => {
-                if let Ok(e) = evt {
-                    let line = serde_json::json!({
-                        "timestamp": now_iso(),
-                        "kind": "mount-event",
-                        "event": format!("{e:?}"),
-                    });
-                    writeln!(w, "{line}")?;
+                match evt {
+                    Ok(e) => {
+                        let line = serde_json::json!({
+                            "timestamp": now_iso(),
+                            "kind": "mount-event",
+                            "event": format!("{e:?}"),
+                        });
+                        writeln!(w, "{line}")?;
+                    }
+                    Err(RecvError::Closed) => break,
+                    Err(RecvError::Lagged(n)) => {
+                        let line = serde_json::json!({
+                            "timestamp": now_iso(),
+                            "kind": "lagged",
+                            "missed": n,
+                        });
+                        writeln!(w, "{line}")?;
+                    }
                 }
             }
             res = state.changed() => {
@@ -66,10 +89,8 @@ pub async fn watch_json<W: Write + Send>(
     Ok(())
 }
 
-// Approximation suffices until a consumer needs real RFC-3339 dates.
 fn now_iso() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}.{:03}Z", now.as_secs(), now.subsec_millis())
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| String::from("1970-01-01T00:00:00Z"))
 }

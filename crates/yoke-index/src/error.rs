@@ -9,6 +9,8 @@ pub enum IndexError {
     InvalidUrl(String),
     #[error("fetch failed: {url}: HTTP {status}")]
     FetchFailed { url: Url, status: u16 },
+    #[error("fetch returned HTML where CSV was expected: {url} (Content-Type: {content_type})")]
+    HtmlResponse { url: Url, content_type: String },
     #[error("index format unexpected: {0}")]
     IndexFormat(String),
     #[error("no index entry matching name: {0}")]

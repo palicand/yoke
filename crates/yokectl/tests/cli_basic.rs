@@ -158,7 +158,7 @@ fn copy_then_rename_then_delete() {
 }
 
 #[test]
-fn delete_without_force_fails_even_in_json_mode() {
+fn delete_in_json_mode_implies_force() {
     let dir = tempdir().unwrap();
     seed_profile(dir.path(), "default.csv", FIXTURE);
     yokectl()
@@ -170,8 +170,8 @@ fn delete_without_force_fails_even_in_json_mode() {
             "default",
         ])
         .assert()
-        .failure();
-    assert!(dir.path().join("default.csv").exists());
+        .success();
+    assert!(!dir.path().join("default.csv").exists());
 }
 
 #[test]

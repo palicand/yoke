@@ -35,11 +35,11 @@ pub fn run_search(out: &Output, query: &str) -> Result<()> {
         let c = IndexClient::new()?;
         c.list(false).await
     })?;
-    let needle = query.to_ascii_lowercase();
+    let needle = query.to_lowercase();
     let filtered: Vec<_> = listing
         .entries
         .iter()
-        .filter(|e| e.name.to_ascii_lowercase().contains(&needle))
+        .filter(|e| e.name.to_lowercase().contains(&needle))
         .collect();
     out.emit(
         &serde_json::json!({

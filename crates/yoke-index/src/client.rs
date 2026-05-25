@@ -71,10 +71,11 @@ impl IndexClient {
 
     pub async fn resolve(&self, name: &str) -> Result<IndexEntry, IndexError> {
         let listing = self.list(false).await?;
+        let needle = name.to_lowercase();
         listing
             .entries
             .into_iter()
-            .find(|e| e.name.eq_ignore_ascii_case(name))
+            .find(|e| e.name.to_lowercase() == needle)
             .ok_or_else(|| IndexError::NotFound(name.to_string()))
     }
 
@@ -107,6 +108,19 @@ async fn fetch_url_with(http: &reqwest::Client, url: &Url) -> Result<Vec<u8>, In
         return Err(IndexError::FetchFailed {
             url: url.clone(),
             status: status.as_u16(),
+        });
+    }
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    if let Some(ct) = &content_type
+        && ct.to_ascii_lowercase().contains("text/html")
+    {
+        return Err(IndexError::HtmlResponse {
+            url: url.clone(),
+            content_type: ct.clone(),
         });
     }
     Ok(resp.bytes().await?.to_vec())

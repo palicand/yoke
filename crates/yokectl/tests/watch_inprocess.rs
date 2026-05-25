@@ -33,8 +33,14 @@ async fn simulated_events_arrive_on_watch_stream() {
         let _ = yokectl::commands::watch::watch_json(backend_for_task, writer).await;
     });
 
-    // Give the subscriber loop a tick to attach before we fire events.
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    let backend_for_wait = backend.clone();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while backend_for_wait.event_subscriber_count() == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("watch loop never subscribed to events");
     backend.simulate_event(MountEvent::DeviceDisappeared);
     backend.simulate_state(&MountState::Absent);
     tokio::time::sleep(Duration::from_millis(50)).await;

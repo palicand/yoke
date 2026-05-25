@@ -114,12 +114,12 @@ fn docs_md_writes_single_reference_with_nested_headings() {
     assert!(md.starts_with("# yokectl"), "md head: {:?}", &md[..40]);
 
     for top in TOP_LEAVES.iter().chain(GROUPS.iter()) {
-        let needle = format!("\n## {top}\n");
+        let needle = format!("\n## yokectl {top}\n");
         assert!(md.contains(&needle), "missing heading: {needle:?}");
     }
-    for (_, leaves) in NESTED_LEAVES {
+    for (group, leaves) in NESTED_LEAVES {
         for leaf in *leaves {
-            let needle = format!("\n### {leaf}\n");
+            let needle = format!("\n### yokectl {group} {leaf}\n");
             assert!(md.contains(&needle), "missing nested heading: {needle:?}");
         }
     }

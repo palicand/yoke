@@ -171,6 +171,11 @@ fn classify_index(err: &yoke_index::IndexError) -> ExitInfo {
             envelope_code: "fetch-failed".into(),
             details: serde_json::json!({"status": status, "url": url.as_str()}),
         },
+        I::HtmlResponse { url, content_type } => ExitInfo {
+            code: 4,
+            envelope_code: "html-response".into(),
+            details: serde_json::json!({"url": url.as_str(), "content_type": content_type}),
+        },
         I::InvalidUrl(s) => ExitInfo {
             code: 7,
             envelope_code: "invalid-url".into(),
