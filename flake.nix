@@ -30,6 +30,7 @@
             rustToolchain
             pkgs.trunk
             pkgs.cargo-tauri
+            pkgs.wasm-bindgen-cli
             pkgs.pkg-config
           ]
           # Linux runtime deps for Tauri's webview. Uncomment when the
@@ -45,6 +46,7 @@
             echo "  rustc: $(rustc --version)"
             echo "  trunk: $(trunk --version 2>/dev/null | head -n1)"
             echo "  cargo-tauri: $(cargo tauri --version 2>/dev/null || echo 'not on PATH')"
+            echo "  wasm-bindgen: $(wasm-bindgen --version 2>/dev/null | head -n1)"
           '';
         };
       });
