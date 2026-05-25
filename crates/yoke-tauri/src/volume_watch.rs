@@ -12,7 +12,10 @@ pub const VOLUME_EVENT: &str = "yoke://volume-state";
 
 pub fn spawn(app: AppHandle, provider: &Arc<dyn VolumeProvider>) {
     let mut rx: watch::Receiver<MountState> = provider.subscribe_state();
-    tokio::spawn(async move {
+    // Use Tauri's runtime handle rather than `tokio::spawn` directly: the
+    // `setup` callback runs on the event-loop thread with no ambient Tokio
+    // reactor, so a plain `tokio::spawn` panics ("no reactor running").
+    tauri::async_runtime::spawn(async move {
         // Best-effort initial emit for frontends that mount listeners early; the
         // frontend should still invoke `volume_state` on mount for a guaranteed
         // snapshot. `borrow_and_update` clears the unseen-marker so the first
