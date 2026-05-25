@@ -17,8 +17,8 @@ pub struct GroupedBinding {
     pub output: String,
 }
 
-/// Walks a Profile and returns bindings grouped by sub-profile in declaration order;
-/// bindings inside each group are sorted by their rendered input string.
+/// Sub-profiles are returned in declaration order; bindings within each group
+/// are sorted by their rendered input for deterministic output.
 #[must_use]
 pub fn group_bindings(profile: &Profile) -> Vec<GroupedSubProfile<'_>> {
     profile
