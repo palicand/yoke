@@ -11,6 +11,8 @@
 //! clone the `Arc` into the future to produce a `'static` future when needed.
 
 pub mod mock;
+#[cfg(target_arch = "wasm32")]
+pub mod tauri;
 
 use std::path::PathBuf;
 use std::pin::Pin;

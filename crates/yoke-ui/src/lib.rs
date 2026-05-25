@@ -14,10 +14,34 @@ pub fn start() {
     leptos::mount::mount_to_body(App);
 }
 
+#[cfg(target_arch = "wasm32")]
+fn detect_tauri() -> bool {
+    tauri_sys::core::is_tauri()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+const fn detect_tauri() -> bool {
+    false
+}
+
+#[cfg(target_arch = "wasm32")]
+fn make_backend() -> Arc<dyn Backend> {
+    if detect_tauri() {
+        Arc::new(backend::tauri::TauriBackend::new())
+    } else {
+        Arc::new(MockBackend::new().expect("mock fixture should parse"))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn make_backend() -> Arc<dyn Backend> {
+    Arc::new(MockBackend::new().expect("mock fixture should parse"))
+}
+
 #[component]
 fn App() -> impl IntoView {
-    let backend: Arc<dyn Backend> =
-        Arc::new(MockBackend::new().expect("mock fixture should parse"));
+    let backend: Arc<dyn Backend> = make_backend();
     provide_context(backend);
-    view! { <div class="qs-app">"Yoke UI (mock backend)"</div> }
+    let mode = if detect_tauri() { "tauri" } else { "mock" };
+    view! { <div class="qs-app">{format!("Yoke UI ({mode} backend)")}</div> }
 }
