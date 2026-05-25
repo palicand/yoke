@@ -322,5 +322,6 @@ pub fn seed_tempdir(seed_csvs: &[(&str, &str)]) -> (TempDir, Arc<dyn VolumeProvi
     (dir, provider)
 }
 
+pub mod apply_atomicity;
 pub mod no_panics;
 pub mod round_trip;
