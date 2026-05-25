@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Yoke",
+  "version": "0.1.0",
+  "identifier": "io.yoke.app",
+  "build": {
+    "frontendDist": "../yoke-ui/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "trunk serve --port 1420",
+    "beforeBuildCommand": "trunk build --release"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Yoke",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 600,
+        "decorations": true,
+        "titleBarStyle": "Overlay"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": ["icons/icon.png"],
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  }
+}
