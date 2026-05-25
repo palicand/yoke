@@ -67,6 +67,15 @@ pub enum Commands {
         #[arg(help = "Profile name, file path, or '-' for stdin")]
         target: String,
     },
+    #[command(about = "List preferences on a profile (effective view by default)")]
+    Preferences {
+        #[arg(help = "Profile name, file path, or '-' for stdin")]
+        target: String,
+        #[arg(long, help = "Restrict output to a single sub-profile by name")]
+        sub_profile: Option<String>,
+        #[arg(long, help = "Show layered view: top-level + per-sub-profile overrides, no resolution")]
+        raw: bool,
+    },
     #[command(about = "Copy a volume-backed profile to a local path")]
     Pull {
         #[arg(help = "Profile name on the volume")]
