@@ -1,4 +1,5 @@
 pub mod backend;
+pub mod state;
 
 use std::sync::Arc;
 
@@ -6,6 +7,7 @@ use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use backend::{Backend, mock::MockBackend};
+use state::AppState;
 
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -41,7 +43,8 @@ fn make_backend() -> Arc<dyn Backend> {
 #[component]
 fn App() -> impl IntoView {
     let backend: Arc<dyn Backend> = make_backend();
-    provide_context(backend);
+    let state = AppState::new(backend);
+    provide_context(state);
     let mode = if detect_tauri() { "tauri" } else { "mock" };
     view! { <div class="qs-app">{format!("Yoke UI ({mode} backend)")}</div> }
 }
