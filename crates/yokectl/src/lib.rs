@@ -124,7 +124,7 @@ fn run_with_volume(
             edits,
             dry_run,
         } => commands::apply::run(provider, out, &target, &edits, dry_run),
-        Commands::Bindings { .. } => todo!("bindings dispatch — wired in a follow-up task"),
+        Commands::Bindings { .. } => todo!(),
         Commands::Install {
             source,
             as_name,
