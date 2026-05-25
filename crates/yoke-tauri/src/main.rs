@@ -31,6 +31,7 @@ fn main() {
             commands::profiles::list_device_profiles,
             commands::profiles::read_device_profile,
             commands::profiles::read_file_profile,
+            commands::profiles::pick_file_dialog,
             commands::community::list_community_profiles,
             commands::community::fetch_community_profile,
         ])

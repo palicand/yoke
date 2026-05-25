@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use tauri::State;
+use tauri_plugin_dialog::DialogExt;
 use yoke_config::parse;
 use yoke_ipc::{BackendError, DeviceProfileEntry, Profile};
 use yoke_volume::{ProfileEntry, ProfileName, VolumeError};
@@ -66,6 +67,18 @@ pub fn read_file_profile(path: PathBuf) -> Result<Profile, BackendError> {
     let bytes = std::fs::read(&path).map_err(|e| BackendError::Io(e.to_string()))?;
     let parsed = parse(&bytes).map_err(|e| BackendError::Parse(e.to_string()))?;
     Ok(parsed.model)
+}
+
+#[tauri::command]
+pub async fn pick_file_dialog(app: tauri::AppHandle) -> Option<PathBuf> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("QuadStick profile", &["csv"])
+        .pick_file(move |path| {
+            let _ = tx.send(path.and_then(|p| p.into_path().ok()));
+        });
+    rx.await.ok().flatten()
 }
 
 #[cfg(test)]
