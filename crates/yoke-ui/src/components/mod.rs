@@ -6,4 +6,5 @@ pub mod editor_header;
 pub mod left_rail;
 pub mod stations;
 pub mod sub_profile_strip;
+pub mod toast;
 pub mod window_chrome;
