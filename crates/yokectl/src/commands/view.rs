@@ -204,6 +204,106 @@ pub fn raw_preferences(profile: &Profile) -> RawPreferences {
     }
 }
 
+pub fn run_preferences(
+    provider: &Arc<dyn VolumeProvider>,
+    out: &Output,
+    target: &str,
+    sub_profile: Option<&str>,
+    raw: bool,
+) -> Result<()> {
+    let t = crate::target::Target::classify(target);
+    let bytes = t.read_bytes(provider.as_ref())?;
+    let parsed = yoke_config::parse(&bytes).context("parsing profile")?;
+    if let Some(filter) = sub_profile
+        && !parsed
+            .model
+            .sub_profiles
+            .iter()
+            .any(|sp| sp.header.profile_name == filter)
+    {
+        return Err(anyhow::Error::from(
+            yoke_edit::EditError::SubProfileNotFound {
+                name: filter.to_string(),
+            },
+        ));
+    }
+    if raw {
+        let mut data = raw_preferences(&parsed.model);
+        if let Some(filter) = sub_profile {
+            data.per_sub_profile_overrides.retain(|(n, _)| n == filter);
+        }
+        emit_raw_preferences(out, &data)
+    } else {
+        let mut data = effective_preferences(&parsed.model);
+        if let Some(filter) = sub_profile {
+            data.per_sub_profile.retain(|(n, _)| n == filter);
+        }
+        emit_effective_preferences(out, &data)
+    }
+}
+
+fn emit_effective_preferences(out: &Output, data: &EffectivePreferences) -> Result<()> {
+    out.emit(
+        &serde_json::json!({
+            "top_level": data.top_level,
+            "sub_profiles": data.per_sub_profile.iter().map(|(name, prefs)| serde_json::json!({
+                "name": name,
+                "preferences": prefs.iter().map(|(k, v)| (k.clone(), serde_json::json!({
+                    "value": v.value, "overridden": v.overridden,
+                }))).collect::<serde_json::Map<_, _>>(),
+            })).collect::<Vec<_>>(),
+        }),
+        |w| {
+            writeln!(w, "Top-level:")?;
+            for (k, v) in &data.top_level {
+                writeln!(w, "  {k:<25} {v}")?;
+            }
+            for (name, prefs) in &data.per_sub_profile {
+                writeln!(w)?;
+                writeln!(w, "{name}:")?;
+                for (k, v) in prefs {
+                    if v.overridden {
+                        writeln!(w, "  {k:<25} {:<15} [override]", v.value)?;
+                    } else {
+                        writeln!(w, "  {k:<25} {}", v.value)?;
+                    }
+                }
+            }
+            Ok(())
+        },
+    )
+}
+
+fn emit_raw_preferences(out: &Output, data: &RawPreferences) -> Result<()> {
+    out.emit(
+        &serde_json::json!({
+            "top_level": data.top_level,
+            "sub_profiles": data.per_sub_profile_overrides.iter().map(|(name, ov)| serde_json::json!({
+                "name": name,
+                "overrides": ov,
+            })).collect::<Vec<_>>(),
+        }),
+        |w| {
+            writeln!(w, "Top-level:")?;
+            for (k, v) in &data.top_level {
+                writeln!(w, "  {k:<25} {v}")?;
+            }
+            for (name, ov) in &data.per_sub_profile_overrides {
+                writeln!(w)?;
+                writeln!(w, "{name} (overrides):")?;
+                if ov.is_empty() {
+                    writeln!(w, "  (none)")?;
+                } else {
+                    for (k, v) in ov {
+                        writeln!(w, "  {k:<25} {v}")?;
+                    }
+                }
+            }
+            Ok(())
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
