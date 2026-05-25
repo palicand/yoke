@@ -22,7 +22,12 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState { volume })
-        .invoke_handler(tauri::generate_handler![commands::volume::volume_state])
+        .invoke_handler(tauri::generate_handler![
+            commands::volume::volume_state,
+            commands::profiles::list_device_profiles,
+            commands::profiles::read_device_profile,
+            commands::profiles::read_file_profile,
+        ])
         .setup(move |app| {
             volume_watch::spawn(app.handle().clone(), &volume_for_setup);
             Ok(())
