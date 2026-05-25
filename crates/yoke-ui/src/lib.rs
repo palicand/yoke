@@ -1,4 +1,5 @@
 pub mod backend;
+pub mod effects;
 pub mod state;
 
 use std::sync::Arc;
@@ -44,6 +45,8 @@ fn make_backend() -> Arc<dyn Backend> {
 fn App() -> impl IntoView {
     let backend: Arc<dyn Backend> = make_backend();
     let state = AppState::new(backend);
+    effects::spawn_volume_subscription(&state);
+    effects::spawn_community_fetch(&state);
     provide_context(state);
     let mode = if detect_tauri() { "tauri" } else { "mock" };
     view! { <div class="qs-app">{format!("Yoke UI ({mode} backend)")}</div> }
