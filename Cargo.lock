@@ -2903,6 +2903,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "yoke-ipc"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "yoke-config",
+]
+
+[[package]]
 name = "yoke-volume"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,17 @@
+[package]
+name = "yoke-ipc"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Wire DTOs for the Tauri <-> Leptos IPC surface in Yoke."
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+thiserror = "2"
+yoke-config = { version = "0.1.0", path = "../yoke-config" }
+
+[dev-dependencies]
+serde_json = "1.0.149"
