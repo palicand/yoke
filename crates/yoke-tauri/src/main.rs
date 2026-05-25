@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod commands;
 mod volume_backend;
 
 use std::sync::Arc;
@@ -19,6 +20,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState { volume })
+        .invoke_handler(tauri::generate_handler![commands::volume::volume_state])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
