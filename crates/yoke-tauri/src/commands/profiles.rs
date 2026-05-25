@@ -2,9 +2,30 @@ use std::path::PathBuf;
 use tauri::State;
 use yoke_config::parse;
 use yoke_ipc::{BackendError, DeviceProfileEntry, Profile};
-use yoke_volume::ProfileName;
+use yoke_volume::{ProfileEntry, ProfileName, VolumeError};
 
 use crate::AppState;
+
+fn map_volume_err(e: VolumeError) -> BackendError {
+    match e {
+        VolumeError::NotPresent | VolumeError::VolumeHidden { .. } => {
+            BackendError::VolumeNotPresent
+        }
+        VolumeError::InvalidProfileName(name) => BackendError::NotFound(name),
+        VolumeError::BackendInit(detail) => BackendError::NotInitialized(detail),
+        VolumeError::Io(err) => BackendError::Io(err.to_string()),
+    }
+}
+
+fn entries_to_dto(entries: Vec<ProfileEntry>) -> Vec<DeviceProfileEntry> {
+    entries
+        .into_iter()
+        .map(|e| DeviceProfileEntry {
+            name: e.name.as_filename().to_string(),
+            kind: format!("{:?}", e.kind),
+        })
+        .collect()
+}
 
 #[tauri::command]
 #[expect(
@@ -14,17 +35,8 @@ use crate::AppState;
 pub fn list_device_profiles(
     state: State<'_, AppState>,
 ) -> Result<Vec<DeviceProfileEntry>, BackendError> {
-    let entries = state
-        .volume
-        .list_profiles()
-        .map_err(|e| BackendError::Io(e.to_string()))?;
-    Ok(entries
-        .into_iter()
-        .map(|e| DeviceProfileEntry {
-            name: e.name.as_filename().to_string(),
-            kind: format!("{:?}", e.kind),
-        })
-        .collect())
+    let entries = state.volume.list_profiles().map_err(map_volume_err)?;
+    Ok(entries_to_dto(entries))
 }
 
 #[tauri::command]
@@ -36,12 +48,11 @@ pub fn read_device_profile(
     name: String,
     state: State<'_, AppState>,
 ) -> Result<Profile, BackendError> {
-    let profile_name =
-        ProfileName::new(&name).map_err(|e| BackendError::NotFound(e.to_string()))?;
+    let profile_name = ProfileName::new(&name).map_err(map_volume_err)?;
     let bytes = state
         .volume
         .read_profile(&profile_name)
-        .map_err(|e| BackendError::Io(e.to_string()))?;
+        .map_err(map_volume_err)?;
     let parsed = parse(&bytes).map_err(|e| BackendError::Parse(e.to_string()))?;
     Ok(parsed.model)
 }
@@ -60,38 +71,92 @@ pub fn read_file_profile(path: PathBuf) -> Result<Profile, BackendError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use yoke_volume::FsBackend;
+    use std::time::SystemTime;
+    use yoke_volume::ProfileKind;
 
-    fn fixture_state() -> AppState {
-        let tmp = tempfile::tempdir().unwrap();
-        let fs = FsBackend::new(tmp.path().to_path_buf());
-        fs.set_present(true);
-        std::fs::write(
-            tmp.path().join("default.csv"),
-            include_str!("../../../yoke-config/tests/fixtures/minimal_profile.csv"),
-        )
-        .unwrap();
-        // Leak the tempdir so the path stays valid for the test duration —
-        // VolumeProvider holds the path, not the TempDir handle, so dropping
-        // the handle would unlink the directory underneath it.
-        std::mem::forget(tmp);
-        AppState {
-            volume: std::sync::Arc::new(fs),
+    fn entry(name: &str, kind: ProfileKind) -> ProfileEntry {
+        ProfileEntry {
+            name: ProfileName::new(name).unwrap(),
+            kind,
+            byte_len: 0,
+            modified: SystemTime::UNIX_EPOCH,
         }
     }
 
     #[test]
-    fn list_returns_fixture_profile() {
-        // Constructing a real tauri::State in a unit test is awkward, so we
-        // exercise the underlying provider logic directly — the command body
-        // is just a translation layer on top of list_profiles.
-        let state = fixture_state();
-        let entries = state.volume.list_profiles().unwrap();
-        assert!(
-            entries
-                .iter()
-                .any(|e| e.name.as_filename() == "default.csv")
+    fn entries_to_dto_stringifies_each_kind() {
+        let input = vec![
+            entry("default", ProfileKind::Default),
+            entry("prefs", ProfileKind::Prefs),
+            entry("destiny", ProfileKind::Game),
+        ];
+        let dto = entries_to_dto(input);
+        assert_eq!(
+            dto,
+            vec![
+                DeviceProfileEntry {
+                    name: "default.csv".into(),
+                    kind: "Default".into(),
+                },
+                DeviceProfileEntry {
+                    name: "prefs.csv".into(),
+                    kind: "Prefs".into(),
+                },
+                DeviceProfileEntry {
+                    name: "destiny.csv".into(),
+                    kind: "Game".into(),
+                },
+            ],
         );
+    }
+
+    #[test]
+    fn entries_to_dto_handles_empty() {
+        assert!(entries_to_dto(vec![]).is_empty());
+    }
+
+    #[test]
+    fn map_volume_err_not_present_to_volume_not_present() {
+        assert_eq!(
+            map_volume_err(VolumeError::NotPresent),
+            BackendError::VolumeNotPresent,
+        );
+    }
+
+    #[test]
+    fn map_volume_err_volume_hidden_to_volume_not_present() {
+        assert_eq!(
+            map_volume_err(VolumeError::VolumeHidden { hint: None }),
+            BackendError::VolumeNotPresent,
+        );
+        assert_eq!(
+            map_volume_err(VolumeError::VolumeHidden {
+                hint: Some(yoke_volume::state::ModeHint::Emulation),
+            }),
+            BackendError::VolumeNotPresent,
+        );
+    }
+
+    #[test]
+    fn map_volume_err_invalid_name_to_not_found() {
+        let mapped = map_volume_err(VolumeError::InvalidProfileName("foo/bar".into()));
+        assert_eq!(mapped, BackendError::NotFound("foo/bar".into()));
+    }
+
+    #[test]
+    fn map_volume_err_backend_init_to_not_initialized() {
+        let mapped = map_volume_err(VolumeError::BackendInit("disk arb dead".into()));
+        assert_eq!(mapped, BackendError::NotInitialized("disk arb dead".into()),);
+    }
+
+    #[test]
+    fn map_volume_err_io_preserves_display() {
+        let io = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "nope");
+        let mapped = map_volume_err(VolumeError::Io(io));
+        let BackendError::Io(detail) = mapped else {
+            panic!("expected BackendError::Io");
+        };
+        assert!(detail.contains("nope"), "detail was {detail:?}");
     }
 
     #[test]
