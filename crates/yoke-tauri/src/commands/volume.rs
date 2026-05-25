@@ -10,10 +10,10 @@ use crate::AppState;
     reason = "Tauri command signature requires State by value"
 )]
 pub fn volume_state(state: State<'_, AppState>) -> VolumePresence {
-    presence_from(&state.volume.current_state())
+    presence_from_state(&state.volume.current_state())
 }
 
-fn presence_from(state: &MountState) -> VolumePresence {
+pub fn presence_from_state(state: &MountState) -> VolumePresence {
     match state {
         MountState::Absent => VolumePresence::Absent,
         MountState::DeviceVisibleNoVolume { mode_hint, .. } => {
@@ -47,7 +47,10 @@ mod tests {
 
     #[test]
     fn absent_maps_to_absent() {
-        assert_eq!(presence_from(&MountState::Absent), VolumePresence::Absent);
+        assert_eq!(
+            presence_from_state(&MountState::Absent),
+            VolumePresence::Absent
+        );
     }
 
     #[test]
@@ -61,7 +64,7 @@ mod tests {
             label: "Quad".into(),
         };
         assert_eq!(
-            presence_from(&s),
+            presence_from_state(&s),
             VolumePresence::Present {
                 label: "Quad".into(),
                 mount_point: PathBuf::from("/Volumes/Quad"),
@@ -79,7 +82,7 @@ mod tests {
             mode_hint: Some(ModeHint::Emulation),
         };
         assert_eq!(
-            presence_from(&s),
+            presence_from_state(&s),
             VolumePresence::DeviceVisibleNoVolume {
                 mode_hint: Some("Emulation".into()),
             }
@@ -101,7 +104,7 @@ mod tests {
                 mode_hint: Some(hint),
             };
             assert_eq!(
-                presence_from(&s),
+                presence_from_state(&s),
                 VolumePresence::DeviceVisibleNoVolume {
                     mode_hint: Some(expected.into()),
                 },
@@ -120,7 +123,7 @@ mod tests {
             mode_hint: None,
         };
         assert_eq!(
-            presence_from(&s),
+            presence_from_state(&s),
             VolumePresence::DeviceVisibleNoVolume { mode_hint: None },
         );
     }
