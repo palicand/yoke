@@ -2,11 +2,12 @@
 //!
 //! Hosts the [`EditorHeader`](crate::components::editor_header::EditorHeader),
 //! the [`SubProfileStrip`](crate::components::sub_profile_strip::SubProfileStrip),
-//! and the [`DeviceMap`](crate::components::device_map::DeviceMap), plus a
-//! placeholder for the bindings panel that lands in the next task.
+//! the [`DeviceMap`](crate::components::device_map::DeviceMap), and the
+//! [`BindingsPanel`](crate::components::bindings_panel::BindingsPanel).
 
 use leptos::prelude::*;
 
+use crate::components::bindings_panel::BindingsPanel;
 use crate::components::device_map::DeviceMap;
 use crate::components::editor_header::EditorHeader;
 use crate::components::sub_profile_strip::SubProfileStrip;
@@ -19,8 +20,13 @@ pub fn EditorView() -> impl IntoView {
         <section class="qs-editor">
             <EditorHeader/>
             <SubProfileStrip selected=selected_subprofile/>
-            <DeviceMap selected=selected_input/>
-            <p class="qs-muted">"Bindings panel (next task)."</p>
+            <div class="qs-editor-body">
+                <DeviceMap selected=selected_input/>
+                <BindingsPanel
+                    selected_input=selected_input
+                    selected_subprofile=selected_subprofile
+                />
+            </div>
         </section>
     }
 }
