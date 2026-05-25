@@ -5,6 +5,7 @@
 //! into us mid-type and any output corrupts the prompt.
 
 pub mod catalog;
+pub mod index;
 pub mod profile;
 pub mod subprofile;
 
