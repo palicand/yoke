@@ -50,22 +50,96 @@ mod tests {
     use super::*;
 
     #[test]
-    fn volume_presence_round_trips() {
-        let v = VolumePresence::Present {
-            label: "Quad Stick".into(),
-            mount_point: PathBuf::from("/Volumes/Quad Stick"),
-        };
-        let json = serde_json::to_string(&v).unwrap();
-        let back: VolumePresence = serde_json::from_str(&json).unwrap();
-        assert_eq!(v, back);
+    fn volume_presence_round_trips_every_variant() {
+        let cases = vec![
+            VolumePresence::Absent,
+            VolumePresence::DeviceVisibleNoVolume { mode_hint: None },
+            VolumePresence::DeviceVisibleNoVolume {
+                mode_hint: Some("DS3".into()),
+            },
+            VolumePresence::Present {
+                label: "Quad Stick".into(),
+                mount_point: PathBuf::from("/Volumes/Quad Stick"),
+            },
+        ];
+        for v in cases {
+            let json = serde_json::to_string(&v).unwrap();
+            let back: VolumePresence = serde_json::from_str(&json).unwrap();
+            assert_eq!(v, back, "round-trip mismatch for {v:?}");
+        }
     }
 
     #[test]
-    fn backend_error_round_trips() {
-        let e = BackendError::Parse("bad CSV".into());
-        let json = serde_json::to_string(&e).unwrap();
-        let back: BackendError = serde_json::from_str(&json).unwrap();
-        assert_eq!(e, back);
+    fn volume_presence_wire_shape() {
+        assert_eq!(
+            serde_json::to_string(&VolumePresence::Absent).unwrap(),
+            r#"{"kind":"Absent"}"#,
+        );
+        assert_eq!(
+            serde_json::to_string(&VolumePresence::DeviceVisibleNoVolume { mode_hint: None })
+                .unwrap(),
+            r#"{"kind":"DeviceVisibleNoVolume","mode_hint":null}"#,
+        );
+        assert_eq!(
+            serde_json::to_string(&VolumePresence::DeviceVisibleNoVolume {
+                mode_hint: Some("DS3".into()),
+            })
+            .unwrap(),
+            r#"{"kind":"DeviceVisibleNoVolume","mode_hint":"DS3"}"#,
+        );
+        assert_eq!(
+            serde_json::to_string(&VolumePresence::Present {
+                label: "Quad Stick".into(),
+                mount_point: PathBuf::from("/Volumes/Quad Stick"),
+            })
+            .unwrap(),
+            r#"{"kind":"Present","label":"Quad Stick","mount_point":"/Volumes/Quad Stick"}"#,
+        );
+    }
+
+    #[test]
+    fn backend_error_round_trips_every_variant() {
+        let cases = vec![
+            BackendError::NotInitialized("not ready".into()),
+            BackendError::VolumeNotPresent,
+            BackendError::Io("disk fell off".into()),
+            BackendError::Parse("bad CSV".into()),
+            BackendError::Network("timeout".into()),
+            BackendError::NotFound("missing.csv".into()),
+        ];
+        for e in cases {
+            let json = serde_json::to_string(&e).unwrap();
+            let back: BackendError = serde_json::from_str(&json).unwrap();
+            assert_eq!(e, back, "round-trip mismatch for {e:?}");
+        }
+    }
+
+    #[test]
+    fn backend_error_wire_shape() {
+        assert_eq!(
+            serde_json::to_string(&BackendError::NotInitialized("x".into())).unwrap(),
+            r#"{"kind":"NotInitialized","detail":"x"}"#,
+        );
+        assert_eq!(
+            serde_json::to_string(&BackendError::VolumeNotPresent).unwrap(),
+            r#"{"kind":"VolumeNotPresent"}"#,
+        );
+        assert_eq!(
+            serde_json::to_string(&BackendError::Io("disk".into())).unwrap(),
+            r#"{"kind":"Io","detail":"disk"}"#,
+        );
+        assert_eq!(
+            serde_json::to_string(&BackendError::Parse("p".into())).unwrap(),
+            r#"{"kind":"Parse","detail":"p"}"#,
+        );
+        assert_eq!(
+            serde_json::to_string(&BackendError::Network("n".into())).unwrap(),
+            r#"{"kind":"Network","detail":"n"}"#,
+        );
+        assert_eq!(
+            serde_json::to_string(&BackendError::NotFound("nf".into())).unwrap(),
+            r#"{"kind":"NotFound","detail":"nf"}"#,
+        );
     }
 
     #[test]
