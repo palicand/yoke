@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 
 use super::left_rail::LeftRail;
+use super::toast::Toast;
 use super::window_chrome::WindowChrome;
 
 #[component]
@@ -12,6 +13,7 @@ pub fn AppShell(children: Children) -> impl IntoView {
                 <LeftRail/>
                 <main class="qs-main">{children()}</main>
             </div>
+            <Toast/>
         </div>
     }
 }
