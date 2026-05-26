@@ -193,12 +193,22 @@ fn drain_usb_devices(inner: &Inner) {
     }
 }
 
-fn drain_volumes(inner: &Inner) {
-    let mut found: Option<(PathBuf, String)> = None;
-    let Ok(entries) = std::fs::read_dir(Path::new("/Volumes")) else {
-        return;
-    };
-    for entry in entries.flatten() {
+// macOS creates the mount-point directory (root-owned, restrictive mode)
+// before the FAT filesystem finishes mounting over it. Reading the volume
+// during that window fails with EACCES. Gating `Present` on a successful
+// `read_dir` keeps the volume out of the `Present` state until it is actually
+// enumerable, so consumers never list a half-mounted volume — and the 1 s
+// poll keeps retrying until the mount settles, instead of the UI having to
+// reload.
+fn mount_point_is_ready(path: &Path) -> bool {
+    std::fs::read_dir(path).is_ok()
+}
+
+// Scans `volumes_dir` for a readable QuadStick-labelled mount, returning its
+// path and volume label. `None` means either no QuadStick volume is present
+// or the candidate is still mid-mount (see `mount_point_is_ready`).
+fn find_quadstick_mount(volumes_dir: &Path) -> Option<(PathBuf, String)> {
+    for entry in std::fs::read_dir(volumes_dir).ok()?.flatten() {
         let name = entry.file_name();
         let name_lossy = name.to_string_lossy();
         if !name_lossy.eq_ignore_ascii_case("Quad Stick")
@@ -212,9 +222,16 @@ fn drain_volumes(inner: &Inner) {
         if !entry.metadata().is_ok_and(|m| m.is_dir()) {
             continue;
         }
-        found = Some((entry.path(), name_lossy.into_owned()));
-        break;
+        let path = entry.path();
+        if mount_point_is_ready(&path) {
+            return Some((path, name_lossy.into_owned()));
+        }
     }
+    None
+}
+
+fn drain_volumes(inner: &Inner) {
+    let found = find_quadstick_mount(Path::new("/Volumes"));
     let mut tracked = inner.tracked.lock().unwrap();
     if let Some((mp, lbl)) = found {
         tracked.mount_point = Some(mp);
@@ -300,7 +317,10 @@ fn handle_disk_appeared(inner: &Inner, disk: da::DADiskRef) {
         if let Some(name) = bsd_name {
             t.quadstick_bsd_names.insert(name);
         }
-        if let Some(mp) = mount_point {
+        // A just-appeared volume can still be mid-mount; defer Present until
+        // the mount point is enumerable. If it is not ready yet, the 1 s poll
+        // re-checks and flips to Present once the FAT filesystem settles.
+        if let Some(mp) = mount_point.filter(|mp| mount_point_is_ready(mp)) {
             t.mount_point = Some(mp);
             t.label = Some(label);
         }
@@ -548,6 +568,49 @@ mod tests {
         let state = provider.current_state();
         eprintln!("current_state after init: {state:?}");
         drop(provider);
+    }
+
+    #[test]
+    fn find_quadstick_mount_skips_unreadable_then_finds_ready() {
+        use std::os::unix::fs::PermissionsExt;
+        // root bypasses DAC, so the unreadable case is unobservable as root.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let volumes = tempfile::tempdir().unwrap();
+        let mnt = volumes.path().join("Quad Stick");
+        std::fs::create_dir(&mnt).unwrap();
+
+        std::fs::set_permissions(&mnt, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(
+            find_quadstick_mount(volumes.path()).is_none(),
+            "a mid-mount (unreadable) volume must not be reported present"
+        );
+
+        std::fs::set_permissions(&mnt, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            find_quadstick_mount(volumes.path()),
+            Some((mnt, "Quad Stick".to_string()))
+        );
+    }
+
+    #[test]
+    fn find_quadstick_mount_matches_label_case_insensitively() {
+        let volumes = tempfile::tempdir().unwrap();
+        let mnt = volumes.path().join("QuadStick");
+        std::fs::create_dir(&mnt).unwrap();
+        assert_eq!(
+            find_quadstick_mount(volumes.path()),
+            Some((mnt, "QuadStick".to_string()))
+        );
+    }
+
+    #[test]
+    fn find_quadstick_mount_ignores_other_volumes() {
+        let volumes = tempfile::tempdir().unwrap();
+        std::fs::create_dir(volumes.path().join("Macintosh HD")).unwrap();
+        std::fs::create_dir(volumes.path().join("USB Drive")).unwrap();
+        assert!(find_quadstick_mount(volumes.path()).is_none());
     }
 
     #[test]

@@ -29,5 +29,6 @@ core-foundation-sys = "0.8.7"
 libc = "0.2.186"
 
 [dev-dependencies]
+tempfile = "3.27.0"
 tokio = { version = "1.52.3", features = ["rt", "time", "macros"] }
 tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter"] }
