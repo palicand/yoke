@@ -370,11 +370,14 @@ The constant is the CSV-export form of the maintainer's link. Updating the URL r
 |---|---|
 | `…/d/e/{KEY}/pubhtml?gid={GID}&single=true` (published HTML) | `…/d/e/{KEY}/pub?gid={GID}&single=true&output=csv` |
 | `…/d/e/{KEY}/pub?...&output=csv` (already CSV) | unchanged |
-| `…/d/{KEY}/edit#gid={GID}` (anyone-with-link) | `…/d/{KEY}/export?format=csv&gid={GID}` |
-| Other `docs.google.com/spreadsheets/...` | matched on path segments; missing key/gid is `IndexError::InvalidUrl` |
+| `…/d/{KEY}/edit#gid={GID}` or `…/d/{KEY}/edit?gid={GID}` (anyone-with-link, gid known) | `…/d/{KEY}/export?format=csv&gid={GID}` |
+| `…/d/{KEY}/edit` (anyone-with-link, **no gid anywhere**) | `…/d/{KEY}/export?format=csv` — gid is **omitted** |
+| Other `docs.google.com/spreadsheets/...` | matched on path segments; an unrecognised shape passes through unchanged. A `…/d/e/{KEY}/pub*` form with no gid is `IndexError::InvalidUrl` |
 | Non-`docs.google.com` URL | unchanged; GET expects `text/csv` or `text/plain` |
 
 The transformer is a pure function with unit tests over each row of this table. A failing GET response (non-2xx, wrong content-type) returns `IndexError::FetchFailed { url, status }`.
+
+When a `…/d/{KEY}/` link carries no gid (the common case for the upstream community index, whose `Spreadsheet URL` column is bare `…/edit`), the export URL must **omit** `gid` rather than default it to `0`. Many sheets' first visible tab is not gid `0`; `…/export?format=csv&gid=0` then 307-redirects to a `googleusercontent.com` endpoint that returns HTTP 400. Omitting the parameter lets Google export the first visible sheet, which succeeds.
 
 #### 5.4 Index CSV parsing
 
