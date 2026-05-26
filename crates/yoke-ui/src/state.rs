@@ -1,9 +1,9 @@
 //! App-level Leptos state shared via context.
 //!
 //! `AppState` carries the backend handle plus the reactive signals that the UI
-//! tree reads and writes: volume presence, device/community profile lists, the
-//! currently-open profile, and the latest toast message. Child components grab
-//! this via [`use_state`].
+//! tree reads and writes: volume presence, device profile list and community
+//! load state, the currently-open profile, and the latest toast message. Child
+//! components grab this via [`use_state`].
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -26,12 +26,25 @@ pub struct OpenProfile {
     pub profile: Profile,
 }
 
+/// Load state for the community catalog.
+///
+/// A plain `Vec` could not distinguish "still fetching" from "fetched but
+/// empty" from "fetch failed"; the empty case made the library spin forever
+/// when the one-shot boot fetch errored. These variants keep the cases distinct.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub enum CommunityLoad {
+    #[default]
+    Loading,
+    Loaded(Vec<CommunityEntry>),
+    Failed(String),
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub backend: Arc<dyn Backend>,
     pub volume: RwSignal<VolumePresence>,
     pub device_profiles: RwSignal<Vec<DeviceProfileEntry>>,
-    pub community_profiles: RwSignal<Vec<CommunityEntry>>,
+    pub community: RwSignal<CommunityLoad>,
     pub open_profile: RwSignal<Option<OpenProfile>>,
     pub toast: RwSignal<Option<String>>,
 }
@@ -43,7 +56,7 @@ impl AppState {
             backend,
             volume: RwSignal::new(VolumePresence::Absent),
             device_profiles: RwSignal::new(Vec::new()),
-            community_profiles: RwSignal::new(Vec::new()),
+            community: RwSignal::new(CommunityLoad::Loading),
             open_profile: RwSignal::new(None),
             toast: RwSignal::new(None),
         }
