@@ -40,4 +40,41 @@ html, body {
   color: var(--ink-1);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  /* Native desktop apps don't let chrome/labels be text-selected. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Re-enable selection for genuine text-entry surfaces. */
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Themed thin scrollbars; the platform-native bars clash with the dark UI.
+   Styled purely via the -webkit pseudo-elements: WKWebView (the shipping
+   runtime) and Blink both *ignore* ::-webkit-scrollbar once scrollbar-width or
+   scrollbar-color is set to a non-auto value, falling back to a near-native
+   bar — so those standard properties are deliberately omitted. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  /* Transparent border + padding-box clip insets the thumb so a 10px-wide
+     track renders a ~6px overlay-style thumb. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-3);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }

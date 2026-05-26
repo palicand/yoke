@@ -29,6 +29,7 @@ fn make_backend() -> Arc<dyn Backend> {
 pub fn App() -> impl IntoView {
     let backend: Arc<dyn Backend> = make_backend();
     let state = AppState::new(backend);
+    effects::suppress_native_context_menu();
     effects::spawn_volume_subscription(&state);
     effects::spawn_community_fetch(&state);
     let open = state.open_profile;
