@@ -76,12 +76,12 @@ impl Backend for MockBackend {
     }
 
     fn list_community_profiles(&self) -> BackendFuture<'_, Vec<CommunityEntry>> {
-        // The trait demands a Send future, but gloo-timers' sleep holds a JS
-        // callback (!Send); WASM is single-threaded so SendWrapper is sound.
-        // The delay makes the Loading state observable under `trunk serve` —
-        // a synchronous return would flash the spinner for a single frame.
         #[cfg(target_arch = "wasm32")]
         {
+            // The trait demands a Send future, but gloo-timers' sleep holds a JS
+            // callback (!Send); WASM is single-threaded so SendWrapper is sound.
+            // The delay makes the Loading state observable under `trunk serve` —
+            // a synchronous return would flash the spinner for a single frame.
             use std::time::Duration;
 
             use send_wrapper::SendWrapper;
