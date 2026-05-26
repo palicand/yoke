@@ -76,15 +76,38 @@ impl Backend for MockBackend {
     }
 
     fn list_community_profiles(&self) -> BackendFuture<'_, Vec<CommunityEntry>> {
-        Box::pin(async {
+        // The trait demands a Send future, but gloo-timers' sleep holds a JS
+        // callback (!Send); WASM is single-threaded so SendWrapper is sound.
+        // The delay makes the Loading state observable under `trunk serve` —
+        // a synchronous return would flash the spinner for a single frame.
+        #[cfg(target_arch = "wasm32")]
+        {
+            use std::time::Duration;
+
+            use send_wrapper::SendWrapper;
+            return Box::pin(SendWrapper::new(async {
+                gloo_timers::future::sleep(Duration::from_secs(1)).await;
+                let mut fields = BTreeMap::new();
+                fields.insert("variant".into(), "FPS".into());
+                Ok(vec![CommunityEntry {
+                    name: "Sample community FPS".into(),
+                    url: "mock://community/sample.csv".into(),
+                    fields,
+                }])
+            }));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
             let mut fields = BTreeMap::new();
             fields.insert("variant".into(), "FPS".into());
-            Ok(vec![CommunityEntry {
-                name: "Sample community FPS".into(),
-                url: "mock://community/sample.csv".into(),
-                fields,
-            }])
-        })
+            Box::pin(async {
+                Ok(vec![CommunityEntry {
+                    name: "Sample community FPS".into(),
+                    url: "mock://community/sample.csv".into(),
+                    fields,
+                }])
+            })
+        }
     }
 
     fn fetch_community_profile(&self, _url: String) -> BackendFuture<'_, Profile> {
