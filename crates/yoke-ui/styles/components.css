@@ -98,6 +98,21 @@
   cursor: pointer;
 }
 .qs-muted { color: var(--ink-3); font-size: 13px; }
+.qs-loading { display: flex; align-items: center; gap: 8px; }
+.qs-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: qs-spin 0.7s linear infinite;
+}
+@keyframes qs-spin { to { transform: rotate(360deg); } }
+/* Honor the OS "reduce motion" setting — consistent with the native-feel rules. */
+@media (prefers-reduced-motion: reduce) {
+  .qs-spinner { animation: none; }
+}
 
 /* Editor ------------------------------------------------------------- */
 .qs-editor { display: grid; grid-template-rows: auto auto 1fr; height: 100%; }
@@ -150,7 +165,14 @@
 .qs-node-label { font-family: var(--font-mono); font-size: 9px; fill: var(--ink-2); text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
 
 /* Bindings panel ----------------------------------------------------- */
-.qs-bindings { overflow: auto; padding: 16px 24px; border-left: 1px solid var(--line); }
+.qs-bindings {
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 16px 24px;
+  border-left: 1px solid var(--line);
+  container-type: inline-size;
+  container-name: bindings;
+}
 .qs-bindings-eyebrow {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -162,7 +184,10 @@
 .qs-binding-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .qs-binding {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
+  /* Trigger / modifier / output are debug-formatted and can be long. Flexible
+     minmax(0, …) tracks let them shrink below content width so a narrow panel
+     wraps the text instead of overflowing into a horizontal scrollbar. */
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, auto) auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
@@ -173,9 +198,27 @@
   font-size: 11px;
   color: var(--ink-1);
 }
+/* min-width:0 overrides the grid item default (min-content) so the flexible
+   tracks above can actually shrink; overflow-wrap breaks long unbroken tokens. */
+.qs-binding > * { min-width: 0; }
+.qs-binding-trigger,
+.qs-binding-mod,
+.qs-binding-out { overflow-wrap: anywhere; }
 .qs-binding-when { color: var(--ink-3); font-size: 10px; }
 .qs-binding-mod { border: 1px dashed var(--line-strong); border-radius: 999px; padding: 2px 8px; color: var(--ink-2); }
 .qs-binding-out { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 2px 8px; }
+
+/* When the panel is too narrow for five aligned columns, drop the grid and let
+   the row's parts wrap onto multiple lines instead of collapsing the flexible
+   columns to zero width. */
+@container bindings (max-width: 340px) {
+  .qs-binding {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 8px;
+    row-gap: 4px;
+  }
+}
 
 /* Toast -------------------------------------------------------------- */
 .qs-toast {
