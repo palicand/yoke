@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -53,7 +52,7 @@ pub(crate) fn apply_single<F>(
     human: F,
 ) -> Result<()>
 where
-    F: FnOnce(&mut std::io::Stdout) -> std::io::Result<()>,
+    F: FnOnce(&mut dyn std::io::Write) -> std::io::Result<()>,
 {
     load_apply_save(provider.as_ref(), target, &[op])?;
     out.emit(envelope, human)

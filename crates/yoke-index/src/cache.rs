@@ -22,6 +22,16 @@ impl Cache {
             .map(|p| Self::default_in(p.cache_dir()))
     }
 
+    /// Resolve the default cache, honoring `YOKECTL_CACHE_DIR` before the platform
+    /// cache dir. This is the single resolution every entry point must share so the
+    /// completion path and the `index`/`install` commands never read different caches.
+    #[must_use]
+    pub fn resolve_default() -> Option<Self> {
+        std::env::var_os(crate::client::CACHE_DIR_ENV).map_or_else(Self::from_project_dirs, |p| {
+            Some(Self::default_in(&PathBuf::from(p)))
+        })
+    }
+
     #[must_use]
     pub fn default_in(base: &Path) -> Self {
         Self {
@@ -50,6 +60,20 @@ impl Cache {
         }
         let bytes = tokio::fs::read(&self.path).await?;
         Ok(Some(bytes))
+    }
+
+    /// Sync no-network read of cached entry names for completion paths.
+    /// Returns `Ok(vec![])` when the cache file does not exist or cannot be parsed.
+    pub fn read_entries_sync(&self) -> Result<Vec<String>, IndexError> {
+        let bytes = match std::fs::read(&self.path) {
+            Ok(b) => b,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(IndexError::Io(e)),
+        };
+        match crate::entry::parse_index(&bytes) {
+            Ok(listing) => Ok(listing.entries.into_iter().map(|e| e.name).collect()),
+            Err(_) => Ok(Vec::new()),
+        }
     }
 
     pub async fn write(&self, bytes: &[u8]) -> Result<(), IndexError> {
@@ -104,5 +128,26 @@ mod tests {
         c.write(b"hello").await.unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert!(c.read_fresh().await.unwrap().is_none());
+    }
+
+    #[test]
+    fn read_entries_sync_returns_empty_when_missing() {
+        let dir = tempdir().unwrap();
+        let c = Cache::with_path(dir.path().join("idx.csv"), Duration::from_mins(1));
+        assert!(c.read_entries_sync().unwrap().is_empty());
+    }
+
+    #[test]
+    fn read_entries_sync_returns_names_from_cache_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("idx.csv");
+        std::fs::write(
+            &path,
+            b"Name,CSV URL\nDestiny 2,https://x.example/d2.csv\nApex,https://x.example/apex.csv\n",
+        )
+        .unwrap();
+        let c = Cache::with_path(path, Duration::from_mins(1));
+        let names = c.read_entries_sync().unwrap();
+        assert_eq!(names, vec!["Destiny 2".to_string(), "Apex".to_string()]);
     }
 }

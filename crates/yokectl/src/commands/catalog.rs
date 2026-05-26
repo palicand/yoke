@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use anyhow::Result;
 use yoke_config::catalog::{Channel, Input, Output, PreferenceSpec, SubProfileMode};
 

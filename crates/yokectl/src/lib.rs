@@ -1,17 +1,19 @@
 pub mod backend;
 pub mod cli;
 pub mod commands;
+pub mod completion;
 pub mod error;
 pub mod output;
 pub mod runtime;
 pub mod target;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use cli::{CatalogCmd, Commands, IndexCmd, SubprofileCmd};
 
 /// Process-level entry point shared by the binary and any integration harness
 /// that wants to drive the CLI in-process. Calls `std::process::exit`.
 pub fn entry() -> ! {
+    clap_complete::env::CompleteEnv::with_factory(cli::Cli::command).complete();
     let cli = cli::Cli::parse();
     if cli.no_color {
         console::set_colors_enabled(false);
@@ -30,13 +32,27 @@ pub fn entry() -> ! {
     std::process::exit(code);
 }
 
-#[allow(clippy::too_many_lines)]
 pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
-    let cli::Cli {
-        fake_volume,
-        command,
-        ..
-    } = cli;
+    let provider = match &cli.command {
+        Commands::Completions { .. }
+        | Commands::Docs { .. }
+        | Commands::Manual { .. }
+        | Commands::Topic { .. }
+        | Commands::Index { .. }
+        | Commands::Catalog { .. } => dummy_provider(),
+        _ => backend::open(cli.fake_volume.clone())?,
+    };
+    run_with_provider(cli, out, &provider)
+}
+
+/// Public entry for in-process callers (tests, GUIs) that already have a provider.
+#[allow(clippy::too_many_lines)]
+pub fn run_with_provider(
+    cli: cli::Cli,
+    out: &output::Output,
+    provider: &std::sync::Arc<dyn yoke_volume::VolumeProvider>,
+) -> anyhow::Result<()> {
+    let cli::Cli { command, .. } = cli;
     match command {
         Commands::Completions { shell } => commands::completions::run(shell),
         Commands::Docs {
@@ -59,8 +75,17 @@ pub fn run(cli: cli::Cli, out: &output::Output) -> anyhow::Result<()> {
             CatalogCmd::Modes => commands::catalog::run_modes(out),
             CatalogCmd::Channels => commands::catalog::run_channels(out),
         },
-        other => run_with_volume(out, &backend::open(fake_volume)?, other),
+        other => run_with_volume(out, provider, other),
     }
+}
+
+fn dummy_provider() -> std::sync::Arc<dyn yoke_volume::VolumeProvider> {
+    // Commands routed here are dispatched before run_with_volume and never dereference
+    // the provider, so this root is only ever stat'd by FsBackend::new, never created or
+    // written. Constructing over a non-existent path is intentional and side-effect-free.
+    std::sync::Arc::new(yoke_volume::fs_backend::FsBackend::new(
+        std::env::temp_dir().join("yokectl-noop"),
+    ))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -124,6 +149,15 @@ fn run_with_volume(
             edits,
             dry_run,
         } => commands::apply::run(provider, out, &target, &edits, dry_run),
+        Commands::Bindings {
+            target,
+            sub_profile,
+        } => commands::view::run_bindings(provider, out, &target, sub_profile.as_deref()),
+        Commands::Preferences {
+            target,
+            sub_profile,
+            raw,
+        } => commands::view::run_preferences(provider, out, &target, sub_profile.as_deref(), raw),
         Commands::Install {
             source,
             as_name,

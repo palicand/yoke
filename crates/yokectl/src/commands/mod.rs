@@ -11,6 +11,7 @@ pub mod manual;
 pub mod profile;
 pub mod subprofile;
 pub mod topic;
+pub mod view;
 pub mod watch;
 
 use yoke_volume::profile::ProfileEntry;

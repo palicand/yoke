@@ -13,6 +13,7 @@ Commands:
   list              List profiles on the volume with name, kind, size, and modified time
   show              Pretty-print the parsed structure of a profile
   validate          Parse a profile and emit warnings and errors
+  preferences       List preferences on a profile (effective view by default)
   pull              Copy a volume-backed profile to a local path
   push              Copy a local file to the volume
   copy              Copy a profile in place on the volume
@@ -27,6 +28,7 @@ Commands:
   clear-binding     Remove a binding from a sub-profile
   subprofile        Manage sub-profiles (add, delete, rename, clone)
   apply             Apply a batch of edit operations atomically
+  bindings          List bindings on a profile, grouped by sub-profile
   install           Install a profile from a path, URL, or community-index name
   index             Query the community profile index
   catalog           Enumerate catalog values (inputs, outputs, preferences, modes, channels)

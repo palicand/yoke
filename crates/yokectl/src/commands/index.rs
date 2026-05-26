@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use anyhow::Result;
 use yoke_index::{COMMUNITY_INDEX_HTML_URL, IndexClient};
 

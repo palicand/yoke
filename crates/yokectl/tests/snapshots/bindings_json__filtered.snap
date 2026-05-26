@@ -1,0 +1,20 @@
+---
+source: crates/yokectl/tests/bindings_json.rs
+expression: stdout
+---
+{
+  "sub_profiles": [
+    {
+      "bindings": [
+        {
+          "input": "left",
+          "output": "mouse_left"
+        }
+      ],
+      "channel": "usb",
+      "mode": "Mouse",
+      "name": "Main",
+      "sub_mode": "Normal"
+    }
+  ]
+}
