@@ -27,8 +27,17 @@ pub fn DeviceMap(selected: RwSignal<Option<String>>) -> impl IntoView {
                         selected.get().as_deref() == Some(id_for_class)
                     };
                     let glyph = s.short.to_owned();
+                    let toggle = move |_| {
+                        selected.update(|cur| {
+                            if cur.as_deref() == Some(id_for_click) {
+                                *cur = None;
+                            } else {
+                                *cur = Some(id_for_click.to_owned());
+                            }
+                        });
+                    };
                     view! {
-                        <g class="qs-node-group" on:click=move |_| selected.set(Some(id_for_click.to_owned()))>
+                        <g class="qs-node-group" on:click=toggle>
                             <circle
                                 cx=s.x
                                 cy=s.y

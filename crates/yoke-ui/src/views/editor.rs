@@ -5,17 +5,35 @@
 //! the [`DeviceMap`](crate::components::device_map::DeviceMap), and the
 //! [`BindingsPanel`](crate::components::bindings_panel::BindingsPanel).
 
+use leptos::ev;
 use leptos::prelude::*;
 
 use crate::components::bindings_panel::BindingsPanel;
 use crate::components::device_map::DeviceMap;
 use crate::components::editor_header::EditorHeader;
 use crate::components::sub_profile_strip::SubProfileStrip;
+use crate::state::use_state;
 
 #[component]
 pub fn EditorView() -> impl IntoView {
     let selected_subprofile = RwSignal::new(0usize);
     let selected_input = RwSignal::new(None::<String>);
+
+    // Escape steps back one level: clear a selected station first (revealing
+    // the ALL-bindings view), then close the profile and return to the
+    // library. The listener is torn down when the editor unmounts.
+    let open_profile = use_state().open_profile;
+    let handle = window_event_listener(ev::keydown, move |e| {
+        if e.key() == "Escape" {
+            if selected_input.get_untracked().is_some() {
+                selected_input.set(None);
+            } else {
+                open_profile.set(None);
+            }
+        }
+    });
+    on_cleanup(move || handle.remove());
+
     view! {
         <section class="qs-editor">
             <EditorHeader/>
