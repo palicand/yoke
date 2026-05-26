@@ -46,7 +46,14 @@ fn names_from_argv(argv: &[OsString]) -> Vec<String> {
 
 // Skips the binary name, global flags, and the subcommand keyword; returns the next non-flag token.
 fn first_positional_target(argv: &[OsString]) -> Option<String> {
-    let mut it = argv.iter().skip(1);
+    // `clap_complete`'s `CompleteEnv` invokes us as `<bin> -- <bin> <user line...>`,
+    // so the real command line begins after the `--` separator and is prefixed by a
+    // re-injected binary name we must also drop. Direct/in-process callers pass the
+    // bare argv, where only the leading binary name needs skipping.
+    let mut it = argv
+        .iter()
+        .position(|a| a == "--")
+        .map_or_else(|| argv.iter().skip(1), |i| argv.iter().skip(i + 2));
     let mut seen_subcommand = false;
     while let Some(arg) = it.next() {
         let s = arg.to_string_lossy();
@@ -54,11 +61,7 @@ fn first_positional_target(argv: &[OsString]) -> Option<String> {
             it.next();
             continue;
         }
-        if s.starts_with("--fake-volume=")
-            || s == "--json"
-            || s == "--no-color"
-            || s.starts_with('-')
-        {
+        if s.starts_with('-') {
             continue;
         }
         if !seen_subcommand {
@@ -81,6 +84,22 @@ mod tests {
             OsString::from("--fake-volume"),
             OsString::from("/tmp"),
             OsString::from("--json"),
+            OsString::from("set-binding"),
+            OsString::from("default"),
+            OsString::from("Main"),
+        ];
+        assert_eq!(first_positional_target(&argv), Some("default".to_string()));
+    }
+
+    #[test]
+    fn first_positional_handles_complete_env_argv() {
+        // The shape clap_complete actually injects: `<bin> -- <bin> <user line...>`.
+        let argv = [
+            OsString::from("yokectl"),
+            OsString::from("--"),
+            OsString::from("yokectl"),
+            OsString::from("--fake-volume"),
+            OsString::from("/tmp"),
             OsString::from("set-binding"),
             OsString::from("default"),
             OsString::from("Main"),

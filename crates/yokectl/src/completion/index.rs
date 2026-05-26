@@ -6,7 +6,7 @@ pub struct IndexEntryCompleter;
 
 impl clap_complete::engine::ValueCandidates for IndexEntryCompleter {
     fn candidates(&self) -> Vec<CompletionCandidate> {
-        let Some(cache) = Cache::from_project_dirs() else {
+        let Some(cache) = Cache::resolve_default() else {
             return Vec::new();
         };
         cache

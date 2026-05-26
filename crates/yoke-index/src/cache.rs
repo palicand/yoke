@@ -22,6 +22,16 @@ impl Cache {
             .map(|p| Self::default_in(p.cache_dir()))
     }
 
+    /// Resolve the default cache, honoring `YOKECTL_CACHE_DIR` before the platform
+    /// cache dir. This is the single resolution every entry point must share so the
+    /// completion path and the `index`/`install` commands never read different caches.
+    #[must_use]
+    pub fn resolve_default() -> Option<Self> {
+        std::env::var_os(crate::client::CACHE_DIR_ENV).map_or_else(Self::from_project_dirs, |p| {
+            Some(Self::default_in(&PathBuf::from(p)))
+        })
+    }
+
     #[must_use]
     pub fn default_in(base: &Path) -> Self {
         Self {

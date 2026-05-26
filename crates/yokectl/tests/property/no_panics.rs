@@ -9,6 +9,7 @@ proptest! {
     #[test]
     fn prop_no_panics(actions in prop::collection::vec(action_strategy(&["default".into()]), 1..16)) {
         let (_dir, provider) = seed_tempdir(&[("default.csv", SEED)]);
+        let scratch = tempfile::tempdir().unwrap();
         let base = Cli {
             fake_volume: None,
             json: false,
@@ -17,7 +18,7 @@ proptest! {
             command: Commands::List,
         };
         for action in &actions {
-            let cli = action_to_cli(action, &base);
+            let cli = action_to_cli(action, &base, scratch.path());
             let cap = dispatch_in_process(cli, &provider);
             // Exit codes must be in the documented set
             prop_assert!(matches!(cap.code, 0..=7),

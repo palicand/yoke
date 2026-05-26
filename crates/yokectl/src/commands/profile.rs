@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -32,7 +31,7 @@ pub fn run_show(
     let t = crate::target::Target::classify(target);
     let bytes = t.read_bytes(provider.as_ref())?;
     if raw {
-        std::io::stdout().write_all(&bytes)?;
+        out.emit_raw(&bytes)?;
         return Ok(());
     }
     let parsed = yoke_config::parse(&bytes).context("parsing profile")?;

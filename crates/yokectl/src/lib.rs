@@ -80,9 +80,12 @@ pub fn run_with_provider(
 }
 
 fn dummy_provider() -> std::sync::Arc<dyn yoke_volume::VolumeProvider> {
-    let dir = std::env::temp_dir().join("yokectl-dummy-noop");
-    let _ = std::fs::create_dir_all(&dir);
-    std::sync::Arc::new(yoke_volume::fs_backend::FsBackend::new(dir))
+    // Commands routed here are dispatched before run_with_volume and never dereference
+    // the provider, so this root is only ever stat'd by FsBackend::new, never created or
+    // written. Constructing over a non-existent path is intentional and side-effect-free.
+    std::sync::Arc::new(yoke_volume::fs_backend::FsBackend::new(
+        std::env::temp_dir().join("yokectl-noop"),
+    ))
 }
 
 #[allow(clippy::too_many_lines)]

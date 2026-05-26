@@ -20,7 +20,7 @@ pub struct GroupedSubProfile<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupedBinding {
-    pub input: String,
+    pub input: Option<String>,
     pub output: String,
 }
 
@@ -35,10 +35,7 @@ pub fn group_bindings(profile: &Profile) -> Vec<GroupedSubProfile<'_>> {
             let mut bindings: Vec<GroupedBinding> = sp
                 .bindings()
                 .map(|b| GroupedBinding {
-                    input: b
-                        .input
-                        .as_ref()
-                        .map_or_else(|| "(none)".to_string(), Input::to_csv),
+                    input: b.input.as_ref().map(Input::to_csv),
                     output: b.output.to_csv(),
                 })
                 .collect();
@@ -96,7 +93,12 @@ pub fn run_bindings(
                     writeln!(w, "  (no bindings)")?;
                 } else {
                     for b in &g.bindings {
-                        writeln!(w, "  {:<15} -> {}", b.input, b.output)?;
+                        writeln!(
+                            w,
+                            "  {:<15} -> {}",
+                            b.input.as_deref().unwrap_or("(none)"),
+                            b.output
+                        )?;
                     }
                 }
             }
@@ -127,6 +129,9 @@ pub struct RawPreferences {
 
 #[must_use]
 pub fn effective_preferences(profile: &Profile) -> EffectivePreferences {
+    // Key by the normalized id (`PreferenceKey::as_csv`) rather than the raw CSV cell so
+    // the join against per-sub-profile overrides (also keyed by `as_csv`) cannot miss when
+    // the top-level id carries padding or non-canonical casing.
     let top_level: BTreeMap<String, String> = profile
         .preferences
         .as_ref()
@@ -134,7 +139,7 @@ pub fn effective_preferences(profile: &Profile) -> EffectivePreferences {
             prefs
                 .entries
                 .iter()
-                .map(|(k, e)| (k.clone(), e.value.clone()))
+                .map(|(_, e)| (e.key.as_csv(), e.value.clone()))
                 .collect()
         })
         .unwrap_or_default();
@@ -381,6 +386,38 @@ mod tests {
         }
     }
 
+    fn profile_with_padded_pref_and_override() -> Profile {
+        let mut p = profile_with_prefs_and_override();
+        p.preferences = Some(Preferences {
+            entries: vec![(
+                " volume ".into(),
+                PreferenceEntry {
+                    key: PreferenceKey::from_csv(" volume "),
+                    value: "55".into(),
+                    units: String::new(),
+                    description: String::new(),
+                    comment: None,
+                },
+            )],
+        });
+        p
+    }
+
+    #[test]
+    fn effective_normalizes_padded_top_level_key_against_override() {
+        let p = profile_with_padded_pref_and_override();
+        let eff = effective_preferences(&p);
+        let (_, sp) = &eff.per_sub_profile[0];
+        assert_eq!(
+            sp.len(),
+            1,
+            "padded top-level id should normalize to one key"
+        );
+        let v = sp.get("volume").expect("normalized volume key present");
+        assert_eq!(v.value, "70");
+        assert!(v.overridden);
+    }
+
     #[test]
     fn effective_marks_override_when_present() {
         let p = profile_with_prefs_and_override();
@@ -399,6 +436,42 @@ mod tests {
         assert_eq!(raw.top_level.get("volume").map(String::as_str), Some("55"));
         let (_, ov) = &raw.per_sub_profile_overrides[0];
         assert_eq!(ov.get("volume").map(String::as_str), Some("70"));
+    }
+
+    fn profile_with_inputless_binding() -> Profile {
+        Profile {
+            top_line: TopLine {
+                label: "QuadStick Configuration".into(),
+                version: "Version 1.4".into(),
+                source: String::new(),
+                title: "Default".into(),
+                trailing_cells: vec![],
+                width: 4,
+            },
+            sub_profiles: vec![SubProfile {
+                header: SubProfileHeader {
+                    profile_name: "Main".into(),
+                    mode: SubProfileMode::Mouse,
+                    sub_mode: String::new(),
+                    channel: Channel::Usb,
+                    column_header_label: "Output or Function".into(),
+                },
+                rows: vec![SubProfileRow::Binding(Binding::new(
+                    Output::Touch,
+                    Modifier::Normal,
+                    None,
+                ))],
+            }],
+            preferences: None,
+            infrared: vec![],
+        }
+    }
+
+    #[test]
+    fn binding_without_input_has_no_input_value() {
+        let p = profile_with_inputless_binding();
+        let g = group_bindings(&p);
+        assert_eq!(g[0].bindings[0].input, None);
     }
 
     #[test]

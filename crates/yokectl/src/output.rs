@@ -59,6 +59,18 @@ impl Output {
         Ok(())
     }
 
+    /// Write opaque bytes straight to the configured stdout writer, bypassing
+    /// formatting. Used by `show --raw`; routing through here (rather than the
+    /// process stdout) keeps the bytes capturable by in-process test harnesses.
+    #[allow(clippy::missing_panics_doc)]
+    pub fn emit_raw(&self, bytes: &[u8]) -> anyhow::Result<()> {
+        self.stdout
+            .lock()
+            .expect("stdout mutex poisoned")
+            .write_all(bytes)?;
+        Ok(())
+    }
+
     #[allow(clippy::missing_panics_doc, clippy::needless_pass_by_value)]
     pub fn emit_error(&self, code: &str, message: &str, details: serde_json::Value) {
         match self.format {

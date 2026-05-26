@@ -11,16 +11,19 @@ proptest! {
         actions in prop::collection::vec(action_strategy(&["default".into()]), 1..8)
     ) {
         let (dir, provider) = seed_tempdir(&[("default.csv", SEED)]);
+        let scratch = tempfile::tempdir().unwrap();
         let base = Cli {
             fake_volume: None, json: false, verbose: 0, no_color: true,
             command: Commands::List,
         };
         for action in &actions {
-            let cli = action_to_cli(action, &base);
+            let cli = action_to_cli(action, &base, scratch.path());
             let _ = dispatch_in_process(cli, &provider);
         }
-        // Push lets the strategy drop arbitrary bytes into the tempdir; only files that
-        // still parse are subject to the round-trip invariant.
+        // Every write action lands a parseable profile (Push uses a fixed valid CSV; edits
+        // go through the validating apply path), so the parse guard below is a defensive
+        // skip that should not fire today. It keeps the invariant honest should a future
+        // strategy start emitting arbitrary bytes.
         for entry in std::fs::read_dir(dir.path()).unwrap() {
             let entry = entry.unwrap();
             if !entry.path().to_string_lossy().ends_with(".csv") { continue; }

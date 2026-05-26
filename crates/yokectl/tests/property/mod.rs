@@ -1,6 +1,7 @@
 #![allow(dead_code, clippy::too_many_lines)]
 
 use std::io::Write;
+use std::path::Path;
 use std::sync::Arc;
 use tempfile::TempDir;
 use yoke_volume::VolumeProvider;
@@ -14,9 +15,12 @@ pub struct Capture {
     pub stderr: Vec<u8>,
 }
 
-/// In-process dispatch entry point used by every proptest invariant.
-/// Equivalent to `yokectl::entry()` but captures output into Vecs and
-/// returns the exit info instead of calling `process::exit`.
+/// In-process dispatch used by every proptest invariant. Drives
+/// `yokectl::run_with_provider` with an injected provider and captures stdout/stderr
+/// into buffers instead of calling `process::exit`. It deliberately does not cover
+/// `yokectl::run`'s provider selection (dummy vs platform/`--fake-volume` backend) or
+/// `entry()`'s argument parsing; those layers are exercised by the command-level
+/// integration tests that spawn the real binary.
 pub fn dispatch_in_process(cli: Cli, provider: &Arc<dyn VolumeProvider>) -> Capture {
     use std::sync::Mutex;
     let stdout = Arc::new(Mutex::new(Vec::<u8>::new()));
@@ -420,7 +424,7 @@ fn uuid_like_str(s: &str) -> String {
     uuid_like(s.as_bytes())
 }
 
-pub fn action_to_cli(action: &Action, base: &Cli) -> Cli {
+pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
     let mut cli = base.clone();
     cli.command = match action {
         Action::List => Commands::List,
@@ -503,12 +507,12 @@ pub fn action_to_cli(action: &Action, base: &Cli) -> Cli {
         },
         Action::Pull { name } => Commands::Pull {
             name: name.clone(),
-            dest: None,
+            dest: Some(scratch.join(format!("pull-{}.csv", uuid_like_str(name)))),
         },
         Action::Push { name, bytes } => {
             let mut key = name.as_bytes().to_vec();
             key.extend_from_slice(bytes);
-            let path = std::env::temp_dir().join(format!("yokectl-prop-{}.csv", uuid_like(&key)));
+            let path = scratch.join(format!("yokectl-prop-{}.csv", uuid_like(&key)));
             let _ = std::fs::write(&path, bytes);
             Commands::Push {
                 src: path,
@@ -569,7 +573,7 @@ pub fn action_to_cli(action: &Action, base: &Cli) -> Cli {
             let mut key = target.as_bytes().to_vec();
             key.extend_from_slice(content.as_bytes());
             let hash = uuid_like(&key);
-            let path = std::env::temp_dir().join(format!("yokectl-edits-{hash}.json"));
+            let path = scratch.join(format!("yokectl-edits-{hash}.json"));
             let _ = std::fs::write(&path, &content);
             Commands::Apply {
                 target: target.clone(),
@@ -590,8 +594,7 @@ pub fn action_to_cli(action: &Action, base: &Cli) -> Cli {
             let path = if let ProfileSource::LocalPath(p) = source {
                 p.clone()
             } else {
-                let tmp = std::env::temp_dir()
-                    .join(format!("yokectl-install-{}.csv", uuid_like_str(&src_str)));
+                let tmp = scratch.join(format!("yokectl-install-{}.csv", uuid_like_str(&src_str)));
                 let _ = std::fs::write(
                     &tmp,
                     b"QuadStick Configuration,Version 1.4,Mock,Install\r\n,,,\r\n*Main,sip_puff,,A\r\n",
@@ -640,3 +643,4 @@ pub mod apply_atomicity;
 pub mod exit_and_json;
 pub mod no_panics;
 pub mod round_trip;
+pub mod show_raw;
