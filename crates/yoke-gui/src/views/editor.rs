@@ -1,13 +1,12 @@
 use egui::text::LayoutJob;
 use egui::{FontFamily, FontId, TextFormat};
-use yoke_config::catalog::SubProfileMode;
 use yoke_config::model::SubProfile;
 
 use crate::app::YokeApp;
 use crate::theme::{Palette, card_frame, strip_frame};
 
-// One sub-profile chip: mode badge, display name, binding count.
-type Tab = (&'static str, String, usize);
+// One sub-profile chip: display name (the mode) + binding count.
+type Tab = (String, usize);
 
 /// # Panics
 ///
@@ -25,13 +24,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
         let tabs: Vec<Tab> = subs
             .iter()
             .enumerate()
-            .map(|(i, s)| {
-                (
-                    mode_badge(&s.header.mode),
-                    sub_name(s, i),
-                    s.bindings().count(),
-                )
-            })
+            .map(|(i, s)| (sub_label(s, i), s.bindings().count()))
             .collect();
         (
             open.source.breadcrumb(),
@@ -67,9 +60,9 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     if tabs.len() > 1 {
         strip_frame().show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
-                for (i, (badge, name, count)) in tabs.iter().enumerate() {
+                for (i, (name, count)) in tabs.iter().enumerate() {
                     let selected = app.selected_subprofile() == i;
-                    let job = tab_label(badge, name, *count, &palette);
+                    let job = tab_label(name, *count, &palette);
                     if ui.selectable_label(selected, job).clicked() {
                         app.set_selected_subprofile(i);
                         app.set_selected_station(None);
@@ -96,19 +89,10 @@ fn stat(ui: &mut egui::Ui, palette: &Palette, n: usize, label: &str) {
     ui.label(egui::RichText::new(label).color(palette.ink_2));
 }
 
-fn tab_label(badge: &str, name: &str, count: usize, palette: &Palette) -> LayoutJob {
+fn tab_label(name: &str, count: usize, palette: &Palette) -> LayoutJob {
     let mut job = LayoutJob::default();
     job.append(
-        badge,
-        0.0,
-        TextFormat {
-            font_id: FontId::new(11.0, FontFamily::Monospace),
-            color: palette.accent,
-            ..Default::default()
-        },
-    );
-    job.append(
-        &format!("  {name}"),
+        name,
         0.0,
         TextFormat {
             font_id: FontId::new(13.0, FontFamily::Proportional),
@@ -128,22 +112,18 @@ fn tab_label(badge: &str, name: &str, count: usize, palette: &Palette) -> Layout
     job
 }
 
-const fn mode_badge(mode: &SubProfileMode) -> &'static str {
-    match mode {
-        SubProfileMode::Mouse => "M",
-        SubProfileMode::MouseScroll => "MS",
-        SubProfileMode::LeftAnalog => "LA",
-        SubProfileMode::RightAnalog => "RA",
-        SubProfileMode::MixedAnalog => "MA",
-        SubProfileMode::DPad => "DP",
-        SubProfileMode::Unknown(_) => "·",
+// The sub-profile's display name: the explicit profile name if present, else
+// the mode (e.g. "Left Analog" / "Mixed joy"), falling back to an index only
+// when neither carries a label.
+fn sub_label(s: &SubProfile, i: usize) -> String {
+    let name = s.header.profile_name.trim();
+    if !name.is_empty() {
+        return name.to_owned();
     }
-}
-
-fn sub_name(s: &SubProfile, i: usize) -> String {
-    if s.header.profile_name.trim().is_empty() {
+    let mode = s.header.mode.canonical_csv();
+    if mode.trim().is_empty() {
         format!("Sub-profile {}", i + 1)
     } else {
-        s.header.profile_name.clone()
+        mode
     }
 }
