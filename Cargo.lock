@@ -5293,6 +5293,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "yoke-config",
  "yoke-index",
  "yoke-volume",

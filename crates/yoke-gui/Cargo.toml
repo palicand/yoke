@@ -19,6 +19,7 @@ anyhow = "1"
 rfd = "0.17"
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 tracing-subscriber = "0.3"
+url = "2"
 yoke-index = { version = "0.1.0", path = "../yoke-index" }
 yoke-volume = { version = "0.1.0", path = "../yoke-volume" }
 
