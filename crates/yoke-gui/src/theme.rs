@@ -88,6 +88,50 @@ pub fn apply(ctx: &egui::Context) {
     ctx.set_visuals(console_visuals());
 }
 
+/// Embed OFL-licensed fonts and register them with egui. Call once at startup,
+/// before `apply`, so visuals reference the correct families.
+pub fn install_fonts(ctx: &egui::Context) {
+    use egui::{FontData, FontDefinitions, FontFamily};
+    let mut fonts = FontDefinitions::default();
+
+    fonts.font_data.insert(
+        "Manrope".to_owned(),
+        std::sync::Arc::new(FontData::from_static(include_bytes!(
+            "../assets/fonts/manrope/Manrope-Regular.ttf"
+        ))),
+    );
+    fonts.font_data.insert(
+        "JetBrainsMono".to_owned(),
+        std::sync::Arc::new(FontData::from_static(include_bytes!(
+            "../assets/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"
+        ))),
+    );
+    fonts.font_data.insert(
+        "InstrumentSerif".to_owned(),
+        std::sync::Arc::new(FontData::from_static(include_bytes!(
+            "../assets/fonts/instrument-serif/InstrumentSerif-Regular.ttf"
+        ))),
+    );
+
+    fonts
+        .families
+        .entry(FontFamily::Proportional)
+        .or_default()
+        .insert(0, "Manrope".to_owned());
+    fonts
+        .families
+        .entry(FontFamily::Monospace)
+        .or_default()
+        .insert(0, "JetBrainsMono".to_owned());
+    // Named family for display headings; not a standard egui family.
+    fonts.families.insert(
+        FontFamily::Name("Instrument".into()),
+        vec!["InstrumentSerif".to_owned()],
+    );
+
+    ctx.set_fonts(fonts);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

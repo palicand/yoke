@@ -47,6 +47,7 @@ fn main() -> eframe::Result<()> {
         "Yoke",
         options,
         Box::new(move |cc| {
+            yoke_gui::theme::install_fonts(&cc.egui_ctx);
             yoke_gui::theme::apply(&cc.egui_ctx);
             let (worker, events) = yoke_gui::worker::spawn(data, cc.egui_ctx.clone());
             Ok(Box::new(yoke_gui::app::YokeApp::new(worker, events, backend_error)))
