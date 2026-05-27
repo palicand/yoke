@@ -1,4 +1,6 @@
 #[allow(dead_code)]
+mod data;
+#[allow(dead_code)]
 mod stations;
 #[allow(dead_code)]
 mod state;

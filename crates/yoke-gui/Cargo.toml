@@ -8,6 +8,7 @@ description = "Read-only QuadStick profile viewer (egui)."
 [dependencies]
 eframe = { version = "0.34", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
 egui = "0.34"
+thiserror = "2"
 tracing = "0.1"
 yoke-config = { version = "0.1.0", path = "../yoke-config" }
 
