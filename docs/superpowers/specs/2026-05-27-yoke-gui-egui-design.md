@@ -130,7 +130,7 @@ Held in `YokeApp`, not in reactive signals (egui is immediate-mode — state is 
 
 - **Chrome:** the real OS title bar (`eframe` native decorations on). No faux traffic lights. The window title is set; the DEVICE status pill lives in the in-app top panel.
 - **Theme:** the design-handoff Console (dark) tokens (`--bg-0..4`, `--ink-1..3`, `--line`, `--accent`, `--accent-2`, category colors) translate to an `egui::Visuals` builder plus a small `Palette` struct for accent/category colors used by custom painting. Adding Studio/Contrast later is a second palette, not a component change.
-- **Fonts:** Manrope (UI sans), JetBrains Mono (mono), Instrument Serif (display) embedded via `include_bytes!` + `FontDefinitions`, so the binary has no runtime font-fetch dependency.
+- **Fonts:** Manrope (UI sans), JetBrains Mono (mono), Instrument Serif (display) embedded via `include_bytes!` + `FontDefinitions`, so the binary has no runtime font-fetch dependency. All three are SIL Open Font License 1.1 — embedding them carries attribution obligations (see "Embedded-asset licensing").
 
 ### Reuse
 
@@ -148,6 +148,18 @@ Two small pieces are authored in `yoke-gui` from the design reference rather tha
 ### Device map: native painting, not SVG (decided)
 
 The map is drawn with egui's `Painter` rather than rendered from an SVG asset. egui has no native SVG; SVG support means pulling `egui_extras`'s `svg` feature, which adds the `resvg`/`usvg`/`tiny-skia` tree (and `fontdb` + system fonts for `svg_text`) — heavy for a native, self-contained stack, and it inflates the wasm dev bundle. The map is also data-driven (per-station binding-count badges, selected ring) and interactive (click to filter), neither of which a static rasterized SVG expresses without an egui overlay that re-derives the same geometry. `Painter` output is tessellated vector geometry — crisp at any DPI with no re-rasterization. The static station table keeps the painting bounded. Reconsider an SVG asset only for the deferred, illustrative "Diagram" sketch variant, where the content is static rather than a data visualization.
+
+### Embedded-asset licensing
+
+Yoke is MIT-licensed, but bundling third-party assets means honoring their licenses on redistribution. The rule for this crate (and any future embedded asset): **ship the asset's license text and an attribution entry alongside it.**
+
+The three embedded fonts are SIL Open Font License 1.1 (Manrope, JetBrains Mono, Instrument Serif). OFL-1.1 requires the license text to accompany the font files and the copyright notice + Reserved Font Names to be retained, and forbids selling the fonts on their own. Concretely:
+
+- each font ships its `OFL.txt` in `assets/fonts/<font>/` beside the `.ttf`;
+- `assets/fonts/ATTRIBUTION.md` lists each font's name, author, source URL, and license;
+- verify each font's exact current license at implementation before committing the binaries (Instrument Serif in particular — confirm its OFL grant from the canonical source rather than assuming).
+
+A user-facing credits/About surface is deferred (not v1); the on-disk license files satisfy the obligation in the meantime.
 
 ### Error handling
 
@@ -170,7 +182,7 @@ yoke/crates/yoke-gui/
 ├── Cargo.toml          # native deps target-gated off wasm32
 ├── index.html          # trunk entry (wasm dev)
 ├── Trunk.toml
-├── assets/fonts/       # Manrope, JetBrains Mono, Instrument Serif (embedded)
+├── assets/fonts/       # embedded .ttf + each font's OFL.txt + ATTRIBUTION.md
 ├── fixtures/
 │   └── default.csv     # committed mock fixture (one real corpus profile)
 └── src/
