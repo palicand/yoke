@@ -186,7 +186,7 @@ impl YokeApp {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn status_label(&self) -> (&'static str, egui::Color32) {
+    const fn status_label(&self) -> (&'static str, egui::Color32) {
         match &self.volume {
             Some(MountState::Present) => ("Connected", self.palette.accent),
             None => ("Disconnected", self.palette.ink_3),

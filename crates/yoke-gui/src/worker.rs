@@ -1,4 +1,4 @@
-use crate::data::{handle_command, AppCommand, DataEvent, DataSource, FailureContext};
+use crate::data::{handle_command, AppCommand, DataEvent, DataSource};
 
 /// Drive one command synchronously and append the resulting event(s).
 /// `OpenFileDialog` is special-cased per target (see `WorkerHandle`).
@@ -11,8 +11,8 @@ mod native_worker {
     use std::sync::mpsc::{Receiver, Sender};
     use std::sync::Arc;
 
-    use super::{AppCommand, DataEvent, FailureContext};
-    use crate::data::{handle_command, DataSource};
+    use super::{AppCommand, DataEvent};
+    use crate::data::{handle_command, DataSource, FailureContext};
     use crate::data::native::NativeDataSource;
     use crate::state::ProfileSource;
 
