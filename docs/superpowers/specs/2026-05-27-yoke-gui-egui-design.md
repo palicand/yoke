@@ -112,7 +112,7 @@ YokeApp (impl eframe::App)
             └── bindings panel         filtered by selected station; BindingRow list
 ```
 
-The device map is drawn with egui's `Painter` from the static station table (ported from the Tauri build's `stations.rs`). Clicking a station node sets `selected_station`; the bindings panel filters via the same `input_belongs_to` logic. Escape steps back one level (clear station selection, then close profile) — matching the v1 interaction addendum.
+The device map is drawn with egui's `Painter` from the static station table (ported from the Tauri build's `stations.rs`) rather than an SVG asset (see the device-map decision below). Clicking a station node sets `selected_station`; the bindings panel filters via the same `input_belongs_to` logic. Escape steps back one level (clear station selection, then close profile) — matching the v1 interaction addendum.
 
 ### State
 
@@ -233,7 +233,7 @@ The winner's crate may be renamed to `yoke-ui` and the loser's branch dropped; t
 
 - **egui ecosystem versions.** `egui`/`eframe`/`rfd` move fast; pin exact versions and the matching `wasm-bindgen-cli`. Mismatches surface as build errors, not silent breakage.
 - **Async on the wasm pump.** Native uses tokio; the wasm build has no runtime. Mock data is synchronous so this is a non-issue for v1, but a future wasm build that does real fetches would need `wasm-bindgen-futures`. Out of scope now.
-- **Custom device-map painting.** The SVG sketch becomes manual `Painter` work (regions, station nodes, count badges, selected ring). More code than declarative SVG; the static `stations.rs` table keeps it bounded.
+- **Device map: native painting, not SVG (decided).** The map is drawn with egui's `Painter` rather than rendered from an SVG asset. egui has no native SVG; SVG support means pulling `egui_extras`'s `svg` feature, which adds the `resvg`/`usvg`/`tiny-skia` tree (and `fontdb` + system fonts for `svg_text`) — heavy for a branch whose premise is a lean, WebView-free stack, and it inflates the wasm dev bundle. The map is also data-driven (per-station binding-count badges, selected ring) and interactive (click to filter), neither of which a static rasterized SVG expresses without an egui overlay that re-derives the same geometry. `Painter` output is tessellated vector geometry — crisp at any DPI with no re-rasterization. The static `stations.rs` table keeps the painting bounded. Reconsider an SVG asset only for the deferred, illustrative "Diagram" sketch variant, where the content is static rather than a data visualization.
 - **Accessibility.** egui exposes accessibility through AccessKit rather than the DOM. For a tool serving users with disabilities this matters; it is not scored in the read-only v1 but must be on the radar before either approach ships for real.
 - **Disconnect-keeps-editor behavior.** Provisional, same as v1.
 
