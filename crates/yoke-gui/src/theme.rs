@@ -178,6 +178,44 @@ pub fn apply(ctx: &egui::Context) {
     ctx.set_global_style(console_style());
 }
 
+/// Surface card for the editor's device/bindings panes (design
+/// `.dev-pane`/`.bind-pane`): `--bg-2` fill, `--line` border, `--r-md` corners.
+pub fn card_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(BG_2)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(10))
+        .inner_margin(egui::Margin::symmetric(16, 14))
+}
+
+/// Small rounded pill (design `.mod-pill`): `--bg-2` fill, `--line` border.
+pub fn pill_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(BG_2)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::symmetric(7, 2))
+}
+
+/// Bordered binding-row container (design `.brow`): `--bg-1`, `--line` border.
+pub fn row_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(BG_1)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::symmetric(10, 7))
+}
+
+/// Segmented container for the sub-profile tab strip (design `.sub-tabs`):
+/// `--bg-3` fill, `--line` border, `--r-md` corners.
+pub fn strip_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(BG_3)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(10))
+        .inner_margin(egui::Margin::same(4))
+}
+
 /// Embed OFL-licensed fonts and register them with egui. Call once at startup,
 /// before `apply`, so visuals reference the correct families.
 pub fn install_fonts(ctx: &egui::Context) {
