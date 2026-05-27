@@ -173,7 +173,7 @@ A user-facing credits/About surface is deferred (not v1); the on-disk license fi
 
 Toasts are a small egui overlay (bottom-right, ~5 s auto-dismiss). No third-party toast crate.
 
-**Disconnect-mid-session (provisional):** if the volume unmounts while the editor is open, the editor stays open on the in-memory profile and the status pill flips to disconnected. Re-evaluate against the running UI before merging.
+**Disconnect-mid-session (confirmed):** if the volume unmounts while the editor is open, the editor stays open on the in-memory profile and the status pill flips to disconnected. Confirmed by inspection of [`app.rs`](../../../crates/yoke-gui/src/app.rs): the `VolumeChanged` handler clears only `device_profiles` (the library list) and never touches `open_profile`; `status_label` maps `MountState::Absent` to "Disconnected". The editor closes only via the Back button or Escape. Not exercised against a physical unmount (no device in CI); the fs-backend fallback drives the same `VolumeChanged` path.
 
 ## On-disk layout
 
@@ -229,12 +229,28 @@ All adds via `cargo add` per [`AGENTS.md`](../../../AGENTS.md). Exact versions p
 - community list shows at least one entry in mock mode; click opens the editor.
 - disconnect the volume mid-session: editor stays open, status pill updates (validate it feels right).
 
+## Implementation notes
+
+Adaptations made while building the crate. Source files are authoritative; this records the decisions, not the code.
+
+- **Presence type.** No new `VolumePresence` was introduced — the UI consumes [`yoke_volume::state::MountState`](../../../crates/yoke-volume/src/state.rs) directly. It is tri-state (`Present` / `Absent` / `DeviceVisibleNoVolume { mode_hint, .. }`), so the status pill surfaces the no-volume sub-states ("mass storage off" / "emulation mode" / "controller mode") rather than collapsing them to "Disconnected". See `status_label` in [`app.rs`](../../../crates/yoke-gui/src/app.rs).
+- **Community entry type.** The community list/open path passes [`yoke_index::IndexEntry`](../../../crates/yoke-index) directly; no GUI-local DTO.
+- **eframe entry shape.** egui/eframe **0.34** non-deprecated forms: `eframe::App::ui` (not `update`), `egui::Panel::{top,left}` + `*::show_inside`, `Frame::{side_top_panel,central_panel}`, and `ctx.global_style()` / `ctx.set_global_style()` (not the deprecated `style`/`set_style`). Authoritative shapes live in [`app.rs`](../../../crates/yoke-gui/src/app.rs) and [`theme.rs`](../../../crates/yoke-gui/src/theme.rs).
+- **Station table.** Layout and `input_belongs_to` are authored in [`stations.rs`](../../../crates/yoke-gui/src/stations.rs) (8 stations incl. `side`). This overlaps the existing [`yoke_config::catalog::variants::Station`](../../../crates/yoke-config/src/catalog/variants.rs) (same id/label/kind shape) — a future-dedup candidate, deliberately not merged in this stage to keep the GUI's coordinate/geometry concern out of the config catalog.
+- **Pinned versions.** `egui`/`eframe` `0.34`, `rfd` `0.17`, resolved `wasm-bindgen` `0.2.121`. The devShell ships `trunk` only; trunk fetches the matching `wasm-bindgen-cli` itself, so no separate nix pin was required (this is the Task 15 wasm-bindgen-cli reconciliation).
+- **Trunk crate-type.** `yoke-gui` exposes both a `cdylib` lib (the wasm entry with `#[wasm_bindgen(start)]`) and a `bin` (native). `index.html` selects the lib via `data-target-name="yoke_gui"`; without this trunk bundles the binary instead, producing a 0-import wasm module and a blank canvas.
+- **Worker threading (deviation from "single bg thread").** The native worker keeps one thread draining the command channel but dispatches **each command on its own thread**, so a slow community list/fetch (`block_on` network I/O) never blocks a device or file command queued behind it. The shared `Arc<NativeDataSource>` owns a multi-thread tokio runtime, making concurrent `block_on` calls safe. See [`worker.rs`](../../../crates/yoke-gui/src/worker.rs).
+- **Community CSV ingestion.** Supporting real community profiles required two additions to the shared [`yoke-config` parser](../../../crates/yoke-config/src/csv/parse.rs): synthesizing the `QuadStick Configuration` top line for headerless Google-Sheet exports, and expanding horizontal column groups into one sub-profile each. Horizontal expansion is gated to community (headerless) CSVs so a device CSV's adjacent name/mode/channel columns are never mis-read as extra sub-profiles.
+- **Open-in-flight feedback.** A centered spinner overlay (`opening` field in [`app.rs`](../../../crates/yoke-gui/src/app.rs)) is shown while a profile read/download + parse is in flight. A percentage progress bar was deferred (it would touch multiple crates plus the CLI).
+- **Sub-profile chip labels.** Chips render `<mode> · <sub-mode>` (e.g. "Left Analog · Normal") so same-mode layers are distinguishable; see `sub_label` in [`views/editor.rs`](../../../crates/yoke-gui/src/views/editor.rs).
+- **Disconnect-mid-session.** Confirmed (see the [Error handling](#error-handling) note): the editor stays open on the in-memory profile and the pill flips to Disconnected.
+
 ## Risks and open questions
 
 - **egui ecosystem versions.** `egui`/`eframe`/`rfd` move fast; pin exact versions and the matching `wasm-bindgen-cli`. Mismatches surface as build errors, not silent breakage.
 - **Async on the wasm pump.** Native uses tokio; the wasm build has no runtime. Mock data is synchronous so this is a non-issue for v1, but a future wasm build that does real fetches would need `wasm-bindgen-futures`. Out of scope now.
 - **Accessibility.** egui exposes accessibility through AccessKit rather than the DOM. For a tool serving users with disabilities this matters and will be addressed; it is not scored in the read-only v1 but is on the radar before shipping for real.
-- **Disconnect-keeps-editor behavior.** Provisional; validate in the running UI.
+- **Disconnect-keeps-editor behavior.** Resolved — see the confirmed note under [Error handling](#error-handling) and the Implementation notes below.
 
 ## References
 
