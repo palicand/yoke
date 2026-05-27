@@ -1,4 +1,5 @@
 use yoke_config::catalog::{Input, MpPosition};
+use yoke_config::model::SubProfile;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StationKind {
@@ -67,6 +68,20 @@ pub const fn input_belongs_to(input: &Input) -> Option<&'static str> {
     }
 }
 
+/// Count bindings per station id for one sub-profile.
+#[must_use]
+pub fn binding_counts(sub: &SubProfile) -> std::collections::HashMap<&'static str, usize> {
+    let mut counts = std::collections::HashMap::new();
+    for b in sub.bindings() {
+        if let Some(input) = &b.input
+            && let Some(station) = input_belongs_to(input)
+        {
+            *counts.entry(station).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,6 +133,24 @@ mod tests {
         assert_eq!(input_belongs_to(&Input::JoystickAxis(JoyAxis::Up)), Some("joystick"));
         assert_eq!(input_belongs_to(&Input::JoystickAnyDirection), Some("joystick"));
         assert_eq!(input_belongs_to(&Input::Center), Some("joystick"));
+    }
+
+    #[test]
+    fn binding_counts_attribute_to_stations() {
+        // CRLF endings required; layout mirrors SINGLE_SUB in yoke-config parse tests.
+        // "left" -> JoystickAxis(Left) -> "joystick"; "lip" -> Lip -> "lip".
+        let csv = b"QuadStick Configuration,Version 1.4,,Mac\r\n\
+Profile Name,,Mouse Mode,\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_left,normal,left,\r\n\
+kb_left_shift,normal,lip,\r\n\
+\r\n";
+        let parsed = yoke_config::parse(csv).unwrap();
+        let sub = &parsed.model.sub_profiles[0];
+        let counts = binding_counts(sub);
+        assert_eq!(counts.get("joystick").copied().unwrap_or(0), 1);
+        assert_eq!(counts.get("lip").copied().unwrap_or(0), 1);
     }
 
     #[test]
