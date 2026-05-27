@@ -64,28 +64,118 @@ pub const fn output_color(palette: &Palette, output: &yoke_config::catalog::Outp
     }
 }
 
-/// Console dark `egui::Visuals` built from the design `--bg-*` / `--ink-*` tokens.
+// Console surface tokens (design `[data-theme="console"]`).
+const BG_0: Color32 = rgb(0x0A_0B_0D); // app frame
+const BG_1: Color32 = rgb(0x14_16_1A); // canvas / panels
+const BG_2: Color32 = rgb(0x1B_1E_23); // surface / ghost-button fill
+const BG_3: Color32 = rgb(0x20_24_2A); // subtle surface / hover
+const BG_4: Color32 = rgb(0x2A_2F_36); // depressed / active
+const INK_1: Color32 = rgb(0xE8_E6_E0);
+const INK_2: Color32 = rgb(0x9A_A0_A8);
+const LINE: Color32 = rgb(0x2A_2F_36);
+const LINE_STRONG: Color32 = rgb(0x3A_40_48);
+const ACCENT: Color32 = rgb(0x6E_D2_74);
+const ACCENT_2: Color32 = rgb(0x1E_3B_1F);
+
+// Corner radius `--r-sm`; widgets read u8.
+const R_SM: u8 = 6;
+
+/// Console dark `egui::Visuals` from the design `--bg-*` / `--ink-*` tokens.
+///
+/// Widgets are styled as the design's ghost buttons: `--bg-2` fill, a `--line`
+/// border, `--r-sm` corners, lifting to `--bg-3`/`--bg-4` on hover/press.
 #[must_use]
 pub fn console_visuals() -> egui::Visuals {
+    use egui::{CornerRadius, Stroke};
     let mut v = egui::Visuals::dark();
-    v.panel_fill = rgb(0x14_16_1A); // --bg-1
-    v.window_fill = rgb(0x1B_1E_23); // --bg-2
-    v.extreme_bg_color = rgb(0x0A_0B_0D); // --bg-0
-    v.faint_bg_color = rgb(0x20_24_2A); // --bg-3
-    v.override_text_color = Some(rgb(0xE8_E6_E0)); // --ink-1
-    v.hyperlink_color = rgb(0x6E_D2_74); // --accent
-    v.selection.bg_fill = rgb(0x1E_3B_1F); // --accent-2
-    v.selection.stroke = egui::Stroke::new(1.0, rgb(0x6E_D2_74));
-    let line = rgb(0x2A_2F_36); // --line
-    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, line);
-    v.widgets.inactive.bg_fill = rgb(0x20_24_2A); // --bg-3
-    v.widgets.hovered.bg_fill = rgb(0x2A_2F_36); // --bg-4
+    v.panel_fill = BG_1;
+    v.window_fill = BG_2;
+    v.extreme_bg_color = BG_0;
+    v.faint_bg_color = BG_3;
+    v.override_text_color = Some(INK_1);
+    v.hyperlink_color = ACCENT;
+    v.selection.bg_fill = ACCENT_2;
+    v.selection.stroke = Stroke::new(1.0, ACCENT);
+    v.window_stroke = Stroke::new(1.0, LINE);
+    v.window_corner_radius = CornerRadius::same(10); // --r-md
+    v.menu_corner_radius = CornerRadius::same(R_SM);
+
+    let radius = CornerRadius::same(R_SM);
+    let w = &mut v.widgets;
+    // Separators, frame outlines, non-clickable text.
+    w.noninteractive.bg_fill = BG_1;
+    w.noninteractive.weak_bg_fill = BG_1;
+    w.noninteractive.bg_stroke = Stroke::new(1.0, LINE);
+    w.noninteractive.fg_stroke = Stroke::new(1.0, INK_2);
+    w.noninteractive.corner_radius = radius;
+    // Resting buttons.
+    w.inactive.bg_fill = BG_2;
+    w.inactive.weak_bg_fill = BG_2;
+    w.inactive.bg_stroke = Stroke::new(1.0, LINE);
+    w.inactive.fg_stroke = Stroke::new(1.0, INK_1);
+    w.inactive.corner_radius = radius;
+    // Hover.
+    w.hovered.bg_fill = BG_3;
+    w.hovered.weak_bg_fill = BG_3;
+    w.hovered.bg_stroke = Stroke::new(1.0, LINE_STRONG);
+    w.hovered.fg_stroke = Stroke::new(1.0, INK_1);
+    w.hovered.corner_radius = radius;
+    // Pressed.
+    w.active.bg_fill = BG_4;
+    w.active.weak_bg_fill = BG_4;
+    w.active.bg_stroke = Stroke::new(1.0, ACCENT);
+    w.active.fg_stroke = Stroke::new(1.0, INK_1);
+    w.active.corner_radius = radius;
+    // Open combo/menu.
+    w.open.bg_fill = BG_3;
+    w.open.weak_bg_fill = BG_3;
+    w.open.bg_stroke = Stroke::new(1.0, LINE_STRONG);
+    w.open.fg_stroke = Stroke::new(1.0, INK_1);
+    w.open.corner_radius = radius;
     v
+}
+
+/// Build the full Console `Style`.
+///
+/// Layers the design typography scale (Instrument serif display headings,
+/// `JetBrains` Mono eyebrows/labels, Manrope body) and roomier spacing on
+/// `console_visuals`.
+#[must_use]
+pub fn console_style() -> egui::Style {
+    use egui::{FontFamily, FontId, TextStyle};
+
+    let mut style = egui::Style::default();
+    let serif = FontFamily::Name("Instrument".into());
+    style.text_styles = [
+        (TextStyle::Heading, FontId::new(30.0, serif)),
+        (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
+        (
+            TextStyle::Button,
+            FontId::new(13.0, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Monospace,
+            FontId::new(12.5, FontFamily::Monospace),
+        ),
+        // Eyebrows/captions render mono, matching the design's small labels.
+        (TextStyle::Small, FontId::new(11.0, FontFamily::Monospace)),
+    ]
+    .into();
+
+    let s = &mut style.spacing;
+    s.item_spacing = egui::vec2(8.0, 8.0);
+    s.button_padding = egui::vec2(12.0, 7.0);
+    s.interact_size.y = 30.0;
+    s.indent = 18.0;
+    s.menu_margin = egui::Margin::same(6);
+
+    style.visuals = console_visuals();
+    style
 }
 
 /// Install the Console theme on a context. Call once at startup.
 pub fn apply(ctx: &egui::Context) {
-    ctx.set_visuals(console_visuals());
+    ctx.set_global_style(console_style());
 }
 
 /// Embed OFL-licensed fonts and register them with egui. Call once at startup,

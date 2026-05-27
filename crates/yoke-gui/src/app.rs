@@ -128,42 +128,54 @@ impl eframe::App for YokeApp {
         }
 
         let ctx = ui.ctx().clone();
+        let style = ctx.global_style();
+        let top_frame =
+            egui::Frame::side_top_panel(&style).inner_margin(egui::Margin::symmetric(16, 12));
+        let rail_frame =
+            egui::Frame::side_top_panel(&style).inner_margin(egui::Margin::symmetric(12, 14));
+        let central_frame =
+            egui::Frame::central_panel(&style).inner_margin(egui::Margin::symmetric(24, 20));
 
-        egui::Panel::top("yoke_top").show_inside(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("Yoke");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.status_pill(ui);
+        egui::Panel::top("yoke_top")
+            .frame(top_frame)
+            .show_inside(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Yoke");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        self.status_pill(ui);
+                    });
                 });
             });
-        });
 
         egui::Panel::left("yoke_rail")
             .resizable(false)
-            .default_size(160.0)
+            .default_size(180.0)
+            .frame(rail_frame)
             .show_inside(ui, |ui| {
-                ui.add_space(8.0);
                 let on_library = self.open_profile.is_none();
                 if ui.selectable_label(on_library, "Profiles").clicked() {
                     self.open_profile = None;
                     self.selected_station = None;
                 }
-                ui.separator();
+                ui.add_space(10.0);
                 ui.label(
                     egui::RichText::new("DEVICE")
                         .small()
                         .color(self.palette.ink_3),
                 );
+                ui.add_space(2.0);
                 self.rail_device_status(ui);
             });
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            if self.open_profile.is_some() {
-                crate::views::editor::show(self, ui);
-            } else {
-                crate::views::library::show(self, ui);
-            }
-        });
+        egui::CentralPanel::default()
+            .frame(central_frame)
+            .show_inside(ui, |ui| {
+                if self.open_profile.is_some() {
+                    crate::views::editor::show(self, ui);
+                } else {
+                    crate::views::library::show(self, ui);
+                }
+            });
 
         self.show_toast(&ctx, ui);
 
