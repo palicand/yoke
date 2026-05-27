@@ -63,36 +63,40 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(4.0);
 
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        if rows.is_empty() {
-            ui.add_space(24.0);
-            ui.vertical_centered(|ui| {
-                ui.colored_label(palette.ink_3, "No bindings for this station.");
-            });
-        }
-        for (input_label, output_label, color, modifier_label) in &rows {
-            row_frame().show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("WHEN").small().color(palette.ink_3));
-                        ui.label(
-                            egui::RichText::new(input_label)
-                                .monospace()
-                                .strong()
-                                .color(palette.ink_1),
-                        );
-                    });
-                    if let Some(modifier) = modifier_label {
-                        pill_frame().show(ui, |ui| {
-                            ui.label(egui::RichText::new(modifier).small().color(palette.ink_2));
-                        });
-                    }
-                    ui.label(egui::RichText::new("->").color(palette.ink_3));
-                    ui.colored_label(*color, output_label);
+    egui::ScrollArea::vertical()
+        .auto_shrink(false)
+        .show(ui, |ui| {
+            if rows.is_empty() {
+                ui.add_space(24.0);
+                ui.vertical_centered(|ui| {
+                    ui.colored_label(palette.ink_3, "No bindings for this station.");
                 });
-            });
-        }
-    });
+            }
+            for (input_label, output_label, color, modifier_label) in &rows {
+                row_frame().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.vertical(|ui| {
+                            ui.label(egui::RichText::new("WHEN").small().color(palette.ink_3));
+                            ui.label(
+                                egui::RichText::new(input_label)
+                                    .monospace()
+                                    .strong()
+                                    .color(palette.ink_1),
+                            );
+                        });
+                        if let Some(modifier) = modifier_label {
+                            pill_frame().show(ui, |ui| {
+                                ui.label(
+                                    egui::RichText::new(modifier).small().color(palette.ink_2),
+                                );
+                            });
+                        }
+                        ui.label(egui::RichText::new("->").color(palette.ink_3));
+                        ui.colored_label(*color, output_label);
+                    });
+                });
+            }
+        });
 
     // Safe: `sub` borrow released above; `&mut app` is uncontested here.
     if clear_filter {

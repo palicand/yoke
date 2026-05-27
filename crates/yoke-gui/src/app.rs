@@ -5,7 +5,16 @@ use crate::theme::Palette;
 #[cfg(target_arch = "wasm32")]
 use crate::data::mock::MockMountState as MountState;
 #[cfg(not(target_arch = "wasm32"))]
-use yoke_volume::state::MountState;
+use yoke_volume::state::{ModeHint, MountState};
+
+#[cfg(not(target_arch = "wasm32"))]
+const fn mount_present(s: &MountState) -> bool {
+    matches!(s, MountState::Present { .. })
+}
+#[cfg(target_arch = "wasm32")]
+const fn mount_present(s: &MountState) -> bool {
+    matches!(s, MountState::Present)
+}
 
 pub struct YokeApp {
     palette: Palette,
@@ -84,7 +93,19 @@ impl YokeApp {
         match ev {
             DataEvent::ProfilesListed(list) => self.device_profiles = list,
             DataEvent::CommunityListed(list) => self.community = CommunityLoad::Loaded(list),
-            DataEvent::VolumeChanged(state) => self.volume = Some(state),
+            DataEvent::VolumeChanged(state) => {
+                // Repopulate the profile list when the volume becomes readable;
+                // drop it when the volume goes away. The volume watcher fires
+                // this on mount/unmount, so the list tracks the device live.
+                let now = mount_present(&state);
+                let was = self.volume.as_ref().is_some_and(mount_present);
+                self.volume = Some(state);
+                if now && !was {
+                    self.worker.send(AppCommand::ListDeviceProfiles);
+                } else if was && !now {
+                    self.device_profiles.clear();
+                }
+            }
             DataEvent::ProfileOpened { source, profile } => {
                 self.selected_station = None;
                 self.selected_subprofile = 0;
@@ -203,7 +224,19 @@ impl YokeApp {
         }
         match &self.volume {
             Some(MountState::Present { .. }) => ("Connected", self.palette.accent),
-            Some(_) | None => ("Disconnected", self.palette.ink_3),
+            // Device is plugged in but exposes no readable FAT volume: surface
+            // why (mass-storage off / controller emulation) rather than calling
+            // it disconnected. Amber distinguishes it from both other states.
+            Some(MountState::DeviceVisibleNoVolume { mode_hint, .. }) => {
+                let label = match mode_hint {
+                    Some(ModeHint::MassStorageDisabled) => "Connected - mass storage off",
+                    Some(ModeHint::Emulation) => "Connected - emulation mode",
+                    Some(ModeHint::Ps4OrHori) => "Connected - controller mode",
+                    None => "Connected - no volume",
+                };
+                (label, self.palette.mouse)
+            }
+            Some(MountState::Absent) | None => ("Disconnected", self.palette.ink_3),
         }
     }
 
