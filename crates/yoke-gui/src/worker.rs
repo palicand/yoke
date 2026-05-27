@@ -67,18 +67,27 @@ mod native_worker {
             });
         }
 
-        // Command loop.
+        // Command dispatcher. The receiver loop stays on one thread, but each
+        // command runs on its own thread so a slow network call (community
+        // list/fetch, which `block_on`s inside the data source) never blocks a
+        // device or file command queued behind it. The data source is shared
+        // (Arc) and owns a multi-thread runtime, so concurrent `block_on` calls
+        // from separate threads are safe; device/file commands don't touch the
+        // runtime at all.
         {
             std::thread::spawn(move || {
                 while let Ok(cmd) = cmd_rx.recv() {
-                    let event = match cmd {
-                        AppCommand::OpenFileDialog => open_file_dialog(data.as_ref()),
-                        other => handle_command(data.as_ref(), other),
-                    };
-                    if evt_tx.send(event).is_err() {
-                        break;
-                    }
-                    ctx.request_repaint();
+                    let data = Arc::clone(&data);
+                    let evt_tx = evt_tx.clone();
+                    let ctx = ctx.clone();
+                    std::thread::spawn(move || {
+                        let event = match cmd {
+                            AppCommand::OpenFileDialog => open_file_dialog(data.as_ref()),
+                            other => handle_command(data.as_ref(), other),
+                        };
+                        let _ = evt_tx.send(event);
+                        ctx.request_repaint();
+                    });
                 }
             });
         }
