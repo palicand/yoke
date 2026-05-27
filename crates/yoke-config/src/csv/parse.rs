@@ -205,9 +205,24 @@ fn build_model(raw: &RawCsv, warnings: &mut Vec<Warning>) -> Profile {
 
         match section_type {
             "Profile Name" => {
-                let (sp, ws) = build_sub_profile(section);
-                sub_profiles.push(sp);
-                warnings.extend(ws);
+                // Community Google-Sheet exports pack every sub-profile into a
+                // single section as horizontal column groups (mode label at
+                // cols 2, 10, ...); device CSVs use one vertical section per
+                // sub-profile (col 2 only). Expand each labeled group column
+                // into its own SubProfile. Single-group sections keep the
+                // vertical behavior, including cols-10+ comments.
+                let groups = group_columns(section);
+                if groups.len() > 1 {
+                    for col in groups {
+                        let (sp, ws) = build_sub_profile(section, col, None);
+                        sub_profiles.push(sp);
+                        warnings.extend(ws);
+                    }
+                } else {
+                    let (sp, ws) = build_sub_profile(section, 2, Some(10));
+                    sub_profiles.push(sp);
+                    warnings.extend(ws);
+                }
             }
             "Preferences" => {
                 let (p, ws) = build_preferences(section);
@@ -259,9 +274,33 @@ fn build_top_line(cells: &[String]) -> TopLine {
     }
 }
 
-fn build_sub_profile(section: &RawSection) -> (SubProfile, Vec<Warning>) {
+// Columns (>= 2) in the `Profile Name` row that carry a sub-profile label.
+// One column is the vertical device layout; several mean a horizontal community
+// sheet with one sub-profile group per labeled column.
+fn group_columns(section: &RawSection) -> Vec<usize> {
+    section.rows.first().map_or_else(Vec::new, |row| {
+        row.cells
+            .iter()
+            .enumerate()
+            .skip(2)
+            .filter(|(_, c)| !c.trim().is_empty())
+            .map(|(i, _)| i)
+            .collect()
+    })
+}
+
+// Builds one SubProfile from `section`, reading binding values from
+// `value_col` (col 2 for vertical device CSVs; the group's column for a
+// horizontal community sheet). `comment_start`, when set, folds trailing cells
+// from that column onward into the binding comment — disabled for horizontal
+// groups so the next group's column isn't mistaken for a comment.
+fn build_sub_profile(
+    section: &RawSection,
+    value_col: usize,
+    comment_start: Option<usize>,
+) -> (SubProfile, Vec<Warning>) {
     let mut warnings = Vec::new();
-    let header = build_sub_profile_header(section);
+    let header = build_sub_profile_header(section, value_col);
     let mut rows: Vec<SubProfileRow> = Vec::new();
     let mut seen_blank_output = false;
 
@@ -275,15 +314,17 @@ fn build_sub_profile(section: &RawSection) -> (SubProfile, Vec<Warning>) {
             warnings.push(Warning::DataAfterTerminator { line: idx });
         }
         let modifier_cell = row.cells.get(1).map_or("", String::as_str);
-        let input_cell = row.cells.get(2).map_or("", String::as_str);
-        let mut comment = String::new();
-        for cell in row.cells.iter().skip(10).filter(|s| !s.is_empty()) {
-            if !comment.is_empty() {
-                comment.push(' ');
+        let input_cell = row.cells.get(value_col).map_or("", String::as_str);
+        let comment = comment_start.and_then(|start| {
+            let mut c = String::new();
+            for cell in row.cells.iter().skip(start).filter(|s| !s.is_empty()) {
+                if !c.is_empty() {
+                    c.push(' ');
+                }
+                c.push_str(cell);
             }
-            comment.push_str(cell);
-        }
-        let comment = (!comment.is_empty()).then_some(comment);
+            (!c.is_empty()).then_some(c)
+        });
 
         if PreferenceSpec::for_id(output_cell).is_some() {
             let key = PreferenceKey::from_csv(output_cell);
@@ -335,7 +376,7 @@ fn build_sub_profile(section: &RawSection) -> (SubProfile, Vec<Warning>) {
     (SubProfile { header, rows }, warnings)
 }
 
-fn build_sub_profile_header(section: &RawSection) -> SubProfileHeader {
+fn build_sub_profile_header(section: &RawSection, value_col: usize) -> SubProfileHeader {
     let cell = |row: usize, col: usize| -> String {
         section
             .rows
@@ -346,11 +387,11 @@ fn build_sub_profile_header(section: &RawSection) -> SubProfileHeader {
     };
 
     let profile_name = cell(0, 1);
-    let mode_raw = cell(0, 2);
+    let mode_raw = cell(0, value_col);
     let mode = SubProfileMode::from_csv(&mode_raw)
         .unwrap_or_else(|| SubProfileMode::Unknown(mode_raw.clone()));
-    let sub_mode = cell(1, 2);
-    let channel_raw = cell(2, 2);
+    let sub_mode = cell(1, value_col);
+    let channel_raw = cell(2, value_col);
     let channel = Channel::from_csv(&channel_raw).unwrap_or(Channel::Usb);
     let column_header_label = cell(2, 0);
 
@@ -452,6 +493,27 @@ kb_left_shift,delay_on 1000,lip,\r\n\
         assert_eq!(result.model.top_line.label, "QuadStick Configuration");
         assert_eq!(result.model.sub_profiles.len(), 1);
         assert_eq!(result.model.sub_profiles[0].bindings().count(), 2);
+    }
+
+    // Two sub-profiles laid out as horizontal column groups (cols 2 and 10),
+    // as community Google-Sheet exports do. Each group's value lives in its own
+    // column; the modifier (col 1) is shared.
+    const HORIZONTAL_COMMUNITY: &[u8] = b"Profile Name,,Left joy,,,,,,,,Mixed joy\r\n\
+prof.csv,,Normal,,,,,,,,Alternate\r\n\
+Output or Function,Function,usb,,,,,,,,usb\r\n\
+left_joy_left,normal,left,,,,,,,,\r\n\
+right_joy_left,normal,,,,,,,,,left\r\n\
+\r\n";
+
+    #[test]
+    fn horizontal_community_csv_expands_each_group_into_a_sub_profile() {
+        let result = parse(HORIZONTAL_COMMUNITY).expect("horizontal CSV must parse");
+        assert_eq!(result.model.sub_profiles.len(), 2);
+        // Each group reads bindings from its own column, so exactly one binding
+        // per group carries an input.
+        let bound = |sp: &SubProfile| sp.bindings().filter(|b| b.input.is_some()).count();
+        assert_eq!(bound(&result.model.sub_profiles[0]), 1);
+        assert_eq!(bound(&result.model.sub_profiles[1]), 1);
     }
 
     const WITH_PREFS_OVERRIDE: &[u8] = b"QuadStick Configuration,Version 1.4,,Test\r\n\
