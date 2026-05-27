@@ -23,7 +23,20 @@ pub fn read_raw(input: &[u8]) -> Result<RawCsv, ParseError> {
     if first_chunk_rows.is_empty() {
         return Err(ParseError::MissingTopLine);
     }
-    let top_line = first_chunk_rows.remove(0).cells;
+    // Device-saved CSVs lead with a `QuadStick Configuration` metadata row;
+    // community Google-Sheet exports omit it and start at `Profile Name`. When
+    // the header is absent, synthesize a default top line and keep every row as
+    // profile body so the sub-profile parser still sees its `Profile Name`
+    // section instead of consuming it as a (mismatched) top line.
+    let has_header = first_chunk_rows[0]
+        .cells
+        .first()
+        .is_some_and(|c| c.trim() == "QuadStick Configuration");
+    let top_line = if has_header {
+        first_chunk_rows.remove(0).cells
+    } else {
+        synthetic_top_line()
+    };
 
     let mut sections: Vec<RawSection> = Vec::new();
     let mut blank_runs: Vec<usize> = Vec::new();
@@ -215,6 +228,18 @@ fn build_model(raw: &RawCsv, warnings: &mut Vec<Warning>) -> Profile {
         preferences,
         infrared,
     }
+}
+
+// Default top line for community CSVs that ship without the device's
+// `QuadStick Configuration` header. Mirrors the device header's 4-cell shape so
+// a normalized profile writes back as a valid device file.
+fn synthetic_top_line() -> Vec<String> {
+    vec![
+        "QuadStick Configuration".to_string(),
+        "Version 1.4".to_string(),
+        String::new(),
+        String::new(),
+    ]
 }
 
 fn build_top_line(cells: &[String]) -> TopLine {
@@ -409,6 +434,24 @@ kb_left_shift,delay_on 1000,lip,\r\n\
         assert_eq!(sp.header.channel, Channel::Usb);
         assert_eq!(sp.bindings().count(), 2);
         assert!(result.warnings.is_empty());
+    }
+
+    // Community Google-Sheet export: same body as SINGLE_SUB but without the
+    // leading `QuadStick Configuration` row.
+    const HEADERLESS_COMMUNITY: &[u8] = b"Profile Name,,Mouse Mode,\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_left,normal,left,\r\n\
+kb_left_shift,delay_on 1000,lip,\r\n\
+\r\n";
+
+    #[test]
+    fn headerless_community_csv_synthesizes_top_line_and_parses() {
+        let result = parse(HEADERLESS_COMMUNITY).expect("headerless CSV must parse");
+        // Header is synthesized rather than consuming the `Profile Name` row.
+        assert_eq!(result.model.top_line.label, "QuadStick Configuration");
+        assert_eq!(result.model.sub_profiles.len(), 1);
+        assert_eq!(result.model.sub_profiles[0].bindings().count(), 2);
     }
 
     const WITH_PREFS_OVERRIDE: &[u8] = b"QuadStick Configuration,Version 1.4,,Test\r\n\
