@@ -224,25 +224,14 @@ impl YokeApp {
         ctx.request_repaint(); // keep ticking until dismissed
     }
 
-    // Consumed by view modules implemented in subsequent tasks.
-    #[allow(dead_code)]
     pub(crate) const fn palette(&self) -> &Palette { &self.palette }
-    #[allow(dead_code)]
     pub(crate) fn device_profiles(&self) -> &[crate::data::ProfileEntryView] { &self.device_profiles }
-    #[allow(dead_code)]
     pub(crate) const fn community(&self) -> &CommunityLoad { &self.community }
-    #[allow(dead_code)]
     pub(crate) const fn open_profile(&self) -> Option<&OpenProfile> { self.open_profile.as_ref() }
-    #[allow(dead_code)]
     pub(crate) const fn selected_station(&self) -> Option<&'static str> { self.selected_station }
-    #[allow(dead_code)]
     pub(crate) const fn set_selected_station(&mut self, s: Option<&'static str>) { self.selected_station = s; }
-    #[allow(dead_code)]
     pub(crate) const fn selected_subprofile(&self) -> usize { self.selected_subprofile }
-    #[allow(dead_code)]
     pub(crate) const fn set_selected_subprofile(&mut self, i: usize) { self.selected_subprofile = i; }
-    #[allow(dead_code)]
     pub(crate) fn close_profile(&mut self) { self.open_profile = None; self.selected_station = None; }
-    #[allow(dead_code)]
     pub(crate) fn send(&self, cmd: AppCommand) { self.worker.send(cmd); }
 }
