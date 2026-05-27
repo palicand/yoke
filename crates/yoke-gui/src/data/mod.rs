@@ -9,7 +9,7 @@ use yoke_config::model::Profile;
 use crate::state::ProfileSource;
 
 #[cfg(not(target_arch = "wasm32"))]
-use {yoke_index::IndexEntry, yoke_volume::state::MountState, yoke_volume::ProfileName};
+use {yoke_index::IndexEntry, yoke_volume::ProfileName, yoke_volume::state::MountState};
 
 #[cfg(target_arch = "wasm32")]
 use crate::data::mock::{MockCommunityEntry as IndexEntry, MockMountState as MountState};
@@ -62,10 +62,16 @@ pub enum AppCommand {
 /// Events sent from the worker back to the UI.
 pub enum DataEvent {
     ProfilesListed(Vec<ProfileEntryView>),
-    ProfileOpened { source: ProfileSource, profile: Box<Profile> },
+    ProfileOpened {
+        source: ProfileSource,
+        profile: Box<Profile>,
+    },
     CommunityListed(Vec<IndexEntry>),
     VolumeChanged(MountState),
-    Failed { context: FailureContext, message: String },
+    Failed {
+        context: FailureContext,
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,24 +91,39 @@ pub fn handle_command(data: &dyn DataSource, cmd: AppCommand) -> DataEvent {
     match cmd {
         AppCommand::ListDeviceProfiles => match data.list_device_profiles() {
             Ok(list) => DataEvent::ProfilesListed(list),
-            Err(e) => DataEvent::Failed { context: FailureContext::ListDevice, message: e.to_string() },
+            Err(e) => DataEvent::Failed {
+                context: FailureContext::ListDevice,
+                message: e.to_string(),
+            },
         },
         AppCommand::OpenDeviceProfile(name) => match data.read_device_profile(&name) {
             Ok(profile) => DataEvent::ProfileOpened {
                 source: ProfileSource::Device(name),
                 profile: Box::new(profile),
             },
-            Err(e) => DataEvent::Failed { context: FailureContext::OpenDevice, message: e.to_string() },
+            Err(e) => DataEvent::Failed {
+                context: FailureContext::OpenDevice,
+                message: e.to_string(),
+            },
         },
         AppCommand::ListCommunity => match data.list_community() {
             Ok(list) => DataEvent::CommunityListed(list),
-            Err(e) => DataEvent::Failed { context: FailureContext::ListCommunity, message: e.to_string() },
+            Err(e) => DataEvent::Failed {
+                context: FailureContext::ListCommunity,
+                message: e.to_string(),
+            },
         },
         AppCommand::OpenCommunity(entry) => {
             let source = community_source(&entry);
             match data.fetch_community(&entry) {
-                Ok(profile) => DataEvent::ProfileOpened { source, profile: Box::new(profile) },
-                Err(e) => DataEvent::Failed { context: FailureContext::OpenCommunity, message: e.to_string() },
+                Ok(profile) => DataEvent::ProfileOpened {
+                    source,
+                    profile: Box::new(profile),
+                },
+                Err(e) => DataEvent::Failed {
+                    context: FailureContext::OpenCommunity,
+                    message: e.to_string(),
+                },
             }
         }
         AppCommand::OpenFileDialog => DataEvent::Failed {
@@ -114,12 +135,18 @@ pub fn handle_command(data: &dyn DataSource, cmd: AppCommand) -> DataEvent {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn community_source(entry: &IndexEntry) -> ProfileSource {
-    ProfileSource::Community { name: entry.name.clone(), url: entry.csv_url.clone() }
+    ProfileSource::Community {
+        name: entry.name.clone(),
+        url: entry.csv_url.clone(),
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
 fn community_source(entry: &IndexEntry) -> ProfileSource {
-    ProfileSource::Community { name: entry.name.clone(), url: entry.url.clone() }
+    ProfileSource::Community {
+        name: entry.name.clone(),
+        url: entry.url.clone(),
+    }
 }
 
 #[cfg(test)]

@@ -10,8 +10,8 @@ pub mod worker;
 mod wasm_entry {
     use std::rc::Rc;
 
-    use wasm_bindgen::prelude::*;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::prelude::*;
 
     // The `Result<(), JsValue>` return type is mandated by the
     // `#[wasm_bindgen(start)]` contract; the Ok value is never the point.

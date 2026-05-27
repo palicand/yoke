@@ -1,4 +1,4 @@
-use crate::data::{handle_command, AppCommand, DataEvent, DataSource};
+use crate::data::{AppCommand, DataEvent, DataSource, handle_command};
 
 /// Drive one command synchronously and append the resulting event(s).
 /// `OpenFileDialog` is special-cased per target (see `WorkerHandle`).
@@ -8,12 +8,12 @@ pub fn pump_inline(data: &dyn DataSource, cmd: AppCommand, out: &mut Vec<DataEve
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native_worker {
-    use std::sync::mpsc::{Receiver, Sender};
     use std::sync::Arc;
+    use std::sync::mpsc::{Receiver, Sender};
 
     use super::{AppCommand, DataEvent};
-    use crate::data::{handle_command, DataSource, FailureContext};
     use crate::data::native::NativeDataSource;
+    use crate::data::{DataSource, FailureContext, handle_command};
     use crate::state::ProfileSource;
 
     pub struct WorkerHandle {
@@ -33,7 +33,10 @@ mod native_worker {
     /// # Panics
     /// Panics if the tokio current-thread runtime for the volume watcher cannot
     /// be built (OS resource exhaustion).
-    pub fn spawn(data: Arc<NativeDataSource>, ctx: egui::Context) -> (WorkerHandle, Receiver<DataEvent>) {
+    pub fn spawn(
+        data: Arc<NativeDataSource>,
+        ctx: egui::Context,
+    ) -> (WorkerHandle, Receiver<DataEvent>) {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<AppCommand>();
         let (evt_tx, evt_rx) = std::sync::mpsc::channel::<DataEvent>();
 
@@ -86,29 +89,38 @@ mod native_worker {
     fn open_file_dialog(data: &NativeDataSource) -> DataEvent {
         // rfd's sync dialog blocks this worker thread; on macOS rfd dispatches
         // NSOpenPanel to the main queue internally, so this is safe off-main.
-        let Some(path) = rfd::FileDialog::new().add_filter("CSV", &["csv"]).pick_file() else {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("CSV", &["csv"])
+            .pick_file()
+        else {
             // Cancelled: emit a benign no-op event the UI ignores.
-            return DataEvent::Failed { context: FailureContext::OpenFile, message: String::new() };
+            return DataEvent::Failed {
+                context: FailureContext::OpenFile,
+                message: String::new(),
+            };
         };
         match data.read_file_profile(&path) {
             Ok(profile) => DataEvent::ProfileOpened {
                 source: ProfileSource::File(path),
                 profile: Box::new(profile),
             },
-            Err(e) => DataEvent::Failed { context: FailureContext::OpenFile, message: e.to_string() },
+            Err(e) => DataEvent::Failed {
+                context: FailureContext::OpenFile,
+                message: e.to_string(),
+            },
         }
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use native_worker::{spawn, WorkerHandle};
+pub use native_worker::{WorkerHandle, spawn};
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_worker {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use super::{pump_inline, AppCommand, DataEvent};
+    use super::{AppCommand, DataEvent, pump_inline};
     use crate::data::mock::MockDataSource;
 
     pub struct WorkerHandle {
@@ -138,7 +150,7 @@ mod wasm_worker {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use wasm_worker::{spawn, WorkerHandle};
+pub use wasm_worker::{WorkerHandle, spawn};
 
 #[cfg(test)]
 mod tests {

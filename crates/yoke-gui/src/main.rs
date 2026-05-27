@@ -14,7 +14,9 @@ fn main() -> eframe::Result<()> {
             match yoke_volume_macos::MacOsVolumeProvider::new() {
                 Ok(p) => (Arc::new(p), None),
                 Err(e) => (
-                    Arc::new(yoke_volume::FsBackend::new(std::path::PathBuf::from("/Volumes/QUADSTICK"))),
+                    Arc::new(yoke_volume::FsBackend::new(std::path::PathBuf::from(
+                        "/Volumes/QUADSTICK",
+                    ))),
                     Some(e.to_string()),
                 ),
             }
@@ -22,7 +24,9 @@ fn main() -> eframe::Result<()> {
         #[cfg(not(target_os = "macos"))]
         {
             (
-                Arc::new(yoke_volume::FsBackend::new(std::path::PathBuf::from("/Volumes/QUADSTICK"))),
+                Arc::new(yoke_volume::FsBackend::new(std::path::PathBuf::from(
+                    "/Volumes/QUADSTICK",
+                ))),
                 None,
             )
         }
@@ -50,7 +54,11 @@ fn main() -> eframe::Result<()> {
             yoke_gui::theme::install_fonts(&cc.egui_ctx);
             yoke_gui::theme::apply(&cc.egui_ctx);
             let (worker, events) = yoke_gui::worker::spawn(data, cc.egui_ctx.clone());
-            Ok(Box::new(yoke_gui::app::YokeApp::new(worker, events, backend_error)))
+            Ok(Box::new(yoke_gui::app::YokeApp::new(
+                worker,
+                events,
+                backend_error,
+            )))
         }),
     )
 }

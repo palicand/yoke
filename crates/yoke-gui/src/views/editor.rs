@@ -8,8 +8,13 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     // Pre-read owned values while the immutable borrow of `app` is live so
     // the borrow ends before any `&mut app` call below.
     let (breadcrumb, title) = {
-        let open = app.open_profile().expect("editor shown with an open profile");
-        (open.source.breadcrumb(), open.profile.top_line.title.clone())
+        let open = app
+            .open_profile()
+            .expect("editor shown with an open profile");
+        (
+            open.source.breadcrumb(),
+            open.profile.top_line.title.clone(),
+        )
     };
     let ink_2 = app.palette().ink_2;
 

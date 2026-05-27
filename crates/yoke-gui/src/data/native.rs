@@ -34,7 +34,11 @@ impl NativeDataSource {
         if index.is_none() {
             tracing::warn!("community index unavailable (no cache dir); community list disabled");
         }
-        Ok(Self { volume, runtime, index })
+        Ok(Self {
+            volume,
+            runtime,
+            index,
+        })
     }
 
     /// Test constructor: no community index, current-thread runtime is fine.
@@ -45,7 +49,11 @@ impl NativeDataSource {
             .enable_all()
             .build()
             .expect("current-thread runtime");
-        Self { volume, runtime, index: None }
+        Self {
+            volume,
+            runtime,
+            index: None,
+        }
     }
 
     /// Watch handle for the worker to wire `VolumeChanged` -> `request_repaint`.
@@ -64,7 +72,10 @@ impl DataSource for NativeDataSource {
         let entries = self.volume.list_profiles().map_err(map_volume_err)?;
         Ok(entries
             .into_iter()
-            .map(|e| ProfileEntryView { label: e.name.as_filename().to_owned(), name: e.name })
+            .map(|e| ProfileEntryView {
+                label: e.name.as_filename().to_owned(),
+                name: e.name,
+            })
             .collect())
     }
 
@@ -90,9 +101,10 @@ impl DataSource for NativeDataSource {
     }
 
     fn fetch_community(&self, entry: &IndexEntry) -> Result<Profile, DataError> {
-        let client = self.index.as_ref().ok_or_else(|| {
-            DataError::Community("community index unavailable".into())
-        })?;
+        let client = self
+            .index
+            .as_ref()
+            .ok_or_else(|| DataError::Community("community index unavailable".into()))?;
         let src = IndexSource::Url(entry.csv_url.clone());
         let bytes = self
             .runtime

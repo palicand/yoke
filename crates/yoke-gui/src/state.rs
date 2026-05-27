@@ -47,12 +47,10 @@ impl ProfileSource {
                 format!("QuadStick / {file}")
             }
             Self::File(path) => {
-                let stem = path
-                    .file_name()
-                    .map_or_else(
-                        || path.to_string_lossy().into_owned(),
-                        |s| s.to_string_lossy().into_owned(),
-                    );
+                let stem = path.file_name().map_or_else(
+                    || path.to_string_lossy().into_owned(),
+                    |s| s.to_string_lossy().into_owned(),
+                );
                 format!("Local file / {stem}")
             }
             Self::Community { name, .. } => format!("Community / {name}"),

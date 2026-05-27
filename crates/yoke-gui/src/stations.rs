@@ -22,14 +22,62 @@ pub const VIEWBOX_W: f32 = 100.0;
 pub const VIEWBOX_H: f32 = 80.0;
 
 pub const FPS_STATIONS: &[Station] = &[
-    Station { id: "joystick",        label: "Joystick",         kind: StationKind::Joystick,   x: 50.0, y: 22.0 },
-    Station { id: "mp_left",         label: "MP Left",          kind: StationKind::Mouthpiece, x: 22.0, y: 48.0 },
-    Station { id: "mp_left_center",  label: "MP Left-center",   kind: StationKind::Mouthpiece, x: 36.0, y: 48.0 },
-    Station { id: "mp_center",       label: "MP Center",        kind: StationKind::Mouthpiece, x: 50.0, y: 48.0 },
-    Station { id: "mp_right_center", label: "MP Right-center",  kind: StationKind::Mouthpiece, x: 64.0, y: 48.0 },
-    Station { id: "mp_right",        label: "MP Right",         kind: StationKind::Mouthpiece, x: 78.0, y: 48.0 },
-    Station { id: "lip",             label: "Lip switch",       kind: StationKind::Lip,        x: 50.0, y: 66.0 },
-    Station { id: "side",            label: "Side bypass tube", kind: StationKind::Side,       x: 88.0, y: 34.0 },
+    Station {
+        id: "joystick",
+        label: "Joystick",
+        kind: StationKind::Joystick,
+        x: 50.0,
+        y: 22.0,
+    },
+    Station {
+        id: "mp_left",
+        label: "MP Left",
+        kind: StationKind::Mouthpiece,
+        x: 22.0,
+        y: 48.0,
+    },
+    Station {
+        id: "mp_left_center",
+        label: "MP Left-center",
+        kind: StationKind::Mouthpiece,
+        x: 36.0,
+        y: 48.0,
+    },
+    Station {
+        id: "mp_center",
+        label: "MP Center",
+        kind: StationKind::Mouthpiece,
+        x: 50.0,
+        y: 48.0,
+    },
+    Station {
+        id: "mp_right_center",
+        label: "MP Right-center",
+        kind: StationKind::Mouthpiece,
+        x: 64.0,
+        y: 48.0,
+    },
+    Station {
+        id: "mp_right",
+        label: "MP Right",
+        kind: StationKind::Mouthpiece,
+        x: 78.0,
+        y: 48.0,
+    },
+    Station {
+        id: "lip",
+        label: "Lip switch",
+        kind: StationKind::Lip,
+        x: 50.0,
+        y: 66.0,
+    },
+    Station {
+        id: "side",
+        label: "Side bypass tube",
+        kind: StationKind::Side,
+        x: 88.0,
+        y: 34.0,
+    },
 ];
 
 #[must_use]
@@ -112,26 +160,43 @@ mod tests {
             (MpPosition::Right, "mp_right"),
         ];
         for (pos, station) in cases {
-            let input = Input::Mouthpiece { pos, dir: SipPuff::Sip, soft: false };
+            let input = Input::Mouthpiece {
+                pos,
+                dir: SipPuff::Sip,
+                soft: false,
+            };
             assert_eq!(input_belongs_to(&input), Some(station));
         }
     }
 
     #[test]
     fn combined_mouthpiece_positions_have_no_station() {
-        let input = Input::Mouthpiece { pos: MpPosition::LeftRight, dir: SipPuff::Puff, soft: false };
+        let input = Input::Mouthpiece {
+            pos: MpPosition::LeftRight,
+            dir: SipPuff::Puff,
+            soft: false,
+        };
         assert_eq!(input_belongs_to(&input), None);
     }
 
     #[test]
     fn side_lip_and_joystick_map_to_their_stations() {
         assert_eq!(
-            input_belongs_to(&Input::Side { dir: SipPuff::Sip, kind: SideKind::Hard }),
+            input_belongs_to(&Input::Side {
+                dir: SipPuff::Sip,
+                kind: SideKind::Hard
+            }),
             Some("side")
         );
         assert_eq!(input_belongs_to(&Input::Lip { soft: true }), Some("lip"));
-        assert_eq!(input_belongs_to(&Input::JoystickAxis(JoyAxis::Up)), Some("joystick"));
-        assert_eq!(input_belongs_to(&Input::JoystickAnyDirection), Some("joystick"));
+        assert_eq!(
+            input_belongs_to(&Input::JoystickAxis(JoyAxis::Up)),
+            Some("joystick")
+        );
+        assert_eq!(
+            input_belongs_to(&Input::JoystickAnyDirection),
+            Some("joystick")
+        );
         assert_eq!(input_belongs_to(&Input::Center), Some("joystick"));
     }
 

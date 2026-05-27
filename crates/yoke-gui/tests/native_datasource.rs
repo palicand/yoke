@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use yoke_gui::data::native::NativeDataSource;
 use yoke_gui::data::DataSource;
+use yoke_gui::data::native::NativeDataSource;
 use yoke_volume::state::MountState;
 use yoke_volume::{FsBackend, ProfileName, VolumeProvider};
 
@@ -30,15 +30,23 @@ fn reads_a_device_profile_from_a_temp_volume() {
 
     // FsBackend::new over an existing directory returns Present immediately;
     // no set_present call needed.
-    assert!(matches!(backend.current_state(), MountState::Present { .. }));
+    assert!(matches!(
+        backend.current_state(),
+        MountState::Present { .. }
+    ));
 
     let data = NativeDataSource::for_test(backend);
     assert!(matches!(data.volume_state(), MountState::Present { .. }));
 
     let list = data.list_device_profiles().unwrap();
-    assert!(list.iter().any(|e| e.name == ProfileName::new("default").unwrap()));
+    assert!(
+        list.iter()
+            .any(|e| e.name == ProfileName::new("default").unwrap())
+    );
 
-    let profile = data.read_device_profile(&ProfileName::new("default").unwrap()).unwrap();
+    let profile = data
+        .read_device_profile(&ProfileName::new("default").unwrap())
+        .unwrap();
     assert!(!profile.sub_profiles.is_empty());
 }
 

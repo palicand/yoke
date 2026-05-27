@@ -5,28 +5,33 @@ use crate::theme::output_color;
 type Row = (String, String, egui::Color32, Option<String>);
 
 pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
-    let Some(open) = app.open_profile() else { return };
-    let Some(sub) = open.profile.sub_profiles.get(app.selected_subprofile()) else { return };
+    let Some(open) = app.open_profile() else {
+        return;
+    };
+    let Some(sub) = open.profile.sub_profiles.get(app.selected_subprofile()) else {
+        return;
+    };
     let palette = *app.palette();
     let filter = app.selected_station();
 
-    let title = filter
-        .map_or_else(|| "Bindings - all".to_string(), |station| format!("Bindings - {station}"));
+    let title = filter.map_or_else(
+        || "Bindings - all".to_string(),
+        |station| format!("Bindings - {station}"),
+    );
 
     // Collect display rows while `sub` borrow is live, releasing it before
     // any `&mut app` call.
     let rows: Vec<Row> = sub
         .bindings()
         .filter(|b| {
-            filter.is_none_or(|station| {
-                b.input.as_ref().and_then(input_belongs_to) == Some(station)
-            })
+            filter
+                .is_none_or(|station| b.input.as_ref().and_then(input_belongs_to) == Some(station))
         })
         .map(|b| {
-            let input_label = b
-                .input
-                .as_ref()
-                .map_or_else(|| "(unbound)".to_string(), yoke_config::catalog::Input::to_csv);
+            let input_label = b.input.as_ref().map_or_else(
+                || "(unbound)".to_string(),
+                yoke_config::catalog::Input::to_csv,
+            );
             let output_label = b.output.to_csv();
             let color = output_color(&palette, &b.output);
             let modifier = b.modifier.to_csv();

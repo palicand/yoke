@@ -41,8 +41,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
             CommunityLoad::Loaded(entries) => {
                 if entries.is_empty() {
                     ui.label(
-                        egui::RichText::new("No community entries.")
-                            .color(app.palette().ink_3),
+                        egui::RichText::new("No community entries.").color(app.palette().ink_3),
                     );
                 }
                 for entry in entries {

@@ -49,7 +49,10 @@ mod tests {
     #[test]
     fn fixture_parses_into_a_profile_with_subprofiles() {
         let profile = MockDataSource::parse_fixture().expect("fixture must parse");
-        assert!(!profile.sub_profiles.is_empty(), "fixture has at least one sub-profile");
+        assert!(
+            !profile.sub_profiles.is_empty(),
+            "fixture has at least one sub-profile"
+        );
     }
 
     #[test]
@@ -84,14 +87,17 @@ mod imp {
     use yoke_volume::ProfileName;
     use yoke_volume::state::{MountState, VidPid};
 
-    use crate::data::{DataError, DataSource, ProfileEntryView};
     use crate::data::mock::MockDataSource;
+    use crate::data::{DataError, DataSource, ProfileEntryView};
 
     impl DataSource for MockDataSource {
         fn volume_state(&self) -> MountState {
             MountState::Present {
                 mount_point: std::path::PathBuf::from("/Volumes/QUADSTICK"),
-                vid_pid: VidPid { vendor: 0x16D0, product: 0x092B },
+                vid_pid: VidPid {
+                    vendor: 0x16D0,
+                    product: 0x092B,
+                },
                 label: "QUADSTICK".into(),
             }
         }
@@ -103,11 +109,17 @@ mod imp {
             }])
         }
 
-        fn read_device_profile(&self, _name: &ProfileName) -> Result<yoke_config::model::Profile, DataError> {
+        fn read_device_profile(
+            &self,
+            _name: &ProfileName,
+        ) -> Result<yoke_config::model::Profile, DataError> {
             Self::parse_fixture()
         }
 
-        fn read_file_profile(&self, _path: &Path) -> Result<yoke_config::model::Profile, DataError> {
+        fn read_file_profile(
+            &self,
+            _path: &Path,
+        ) -> Result<yoke_config::model::Profile, DataError> {
             Self::parse_fixture()
         }
 
@@ -119,7 +131,10 @@ mod imp {
             }])
         }
 
-        fn fetch_community(&self, _entry: &IndexEntry) -> Result<yoke_config::model::Profile, DataError> {
+        fn fetch_community(
+            &self,
+            _entry: &IndexEntry,
+        ) -> Result<yoke_config::model::Profile, DataError> {
             Self::parse_fixture()
         }
     }
@@ -138,22 +153,37 @@ mod imp {
         }
 
         fn list_device_profiles(&self) -> Result<Vec<ProfileEntryView>, DataError> {
-            Ok(vec![ProfileEntryView { name: "default".into(), label: "default.csv".into() }])
+            Ok(vec![ProfileEntryView {
+                name: "default".into(),
+                label: "default.csv".into(),
+            }])
         }
 
-        fn read_device_profile(&self, _name: &String) -> Result<yoke_config::model::Profile, DataError> {
+        fn read_device_profile(
+            &self,
+            _name: &String,
+        ) -> Result<yoke_config::model::Profile, DataError> {
             Self::parse_fixture()
         }
 
-        fn read_file_profile(&self, _path: &Path) -> Result<yoke_config::model::Profile, DataError> {
+        fn read_file_profile(
+            &self,
+            _path: &Path,
+        ) -> Result<yoke_config::model::Profile, DataError> {
             Self::parse_fixture()
         }
 
         fn list_community(&self) -> Result<Vec<MockCommunityEntry>, DataError> {
-            Ok(vec![MockCommunityEntry { name: "Destiny 2 (sample)".into(), url: "https://example.org/d2.csv".into() }])
+            Ok(vec![MockCommunityEntry {
+                name: "Destiny 2 (sample)".into(),
+                url: "https://example.org/d2.csv".into(),
+            }])
         }
 
-        fn fetch_community(&self, _entry: &MockCommunityEntry) -> Result<yoke_config::model::Profile, DataError> {
+        fn fetch_community(
+            &self,
+            _entry: &MockCommunityEntry,
+        ) -> Result<yoke_config::model::Profile, DataError> {
             Self::parse_fixture()
         }
     }

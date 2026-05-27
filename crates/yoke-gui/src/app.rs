@@ -2,10 +2,10 @@ use crate::data::{AppCommand, DataEvent, FailureContext};
 use crate::state::{CommunityLoad, OpenProfile};
 use crate::theme::Palette;
 
-#[cfg(not(target_arch = "wasm32"))]
-use yoke_volume::state::MountState;
 #[cfg(target_arch = "wasm32")]
 use crate::data::mock::MockMountState as MountState;
+#[cfg(not(target_arch = "wasm32"))]
+use yoke_volume::state::MountState;
 
 pub struct YokeApp {
     palette: Palette,
@@ -88,7 +88,10 @@ impl YokeApp {
             DataEvent::ProfileOpened { source, profile } => {
                 self.selected_station = None;
                 self.selected_subprofile = 0;
-                self.open_profile = Some(OpenProfile { source, profile: *profile });
+                self.open_profile = Some(OpenProfile {
+                    source,
+                    profile: *profile,
+                });
             }
             DataEvent::Failed { context, message } => self.handle_failure(context, message),
         }
@@ -135,17 +138,24 @@ impl eframe::App for YokeApp {
             });
         });
 
-        egui::Panel::left("yoke_rail").resizable(false).default_size(160.0).show_inside(ui, |ui| {
-            ui.add_space(8.0);
-            let on_library = self.open_profile.is_none();
-            if ui.selectable_label(on_library, "Profiles").clicked() {
-                self.open_profile = None;
-                self.selected_station = None;
-            }
-            ui.separator();
-            ui.label(egui::RichText::new("DEVICE").small().color(self.palette.ink_3));
-            self.rail_device_status(ui);
-        });
+        egui::Panel::left("yoke_rail")
+            .resizable(false)
+            .default_size(160.0)
+            .show_inside(ui, |ui| {
+                ui.add_space(8.0);
+                let on_library = self.open_profile.is_none();
+                if ui.selectable_label(on_library, "Profiles").clicked() {
+                    self.open_profile = None;
+                    self.selected_station = None;
+                }
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("DEVICE")
+                        .small()
+                        .color(self.palette.ink_3),
+                );
+                self.rail_device_status(ui);
+            });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
             if self.open_profile.is_some() {
@@ -198,14 +208,18 @@ impl YokeApp {
         ui.colored_label(color, text);
         if let Some(err) = &self.backend_error {
             ui.label(egui::RichText::new(err).small().color(self.palette.ink_3))
-                .on_hover_text("Volume backend failed to initialize; file-open and community still work.");
+                .on_hover_text(
+                    "Volume backend failed to initialize; file-open and community still work.",
+                );
         }
     }
 
     #[allow(clippy::float_cmp)] // f64::MAX is a sentinel meaning "not yet set"; exact equality is intentional
     fn show_toast(&mut self, ctx: &egui::Context, _ui: &egui::Ui) {
         let now = ctx.input(|i| i.time);
-        let Some((msg, expiry)) = self.toast.as_mut() else { return };
+        let Some((msg, expiry)) = self.toast.as_mut() else {
+            return;
+        };
         if *expiry == f64::MAX {
             *expiry = now + 5.0;
         }
@@ -224,14 +238,35 @@ impl YokeApp {
         ctx.request_repaint(); // keep ticking until dismissed
     }
 
-    pub(crate) const fn palette(&self) -> &Palette { &self.palette }
-    pub(crate) fn device_profiles(&self) -> &[crate::data::ProfileEntryView] { &self.device_profiles }
-    pub(crate) const fn community(&self) -> &CommunityLoad { &self.community }
-    pub(crate) const fn open_profile(&self) -> Option<&OpenProfile> { self.open_profile.as_ref() }
-    pub(crate) const fn selected_station(&self) -> Option<&'static str> { self.selected_station }
-    pub(crate) const fn set_selected_station(&mut self, s: Option<&'static str>) { self.selected_station = s; }
-    pub(crate) const fn selected_subprofile(&self) -> usize { self.selected_subprofile }
-    pub(crate) const fn set_selected_subprofile(&mut self, i: usize) { self.selected_subprofile = i; }
-    pub(crate) fn close_profile(&mut self) { self.open_profile = None; self.selected_station = None; }
-    pub(crate) fn send(&self, cmd: AppCommand) { self.worker.send(cmd); }
+    pub(crate) const fn palette(&self) -> &Palette {
+        &self.palette
+    }
+    pub(crate) fn device_profiles(&self) -> &[crate::data::ProfileEntryView] {
+        &self.device_profiles
+    }
+    pub(crate) const fn community(&self) -> &CommunityLoad {
+        &self.community
+    }
+    pub(crate) const fn open_profile(&self) -> Option<&OpenProfile> {
+        self.open_profile.as_ref()
+    }
+    pub(crate) const fn selected_station(&self) -> Option<&'static str> {
+        self.selected_station
+    }
+    pub(crate) const fn set_selected_station(&mut self, s: Option<&'static str>) {
+        self.selected_station = s;
+    }
+    pub(crate) const fn selected_subprofile(&self) -> usize {
+        self.selected_subprofile
+    }
+    pub(crate) const fn set_selected_subprofile(&mut self, i: usize) {
+        self.selected_subprofile = i;
+    }
+    pub(crate) fn close_profile(&mut self) {
+        self.open_profile = None;
+        self.selected_station = None;
+    }
+    pub(crate) fn send(&self, cmd: AppCommand) {
+        self.worker.send(cmd);
+    }
 }
