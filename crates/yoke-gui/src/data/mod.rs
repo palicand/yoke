@@ -62,7 +62,7 @@ pub enum AppCommand {
 /// Events sent from the worker back to the UI.
 pub enum DataEvent {
     ProfilesListed(Vec<ProfileEntryView>),
-    ProfileOpened { source: ProfileSource, profile: Profile },
+    ProfileOpened { source: ProfileSource, profile: Box<Profile> },
     CommunityListed(Vec<IndexEntry>),
     VolumeChanged(MountState),
     Failed { context: FailureContext, message: String },
@@ -90,7 +90,7 @@ pub fn handle_command(data: &dyn DataSource, cmd: AppCommand) -> DataEvent {
         AppCommand::OpenDeviceProfile(name) => match data.read_device_profile(&name) {
             Ok(profile) => DataEvent::ProfileOpened {
                 source: ProfileSource::Device(name),
-                profile,
+                profile: Box::new(profile),
             },
             Err(e) => DataEvent::Failed { context: FailureContext::OpenDevice, message: e.to_string() },
         },
@@ -101,7 +101,7 @@ pub fn handle_command(data: &dyn DataSource, cmd: AppCommand) -> DataEvent {
         AppCommand::OpenCommunity(entry) => {
             let source = community_source(&entry);
             match data.fetch_community(&entry) {
-                Ok(profile) => DataEvent::ProfileOpened { source, profile },
+                Ok(profile) => DataEvent::ProfileOpened { source, profile: Box::new(profile) },
                 Err(e) => DataEvent::Failed { context: FailureContext::OpenCommunity, message: e.to_string() },
             }
         }
