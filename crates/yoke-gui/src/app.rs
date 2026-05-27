@@ -30,6 +30,9 @@ pub struct YokeApp {
     selected_station: Option<&'static str>,
     selected_subprofile: usize,
     toast: Option<(String, f64)>,
+    /// Label of a profile whose open is in flight (read/download + parse on the
+    /// worker); drives the loading overlay. Cleared on `ProfileOpened`/failure.
+    opening: Option<String>,
     requested_initial: bool,
 }
 
@@ -55,6 +58,7 @@ impl YokeApp {
             selected_station: None,
             selected_subprofile: 0,
             toast: None,
+            opening: None,
             requested_initial: false,
         }
     }
@@ -75,6 +79,7 @@ impl YokeApp {
             selected_station: None,
             selected_subprofile: 0,
             toast: None,
+            opening: None,
             requested_initial: false,
         }
     }
@@ -107,6 +112,7 @@ impl YokeApp {
                 }
             }
             DataEvent::ProfileOpened { source, profile } => {
+                self.opening = None;
                 self.selected_station = None;
                 self.selected_subprofile = 0;
                 self.open_profile = Some(OpenProfile {
@@ -119,6 +125,12 @@ impl YokeApp {
     }
 
     fn handle_failure(&mut self, context: FailureContext, message: String) {
+        if matches!(
+            context,
+            FailureContext::OpenDevice | FailureContext::OpenFile | FailureContext::OpenCommunity
+        ) {
+            self.opening = None;
+        }
         if context == FailureContext::OpenFile && message.is_empty() {
             return; // dialog cancelled
         }
@@ -198,6 +210,7 @@ impl eframe::App for YokeApp {
                 }
             });
 
+        self.show_loading_overlay(&ctx);
         self.show_toast(&ctx, ui);
 
         // Escape steps back: clear station, then close profile.
@@ -281,6 +294,32 @@ impl YokeApp {
                 });
             });
         ctx.request_repaint(); // keep ticking until dismissed
+    }
+
+    // Centered spinner while a profile open is in flight on the worker. The
+    // spinner self-requests repaint, so the UI keeps ticking until the
+    // `ProfileOpened`/failure event clears `opening`.
+    fn show_loading_overlay(&self, ctx: &egui::Context) {
+        let Some(name) = &self.opening else {
+            return;
+        };
+        egui::Area::new(egui::Id::new("yoke_loading"))
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style())
+                    .inner_margin(egui::Margin::symmetric(18, 14))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.add_space(6.0);
+                            ui.label(format!("Loading {name}…"));
+                        });
+                    });
+            });
+    }
+
+    pub(crate) fn set_opening(&mut self, label: impl Into<String>) {
+        self.opening = Some(label.into());
     }
 
     pub(crate) const fn palette(&self) -> &Palette {

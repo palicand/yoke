@@ -21,6 +21,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
             } else {
                 for entry in &device_profiles {
                     if ui.button(&entry.label).clicked() {
+                        app.set_opening(entry.label.clone());
                         app.send(AppCommand::OpenDeviceProfile(entry.name.clone()));
                     }
                 }
@@ -48,7 +49,8 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
                     }
                     for entry in entries {
                         let name = community_name(&entry);
-                        if ui.button(name).clicked() {
+                        if ui.button(&name).clicked() {
+                            app.set_opening(name);
                             app.send(AppCommand::OpenCommunity(entry.clone()));
                         }
                     }
