@@ -6,6 +6,16 @@ use crate::csv::raw::{RawCsv, RawRow, RawSection};
 use crate::error::ParseError;
 
 pub fn read_raw(input: &[u8]) -> Result<RawCsv, ParseError> {
+    read_raw_meta(input).map(|(raw, _)| raw)
+}
+
+/// Parse to `RawCsv` and report whether the `QuadStick Configuration` header was
+/// absent (a community Google-Sheet export, for which we synthesized a top
+/// line). The flag gates horizontal multi-group sub-profile expansion, which
+/// applies only to community sheets — device CSVs spread one sub-profile's
+/// metadata (name, mode, channel) across adjacent columns and must stay
+/// one-section-per-sub-profile.
+fn read_raw_meta(input: &[u8]) -> Result<(RawCsv, bool), ParseError> {
     if std::str::from_utf8(input).is_err() {
         return Err(ParseError::Encoding);
     }
@@ -70,12 +80,15 @@ pub fn read_raw(input: &[u8]) -> Result<RawCsv, ParseError> {
         blank_runs.push(0);
     }
 
-    Ok(RawCsv {
-        top_line,
-        leading_blanks,
-        sections,
-        blank_runs,
-    })
+    Ok((
+        RawCsv {
+            top_line,
+            leading_blanks,
+            sections,
+            blank_runs,
+        },
+        !has_header,
+    ))
 }
 
 struct Chunk {
@@ -179,9 +192,9 @@ pub struct ParseResult {
 }
 
 pub fn parse(input: &[u8]) -> Result<ParseResult, ParseError> {
-    let raw = read_raw(input)?;
+    let (raw, community) = read_raw_meta(input)?;
     let mut warnings = Vec::new();
-    let model = build_model(&raw, &mut warnings);
+    let model = build_model(&raw, community, &mut warnings);
     Ok(ParseResult {
         raw,
         model,
@@ -189,7 +202,7 @@ pub fn parse(input: &[u8]) -> Result<ParseResult, ParseError> {
     })
 }
 
-fn build_model(raw: &RawCsv, warnings: &mut Vec<Warning>) -> Profile {
+fn build_model(raw: &RawCsv, community: bool, warnings: &mut Vec<Warning>) -> Profile {
     let top_line = build_top_line(&raw.top_line);
 
     let mut sub_profiles: Vec<SubProfile> = Vec::new();
@@ -208,10 +221,15 @@ fn build_model(raw: &RawCsv, warnings: &mut Vec<Warning>) -> Profile {
                 // Community Google-Sheet exports pack every sub-profile into a
                 // single section as horizontal column groups (mode label at
                 // cols 2, 10, ...); device CSVs use one vertical section per
-                // sub-profile (col 2 only). Expand each labeled group column
-                // into its own SubProfile. Single-group sections keep the
-                // vertical behavior, including cols-10+ comments.
-                let groups = group_columns(section);
+                // sub-profile and spread that sub-profile's own name/mode/
+                // channel across adjacent columns. So horizontal expansion is
+                // gated to community sheets only — a device CSV's adjacent
+                // metadata columns must never be read as extra sub-profiles.
+                let groups = if community {
+                    group_columns(section)
+                } else {
+                    Vec::new()
+                };
                 if groups.len() > 1 {
                     for col in groups {
                         let (sp, ws) = build_sub_profile(section, col, None);
@@ -514,6 +532,28 @@ right_joy_left,normal,,,,,,,,,left\r\n\
         let bound = |sp: &SubProfile| sp.bindings().filter(|b| b.input.is_some()).count();
         assert_eq!(bound(&result.model.sub_profiles[0]), 1);
         assert_eq!(bound(&result.model.sub_profiles[1]), 1);
+    }
+
+    // A device CSV carries the sub-profile name in col 1 and channel in col 3
+    // of the `Profile Name` row, alongside the mode in col 2. Those adjacent
+    // metadata columns must not be mistaken for horizontal community groups:
+    // a device CSV is always one sub-profile per section.
+    const DEVICE_NAMED_SUB: &[u8] = b"QuadStick Configuration,Version 1.4,Mock,Default\r\n\
+Profile Name,Main,Mouse,usb\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_left,normal,left,\r\n\
+\r\n";
+
+    #[test]
+    fn device_csv_with_named_subprofile_is_single_not_horizontal() {
+        let r = parse(DEVICE_NAMED_SUB).expect("parse");
+        assert_eq!(r.model.sub_profiles.len(), 1);
+        let sp = &r.model.sub_profiles[0];
+        assert_eq!(sp.header.profile_name, "Main");
+        assert_eq!(sp.header.mode, SubProfileMode::Mouse);
+        assert_eq!(sp.header.channel, Channel::Usb);
+        assert_eq!(sp.bindings().count(), 1);
     }
 
     const WITH_PREFS_OVERRIDE: &[u8] = b"QuadStick Configuration,Version 1.4,,Test\r\n\
