@@ -114,16 +114,26 @@ fn tab_label(name: &str, count: usize, palette: &Palette) -> LayoutJob {
 
 // The sub-profile's display name: the explicit profile name if present, else
 // the mode (e.g. "Left Analog" / "Mixed joy"), falling back to an index only
-// when neither carries a label.
+// when neither carries a label. The sub-mode (Normal / Alternate / ...) is
+// appended when present, which is what distinguishes same-mode layers.
 fn sub_label(s: &SubProfile, i: usize) -> String {
-    let name = s.header.profile_name.trim();
-    if !name.is_empty() {
-        return name.to_owned();
-    }
-    let mode = s.header.mode.canonical_csv();
-    if mode.trim().is_empty() {
-        format!("Sub-profile {}", i + 1)
+    let base = {
+        let name = s.header.profile_name.trim();
+        if name.is_empty() {
+            let mode = s.header.mode.canonical_csv();
+            if mode.trim().is_empty() {
+                format!("Sub-profile {}", i + 1)
+            } else {
+                mode
+            }
+        } else {
+            name.to_owned()
+        }
+    };
+    let sub = s.header.sub_mode.trim();
+    if sub.is_empty() {
+        base
     } else {
-        mode
+        format!("{base} · {sub}")
     }
 }
