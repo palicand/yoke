@@ -37,6 +37,7 @@ pub fn station_by_id(id: &str) -> Option<&'static Station> {
 }
 
 /// Map a physical `Input` to the device-map station it lives on, if any.
+///
 /// Combined mouthpiece positions (`LeftRight`, `Triple`), `Constant`, USB-host
 /// inputs, digital ins, and `Unknown` have no single station and return `None`
 /// (they appear only in the unfiltered bindings view).
