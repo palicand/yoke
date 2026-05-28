@@ -23,13 +23,26 @@ mod wasm_entry {
 
         let web_options = eframe::WebOptions::default();
         wasm_bindgen_futures::spawn_local(async {
-            let document = web_sys::window().unwrap().document().unwrap();
-            let canvas = document
-                .get_element_by_id("yoke_canvas")
-                .unwrap()
-                .dyn_into::<web_sys::HtmlCanvasElement>()
-                .unwrap();
-            eframe::WebRunner::new()
+            // An external embedder may load the wasm artifact in a page without
+            // `#yoke_canvas`; log and bail rather than panicking into a blank
+            // page after `start()` has already returned Ok.
+            let Some(window) = web_sys::window() else {
+                tracing::error!("window unavailable; cannot start yoke");
+                return;
+            };
+            let Some(document) = window.document() else {
+                tracing::error!("document unavailable; cannot start yoke");
+                return;
+            };
+            let Some(canvas_el) = document.get_element_by_id("yoke_canvas") else {
+                tracing::error!("missing `#yoke_canvas` element; cannot start yoke");
+                return;
+            };
+            let Ok(canvas) = canvas_el.dyn_into::<web_sys::HtmlCanvasElement>() else {
+                tracing::error!("`#yoke_canvas` is not a canvas element; cannot start yoke");
+                return;
+            };
+            let start_result = eframe::WebRunner::new()
                 .start(
                     canvas,
                     web_options,
@@ -38,11 +51,14 @@ mod wasm_entry {
                         crate::theme::apply(&cc.egui_ctx);
                         let data = Rc::new(crate::data::mock::MockDataSource::new());
                         let worker = crate::worker::spawn(data);
-                        Ok(Box::new(crate::app::YokeApp::new(worker)))
+                        // Mock fixture always provides community entries.
+                        Ok(Box::new(crate::app::YokeApp::new(worker, true)))
                     }),
                 )
-                .await
-                .expect("failed to start eframe");
+                .await;
+            if let Err(err) = start_result {
+                tracing::error!(?err, "failed to start eframe");
+            }
         });
         Ok(())
     }

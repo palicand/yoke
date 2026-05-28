@@ -8,6 +8,12 @@ pub enum MountState {
         vid_pid: VidPid,
         mode_hint: Option<ModeHint>,
     },
+    /// A `QuadStick` disk has appeared but its FAT filesystem is not yet
+    /// readable. Distinct from `DeviceVisibleNoVolume { MassStorageDisabled }`
+    /// so a mid-mount device reads as "connecting", not "mass storage off".
+    Mounting {
+        vid_pid: VidPid,
+    },
     Present {
         mount_point: PathBuf,
         vid_pid: VidPid,
@@ -84,7 +90,9 @@ pub const HORI_PS4_VID_PID: VidPid = VidPid {
 pub fn state_transition_events(old: &MountState, new: &MountState) -> Vec<MountEvent> {
     match (old, new) {
         (
-            MountState::Absent | MountState::DeviceVisibleNoVolume { .. },
+            MountState::Absent
+            | MountState::DeviceVisibleNoVolume { .. }
+            | MountState::Mounting { .. },
             MountState::Present {
                 mount_point,
                 vid_pid,
@@ -107,13 +115,21 @@ pub fn state_transition_events(old: &MountState, new: &MountState) -> Vec<MountE
                 },
             ]
         }
-        (MountState::Present { .. }, MountState::Absent) => vec![MountEvent::VolumeUnmounted],
-        (MountState::Absent, MountState::DeviceVisibleNoVolume { vid_pid, .. }) => {
-            vec![MountEvent::DeviceAppeared { vid_pid: *vid_pid }]
+        // The readable volume went away: the device unplugged, or fell back to a
+        // mounting/no-volume state.
+        (MountState::Present { .. }, MountState::Absent | MountState::Mounting { .. }) => {
+            vec![MountEvent::VolumeUnmounted]
         }
-        (MountState::DeviceVisibleNoVolume { .. }, MountState::Absent) => {
-            vec![MountEvent::DeviceDisappeared]
-        }
+        // A QuadStick disk became visible (mounting, or present without a
+        // readable volume).
+        (
+            MountState::Absent,
+            MountState::Mounting { vid_pid } | MountState::DeviceVisibleNoVolume { vid_pid, .. },
+        ) => vec![MountEvent::DeviceAppeared { vid_pid: *vid_pid }],
+        (
+            MountState::Mounting { .. } | MountState::DeviceVisibleNoVolume { .. },
+            MountState::Absent,
+        ) => vec![MountEvent::DeviceDisappeared],
         (
             MountState::DeviceVisibleNoVolume {
                 vid_pid: old_vid_pid,
@@ -228,6 +244,51 @@ mod tests {
                     ..
                 },
             ]
+        ));
+    }
+
+    #[test]
+    fn mounting_state_serde_round_trip() {
+        let state = MountState::Mounting {
+            vid_pid: VidPid {
+                vendor: 0x16D0,
+                product: 0x092B,
+            },
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        let restored: MountState = serde_json::from_str(&json).unwrap();
+        assert_eq!(state, restored);
+    }
+
+    #[test]
+    fn absent_to_mounting_emits_device_appeared() {
+        let vid_pid = VidPid {
+            vendor: 0x16D0,
+            product: 0x092B,
+        };
+        let events =
+            state_transition_events(&MountState::Absent, &MountState::Mounting { vid_pid });
+        assert!(matches!(
+            events.as_slice(),
+            [MountEvent::DeviceAppeared { vid_pid: vp }] if *vp == vid_pid
+        ));
+    }
+
+    #[test]
+    fn mounting_to_present_emits_volume_mounted() {
+        let vid_pid = VidPid {
+            vendor: 0x16D0,
+            product: 0x092B,
+        };
+        let new = MountState::Present {
+            mount_point: PathBuf::from("/Volumes/Quad Stick"),
+            vid_pid,
+            label: "Quad Stick".to_string(),
+        };
+        let events = state_transition_events(&MountState::Mounting { vid_pid }, &new);
+        assert!(matches!(
+            events.as_slice(),
+            [MountEvent::VolumeMounted { .. }]
         ));
     }
 

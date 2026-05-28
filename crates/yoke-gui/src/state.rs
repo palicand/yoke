@@ -32,6 +32,9 @@ pub enum CommunityLoad {
     Loading,
     Loaded(Vec<IndexEntry>),
     Failed(String),
+    /// The community index is unusable (e.g. no cache directory). Rendered as a
+    /// non-retryable note rather than a `Failed` state whose Retry re-fails.
+    Disabled,
 }
 
 impl ProfileSource {

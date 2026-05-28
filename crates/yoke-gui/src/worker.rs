@@ -8,13 +8,19 @@ pub fn pump_inline(data: &dyn DataSource, cmd: AppCommand, out: &mut Vec<DataEve
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native_worker {
-    use std::sync::Arc;
     use std::sync::mpsc::{Receiver, Sender};
+    use std::sync::{Arc, Mutex};
 
     use super::{AppCommand, DataEvent};
     use crate::data::native::NativeDataSource;
     use crate::data::{DataSource, FailureContext, handle_command};
     use crate::state::ProfileSource;
+
+    // Fixed worker-pool size. Up to this many commands run concurrently (so a
+    // slow community fetch never blocks a queued device/file open), while excess
+    // commands wait in the channel instead of spawning unbounded OS threads on
+    // rapid clicks.
+    const WORKER_THREADS: usize = 4;
 
     pub struct WorkerHandle {
         cmd_tx: Sender<AppCommand>,
@@ -22,7 +28,19 @@ mod native_worker {
 
     impl WorkerHandle {
         pub fn send(&self, cmd: AppCommand) {
-            let _ = self.cmd_tx.send(cmd);
+            if let Err(err) = self.cmd_tx.send(cmd) {
+                tracing::error!(?err, "failed to send gui command to worker");
+            }
+        }
+    }
+
+    #[cfg(test)]
+    impl WorkerHandle {
+        // A handle whose receiver is dropped; sends fail (and log) but never
+        // panic. Lets `app` tests construct a `YokeApp` without a live worker.
+        pub(crate) fn for_test() -> Self {
+            let (cmd_tx, _rx) = std::sync::mpsc::channel();
+            Self { cmd_tx }
         }
     }
 
@@ -34,8 +52,8 @@ mod native_worker {
     /// Panics if the tokio current-thread runtime for the volume watcher cannot
     /// be built (OS resource exhaustion).
     pub fn spawn(
-        data: Arc<NativeDataSource>,
-        ctx: egui::Context,
+        data: &Arc<NativeDataSource>,
+        ctx: &egui::Context,
     ) -> (WorkerHandle, Receiver<DataEvent>) {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<AppCommand>();
         let (evt_tx, evt_rx) = std::sync::mpsc::channel::<DataEvent>();
@@ -67,27 +85,34 @@ mod native_worker {
             });
         }
 
-        // Command dispatcher. The receiver loop stays on one thread, but each
-        // command runs on its own thread so a slow network call (community
-        // list/fetch, which `block_on`s inside the data source) never blocks a
-        // device or file command queued behind it. The data source is shared
-        // (Arc) and owns a multi-thread runtime, so concurrent `block_on` calls
-        // from separate threads are safe; device/file commands don't touch the
-        // runtime at all.
-        {
+        // Command dispatcher: a fixed pool of worker threads drains the shared
+        // command channel. Each thread holds the receiver lock only across
+        // `recv()` (released before the potentially-slow work runs), so up to
+        // WORKER_THREADS commands run concurrently while a slow network call
+        // (community list/fetch, which `block_on`s inside the data source) never
+        // blocks a device or file command — and rapid clicks queue in the channel
+        // rather than spawning unbounded threads. The data source is shared (Arc)
+        // and owns a multi-thread runtime, so concurrent `block_on` calls from
+        // separate pool threads are safe.
+        let cmd_rx = Arc::new(Mutex::new(cmd_rx));
+        for _ in 0..WORKER_THREADS {
+            let cmd_rx = Arc::clone(&cmd_rx);
+            let data = Arc::clone(data);
+            let evt_tx = evt_tx.clone();
+            let ctx = ctx.clone();
             std::thread::spawn(move || {
-                while let Ok(cmd) = cmd_rx.recv() {
-                    let data = Arc::clone(&data);
-                    let evt_tx = evt_tx.clone();
-                    let ctx = ctx.clone();
-                    std::thread::spawn(move || {
-                        let event = match cmd {
-                            AppCommand::OpenFileDialog => open_file_dialog(data.as_ref()),
-                            other => handle_command(data.as_ref(), other),
-                        };
-                        let _ = evt_tx.send(event);
-                        ctx.request_repaint();
-                    });
+                loop {
+                    let cmd = {
+                        let rx = cmd_rx.lock().unwrap();
+                        rx.recv()
+                    };
+                    let Ok(cmd) = cmd else { break };
+                    let event = match cmd {
+                        AppCommand::OpenFileDialog { req } => open_file_dialog(data.as_ref(), req),
+                        other => handle_command(data.as_ref(), other),
+                    };
+                    let _ = evt_tx.send(event);
+                    ctx.request_repaint();
                 }
             });
         }
@@ -95,25 +120,23 @@ mod native_worker {
         (WorkerHandle { cmd_tx }, evt_rx)
     }
 
-    fn open_file_dialog(data: &NativeDataSource) -> DataEvent {
+    fn open_file_dialog(data: &NativeDataSource, req: u64) -> DataEvent {
         // rfd's sync dialog blocks this worker thread; on macOS rfd dispatches
         // NSOpenPanel to the main queue internally, so this is safe off-main.
         let Some(path) = rfd::FileDialog::new()
             .add_filter("CSV", &["csv"])
             .pick_file()
         else {
-            // Cancelled: emit a benign no-op event the UI ignores.
-            return DataEvent::Failed {
-                context: FailureContext::OpenFile,
-                message: String::new(),
-            };
+            return DataEvent::FileDialogCancelled { req };
         };
         match data.read_file_profile(&path) {
             Ok(profile) => DataEvent::ProfileOpened {
+                req,
                 source: ProfileSource::File(path),
                 profile: Box::new(profile),
             },
             Err(e) => DataEvent::Failed {
+                req: Some(req),
                 context: FailureContext::OpenFile,
                 message: e.to_string(),
             },

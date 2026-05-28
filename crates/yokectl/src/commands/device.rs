@@ -35,6 +35,10 @@ pub fn run_debug(provider: &Arc<dyn VolumeProvider>, out: &Output) -> Result<()>
 fn state_human(s: &MountState) -> String {
     match s {
         MountState::Absent => "Absent".into(),
+        MountState::Mounting { vid_pid } => format!(
+            "Mounting vid={:04X}:{:04X}",
+            vid_pid.vendor, vid_pid.product
+        ),
         MountState::DeviceVisibleNoVolume { vid_pid, mode_hint } => format!(
             "DeviceVisibleNoVolume vid={:04X}:{:04X} hint={:?}",
             vid_pid.vendor, vid_pid.product, mode_hint

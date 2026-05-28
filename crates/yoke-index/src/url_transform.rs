@@ -40,7 +40,12 @@ pub fn to_csv_export(url: &Url) -> Result<Url, IndexError> {
             let gid = gid.or_else(|| {
                 url.fragment()
                     .and_then(|f| f.strip_prefix("gid="))
-                    .map(str::to_owned)
+                    // RFC 3986 fragments are opaque, not structured `k=v&...`, so
+                    // `strip_prefix` keeps any trailing `&...` text. Splicing that
+                    // verbatim into the export query smuggles extra parameters
+                    // (e.g. `#gid=0&range=A1:Z10` silently changes the export), so
+                    // keep only the gid up to the first `&`.
+                    .map(|f| f.split_once('&').map_or(f, |(gid, _)| gid).to_owned())
             });
             let out = gid.map_or_else(
                 || format!("https://docs.google.com/spreadsheets/d/{key}/export?format=csv"),
@@ -106,6 +111,18 @@ mod tests {
         assert_eq!(
             out.as_str(),
             "https://docs.google.com/spreadsheets/d/KEY/export?format=csv"
+        );
+    }
+
+    #[test]
+    fn fragment_gid_with_trailing_params_keeps_only_the_gid() {
+        // A copy-pasted edit URL whose fragment carries extra `&`-separated text
+        // must not smuggle those params into the export query.
+        let inp = u("https://docs.google.com/spreadsheets/d/KEY/edit#gid=42&range=A1:Z10");
+        let out = to_csv_export(&inp).unwrap();
+        assert_eq!(
+            out.as_str(),
+            "https://docs.google.com/spreadsheets/d/KEY/export?format=csv&gid=42"
         );
     }
 

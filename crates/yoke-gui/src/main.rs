@@ -3,6 +3,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     use std::sync::Arc;
+    use yoke_gui::data::DataSource;
     use yoke_gui::data::native::NativeDataSource;
 
     tracing_subscriber::fmt::init();
@@ -35,7 +36,7 @@ fn main() -> eframe::Result<()> {
     let data = match NativeDataSource::new(provider) {
         Ok(d) => Arc::new(d),
         Err(e) => {
-            eprintln!("fatal: {e}");
+            tracing::error!(error = %e, "failed to initialize NativeDataSource");
             std::process::exit(1);
         }
     };
@@ -53,11 +54,13 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             yoke_gui::theme::install_fonts(&cc.egui_ctx);
             yoke_gui::theme::apply(&cc.egui_ctx);
-            let (worker, events) = yoke_gui::worker::spawn(data, cc.egui_ctx.clone());
+            let community_available = data.is_community_available();
+            let (worker, events) = yoke_gui::worker::spawn(&data, &cc.egui_ctx);
             Ok(Box::new(yoke_gui::app::YokeApp::new(
                 worker,
                 events,
                 backend_error,
+                community_available,
             )))
         }),
     )

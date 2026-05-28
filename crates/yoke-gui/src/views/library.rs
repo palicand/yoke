@@ -21,15 +21,18 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
             } else {
                 for entry in &device_profiles {
                     if ui.button(&entry.label).clicked() {
-                        app.set_opening(entry.label.clone());
-                        app.send(AppCommand::OpenDeviceProfile(entry.name.clone()));
+                        app.open_device_profile(entry.name.clone(), entry.label.clone());
                     }
                 }
             }
 
-            ui.add_space(12.0);
-            if ui.button("Open CSV file...").clicked() {
-                app.send(AppCommand::OpenFileDialog);
+            // The browser build has no native file dialog.
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                ui.add_space(12.0);
+                if ui.button("Open CSV file...").clicked() {
+                    app.open_file_dialog();
+                }
             }
 
             ui.add_space(16.0);
@@ -50,8 +53,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
                     for entry in entries {
                         let name = community_name(&entry);
                         if ui.button(&name).clicked() {
-                            app.set_opening(name);
-                            app.send(AppCommand::OpenCommunity(entry.clone()));
+                            app.open_community(entry.clone(), name);
                         }
                     }
                 }
@@ -60,6 +62,12 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
                     if ui.button("Retry").clicked() {
                         app.send(AppCommand::ListCommunity);
                     }
+                }
+                CommunityLoad::Disabled => {
+                    ui.label(
+                        egui::RichText::new("Community profiles unavailable.")
+                            .color(app.palette().ink_3),
+                    );
                 }
             }
         });

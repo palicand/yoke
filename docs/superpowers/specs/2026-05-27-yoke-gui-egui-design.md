@@ -91,7 +91,7 @@ These egui-free modules hold the `DataSource` trait and impls, the open-profile 
 
 Single window, no router. A top-level enum drives the two views; egui panels lay out the regions.
 
-```
+```text
 YokeApp (impl eframe::App)
 ├── TopBottomPanel (top)      title text + DEVICE status pill (Connected / Disconnected / Backend error)
 └── CentralPanel
@@ -177,7 +177,7 @@ Toasts are a small egui overlay (bottom-right, ~5 s auto-dismiss). No third-part
 
 ## On-disk layout
 
-```
+```text
 yoke/crates/yoke-gui/
 ├── Cargo.toml          # native deps target-gated off wasm32
 ├── index.html          # trunk entry (wasm dev)

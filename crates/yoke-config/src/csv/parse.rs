@@ -41,7 +41,11 @@ fn read_raw_meta(input: &[u8]) -> Result<(RawCsv, bool), ParseError> {
     let has_header = first_chunk_rows[0]
         .cells
         .first()
-        .is_some_and(|c| c.trim() == "QuadStick Configuration");
+        // `str::trim` follows Unicode White_Space, which excludes U+FEFF, so a
+        // device CSV re-saved by Excel/Numbers with a leading BOM would be
+        // mistaken for a headerless community export (real header lost, BOM'd row
+        // swallowed into infrared). Strip the BOM before comparing.
+        .is_some_and(|c| c.trim_start_matches('\u{feff}').trim() == "QuadStick Configuration");
     let top_line = if has_header {
         first_chunk_rows.remove(0).cells
     } else {
@@ -237,7 +241,13 @@ fn build_model(raw: &RawCsv, community: bool, warnings: &mut Vec<Warning>) -> Pr
                         warnings.extend(ws);
                     }
                 } else {
-                    let (sp, ws) = build_sub_profile(section, 2, Some(10));
+                    // A community sheet with a single sub-profile reports exactly
+                    // one group column, which need not be col 2; device CSVs
+                    // report none and use the vertical layout's value column 2.
+                    // Hard-coding 2 here would read empty cells and synthesize an
+                    // empty sub-profile when the lone group sits elsewhere.
+                    let value_col = groups.first().copied().unwrap_or(2);
+                    let (sp, ws) = build_sub_profile(section, value_col, Some(10));
                     sub_profiles.push(sp);
                     warnings.extend(ws);
                 }
@@ -511,6 +521,48 @@ kb_left_shift,delay_on 1000,lip,\r\n\
         assert_eq!(result.model.top_line.label, "QuadStick Configuration");
         assert_eq!(result.model.sub_profiles.len(), 1);
         assert_eq!(result.model.sub_profiles[0].bindings().count(), 2);
+    }
+
+    // A device CSV re-saved by Excel/Numbers keeps a UTF-8 BOM (EF BB BF) ahead
+    // of the `QuadStick Configuration` header. The header must still be
+    // recognised so it is consumed as the top line, not synthesized.
+    const BOM_PREFIXED_HEADER: &[u8] =
+        b"\xEF\xBB\xBFQuadStick Configuration,Version 1.4,abc,Mac\r\n\
+Profile Name,,Mouse Mode,\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_left,normal,left,\r\n\
+\r\n";
+
+    #[test]
+    fn bom_prefixed_header_is_recognised_not_synthesized() {
+        let r = parse(BOM_PREFIXED_HEADER).expect("BOM-prefixed CSV must parse");
+        // Real header consumed (source cell preserved); a synthesized top line
+        // would have an empty source. The `Profile Name` row is parsed as a
+        // sub-profile rather than swallowed into infrared.
+        assert_eq!(r.model.top_line.source, "abc");
+        assert_eq!(r.model.sub_profiles.len(), 1);
+        assert_eq!(r.model.sub_profiles[0].bindings().count(), 1);
+    }
+
+    // A community sheet whose single sub-profile group sits at a column other
+    // than 2 (here col 4). The lone group's column must drive the value column.
+    const SINGLE_GROUP_OFFSET_COLUMN: &[u8] = b"Profile Name,,,,Mouse Mode\r\n\
+,,,,Normal\r\n\
+Output or Function,Function,,,usb\r\n\
+mouse_left,normal,,,left\r\n\
+\r\n";
+
+    #[test]
+    fn community_single_group_off_column_reads_its_own_column() {
+        let r = parse(SINGLE_GROUP_OFFSET_COLUMN).expect("parse");
+        assert_eq!(r.model.sub_profiles.len(), 1);
+        let sp = &r.model.sub_profiles[0];
+        // Mode/channel/binding all come from col 4; hard-coding col 2 would yield
+        // an Unknown mode, a Usb fallback, and zero bound inputs.
+        assert_eq!(sp.header.mode, SubProfileMode::Mouse);
+        assert_eq!(sp.header.channel, Channel::Usb);
+        assert_eq!(sp.bindings().filter(|b| b.input.is_some()).count(), 1);
     }
 
     // Two sub-profiles laid out as horizontal column groups (cols 2 and 10),

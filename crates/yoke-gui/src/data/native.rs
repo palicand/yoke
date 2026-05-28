@@ -68,6 +68,10 @@ impl DataSource for NativeDataSource {
         self.volume.current_state()
     }
 
+    fn is_community_available(&self) -> bool {
+        self.index.is_some()
+    }
+
     fn list_device_profiles(&self) -> Result<Vec<ProfileEntryView>, DataError> {
         let entries = self.volume.list_profiles().map_err(map_volume_err)?;
         Ok(entries
