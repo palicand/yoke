@@ -72,6 +72,13 @@ impl Tracked {
                     label: lbl.clone(),
                 };
             }
+            // A QuadStick disk has appeared (its BSD name is tracked) but the FAT
+            // mount isn't readable yet: this is a transient mounting state, not
+            // mass-storage-off. Distinguishing the two avoids a false "mass
+            // storage off" flash for ~1 s on every connect.
+            if !self.quadstick_bsd_names.is_empty() {
+                return MountState::Mounting { vid_pid: vp };
+            }
             return MountState::DeviceVisibleNoVolume {
                 vid_pid: vp,
                 mode_hint: Some(ModeHint::MassStorageDisabled),
@@ -193,12 +200,24 @@ fn drain_usb_devices(inner: &Inner) {
     }
 }
 
-fn drain_volumes(inner: &Inner) {
-    let mut found: Option<(PathBuf, String)> = None;
-    let Ok(entries) = std::fs::read_dir(Path::new("/Volumes")) else {
-        return;
-    };
-    for entry in entries.flatten() {
+// macOS creates the mount-point directory (root-owned, restrictive mode)
+// before the FAT filesystem finishes mounting over it. Reading the volume
+// during that window fails with EACCES. Gating `Present` on a successful
+// `read_dir` keeps the volume out of the `Present` state until it is actually
+// enumerable, so consumers never list a half-mounted volume — and the 1 s
+// poll keeps retrying until the mount settles, instead of the UI having to
+// reload.
+fn mount_point_is_ready(path: &Path) -> bool {
+    std::fs::read_dir(path).is_ok()
+}
+
+// Scans `volumes_dir` for a readable QuadStick-labelled mount, returning its
+// path and volume label. `Ok(None)` means no QuadStick volume is present (or the
+// candidate is still mid-mount, see `mount_point_is_ready`); `Err` means the
+// directory itself could not be read and the caller must not treat that as
+// "volume gone".
+fn find_quadstick_mount(volumes_dir: &Path) -> std::io::Result<Option<(PathBuf, String)>> {
+    for entry in std::fs::read_dir(volumes_dir)?.flatten() {
         let name = entry.file_name();
         let name_lossy = name.to_string_lossy();
         if !name_lossy.eq_ignore_ascii_case("Quad Stick")
@@ -212,16 +231,33 @@ fn drain_volumes(inner: &Inner) {
         if !entry.metadata().is_ok_and(|m| m.is_dir()) {
             continue;
         }
-        found = Some((entry.path(), name_lossy.into_owned()));
-        break;
+        let path = entry.path();
+        if mount_point_is_ready(&path) {
+            return Ok(Some((path, name_lossy.into_owned())));
+        }
     }
-    let mut tracked = inner.tracked.lock().unwrap();
-    if let Some((mp, lbl)) = found {
-        tracked.mount_point = Some(mp);
-        tracked.label = Some(lbl);
-    } else {
-        tracked.mount_point = None;
-        tracked.label = None;
+    Ok(None)
+}
+
+fn drain_volumes(inner: &Inner) {
+    match find_quadstick_mount(Path::new("/Volumes")) {
+        Ok(Some((mp, lbl))) => {
+            let mut tracked = inner.tracked.lock().unwrap();
+            tracked.mount_point = Some(mp);
+            tracked.label = Some(lbl);
+        }
+        Ok(None) => {
+            let mut tracked = inner.tracked.lock().unwrap();
+            tracked.mount_point = None;
+            tracked.label = None;
+        }
+        // A transient failure reading /Volumes (EACCES/EMFILE during sleep-wake
+        // or FS pressure) must not be read as "volume gone": preserve the last
+        // known mount until the next successful poll, or `publish` would emit a
+        // spurious VolumeUnmounted for a still-mounted device.
+        Err(e) => {
+            tracing::warn!(error = %e, "reading /Volumes failed; keeping last known mount");
+        }
     }
 }
 
@@ -300,7 +336,10 @@ fn handle_disk_appeared(inner: &Inner, disk: da::DADiskRef) {
         if let Some(name) = bsd_name {
             t.quadstick_bsd_names.insert(name);
         }
-        if let Some(mp) = mount_point {
+        // A just-appeared volume can still be mid-mount; defer Present until
+        // the mount point is enumerable. If it is not ready yet, the 1 s poll
+        // re-checks and flips to Present once the FAT filesystem settles.
+        if let Some(mp) = mount_point.filter(|mp| mount_point_is_ready(mp)) {
             t.mount_point = Some(mp);
             t.label = Some(label);
         }
@@ -548,6 +587,58 @@ mod tests {
         let state = provider.current_state();
         eprintln!("current_state after init: {state:?}");
         drop(provider);
+    }
+
+    #[test]
+    fn find_quadstick_mount_skips_unreadable_then_finds_ready() {
+        use std::os::unix::fs::PermissionsExt;
+        // root bypasses DAC, so the unreadable case is unobservable as root.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let volumes = tempfile::tempdir().unwrap();
+        let mnt = volumes.path().join("Quad Stick");
+        std::fs::create_dir(&mnt).unwrap();
+
+        std::fs::set_permissions(&mnt, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(
+            find_quadstick_mount(volumes.path()).unwrap().is_none(),
+            "a mid-mount (unreadable) volume must not be reported present"
+        );
+
+        std::fs::set_permissions(&mnt, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            find_quadstick_mount(volumes.path()).unwrap(),
+            Some((mnt, "Quad Stick".to_string()))
+        );
+    }
+
+    #[test]
+    fn find_quadstick_mount_matches_label_case_insensitively() {
+        let volumes = tempfile::tempdir().unwrap();
+        let mnt = volumes.path().join("QuadStick");
+        std::fs::create_dir(&mnt).unwrap();
+        assert_eq!(
+            find_quadstick_mount(volumes.path()).unwrap(),
+            Some((mnt, "QuadStick".to_string()))
+        );
+    }
+
+    #[test]
+    fn find_quadstick_mount_ignores_other_volumes() {
+        let volumes = tempfile::tempdir().unwrap();
+        std::fs::create_dir(volumes.path().join("Macintosh HD")).unwrap();
+        std::fs::create_dir(volumes.path().join("USB Drive")).unwrap();
+        assert!(find_quadstick_mount(volumes.path()).unwrap().is_none());
+    }
+
+    #[test]
+    fn find_quadstick_mount_surfaces_read_dir_error() {
+        // A failure reading the volumes directory must surface as Err, not be
+        // masked as Ok(None); drain_volumes relies on this to preserve the last
+        // known mount rather than emitting a spurious VolumeUnmounted.
+        let missing = std::path::Path::new("/nonexistent-volumes-dir-yoke-test");
+        assert!(find_quadstick_mount(missing).is_err());
     }
 
     #[test]

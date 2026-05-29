@@ -32,13 +32,29 @@ pub fn to_csv_export(url: &Url) -> Result<Url, IndexError> {
                 return Url::parse(&out).map_err(|e| IndexError::InvalidUrl(e.to_string()));
             }
         } else if let Some(key) = segments.get(2).copied() {
-            let gid = gid.unwrap_or_else(|| {
+            // Only pin a gid when one is actually given (query param or
+            // `#gid=` fragment). Defaulting to gid=0 breaks sheets whose first
+            // tab isn't gid 0: `/export?format=csv&gid=0` returns HTTP 400,
+            // while omitting gid lets the export default to the first visible
+            // sheet and succeed.
+            let gid = gid.or_else(|| {
                 url.fragment()
                     .and_then(|f| f.strip_prefix("gid="))
-                    .map_or_else(|| "0".into(), str::to_owned)
+                    // RFC 3986 fragments are opaque, not structured `k=v&...`, so
+                    // `strip_prefix` keeps any trailing `&...` text. Splicing that
+                    // verbatim into the export query smuggles extra parameters
+                    // (e.g. `#gid=0&range=A1:Z10` silently changes the export), so
+                    // keep only the gid up to the first `&`.
+                    .map(|f| f.split_once('&').map_or(f, |(gid, _)| gid).to_owned())
             });
-            let out =
-                format!("https://docs.google.com/spreadsheets/d/{key}/export?format=csv&gid={gid}");
+            let out = gid.map_or_else(
+                || format!("https://docs.google.com/spreadsheets/d/{key}/export?format=csv"),
+                |gid| {
+                    format!(
+                        "https://docs.google.com/spreadsheets/d/{key}/export?format=csv&gid={gid}"
+                    )
+                },
+            );
             return Url::parse(&out).map_err(|e| IndexError::InvalidUrl(e.to_string()));
         }
     }
@@ -83,6 +99,40 @@ mod tests {
         assert_eq!(
             out.as_str(),
             "https://docs.google.com/spreadsheets/d/KEY/export?format=csv&gid=7"
+        );
+    }
+
+    #[test]
+    fn edit_url_without_gid_omits_gid() {
+        // No gid anywhere: must not pin gid=0 (some sheets' first tab isn't 0,
+        // and `&gid=0` then 400s). Omitting gid lets Google pick the first tab.
+        let inp = u("https://docs.google.com/spreadsheets/d/KEY/edit");
+        let out = to_csv_export(&inp).unwrap();
+        assert_eq!(
+            out.as_str(),
+            "https://docs.google.com/spreadsheets/d/KEY/export?format=csv"
+        );
+    }
+
+    #[test]
+    fn fragment_gid_with_trailing_params_keeps_only_the_gid() {
+        // A copy-pasted edit URL whose fragment carries extra `&`-separated text
+        // must not smuggle those params into the export query.
+        let inp = u("https://docs.google.com/spreadsheets/d/KEY/edit#gid=42&range=A1:Z10");
+        let out = to_csv_export(&inp).unwrap();
+        assert_eq!(
+            out.as_str(),
+            "https://docs.google.com/spreadsheets/d/KEY/export?format=csv&gid=42"
+        );
+    }
+
+    #[test]
+    fn edit_url_with_query_gid_is_preserved() {
+        let inp = u("https://docs.google.com/spreadsheets/d/KEY/edit?gid=42");
+        let out = to_csv_export(&inp).unwrap();
+        assert_eq!(
+            out.as_str(),
+            "https://docs.google.com/spreadsheets/d/KEY/export?format=csv&gid=42"
         );
     }
 

@@ -2,7 +2,7 @@
 name = "yoke-volume-macos"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license.workspace = true
 description = "macOS DiskArbitration backend for the yoke-volume VolumeProvider trait."
 
 # This crate does not inherit `[lints] workspace = true` because the workspace
@@ -29,5 +29,6 @@ core-foundation-sys = "0.8.7"
 libc = "0.2.186"
 
 [dev-dependencies]
+tempfile = "3.27.0"
 tokio = { version = "1.52.3", features = ["rt", "time", "macros"] }
 tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter"] }

@@ -35,7 +35,9 @@ pub fn require_present_at<T>(
     f: impl FnOnce(&Path) -> Result<T, VolumeError>,
 ) -> Result<T, VolumeError> {
     match state {
-        MountState::Absent => Err(VolumeError::NotPresent),
+        // A mid-mount volume has no readable mount point yet; treat it as not
+        // present so callers retry once it settles.
+        MountState::Absent | MountState::Mounting { .. } => Err(VolumeError::NotPresent),
         MountState::DeviceVisibleNoVolume { mode_hint, .. } => {
             Err(VolumeError::VolumeHidden { hint: *mode_hint })
         }

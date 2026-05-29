@@ -1,0 +1,50 @@
+[package]
+name = "yoke-gui"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+description = "Read-only QuadStick profile viewer (egui)."
+
+# cdylib is the wasm artifact trunk bundles (carries the #[wasm_bindgen(start)]
+# entry + web-sys imports); rlib lets the native bin and tests `use yoke_gui::`.
+[lib]
+name = "yoke_gui"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "yoke-gui"
+path = "src/main.rs"
+
+[dependencies]
+egui = "0.34"
+thiserror = "2"
+tracing = "0.1"
+yoke-config = { version = "0.1.0", path = "../yoke-config" }
+
+[lints]
+workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+anyhow = "1"
+eframe = { version = "0.34", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
+rfd = "0.17"
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+tracing-subscriber = "0.3"
+url = "2"
+yoke-index = { version = "0.1.0", path = "../yoke-index" }
+yoke-volume = { version = "0.1.0", path = "../yoke-volume" }
+
+[target.'cfg(all(not(target_arch = "wasm32"), target_os = "macos"))'.dependencies]
+yoke-volume-macos = { version = "0.1.0", path = "../yoke-volume-macos" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+eframe = { version = "0.34", default-features = false, features = ["glow", "default_fonts"] }
+tracing-wasm = "0.2"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["HtmlCanvasElement", "Window", "Document"] }
+
+[dev-dependencies]
+tempfile = "3"
+yoke-volume = { path = "../yoke-volume", features = ["test-utils"] }
