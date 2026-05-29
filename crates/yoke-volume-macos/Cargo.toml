@@ -2,7 +2,7 @@
 name = "yoke-volume-macos"
 version = "0.1.0"
 edition = "2024"
-license = "Apache-2.0"
+license.workspace = true
 description = "macOS DiskArbitration backend for the yoke-volume VolumeProvider trait."
 
 # This crate does not inherit `[lints] workspace = true` because the workspace

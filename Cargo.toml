@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["crates/yoke-config", "crates/yoke-edit", "crates/yoke-gui", "crates/yoke-index", "crates/yoke-volume", "crates/yoke-volume-macos", "crates/yokectl"]
 
+[workspace.package]
+license = "MIT"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

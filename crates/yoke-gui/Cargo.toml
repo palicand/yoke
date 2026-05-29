@@ -2,7 +2,7 @@
 name = "yoke-gui"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license.workspace = true
 description = "Read-only QuadStick profile viewer (egui)."
 
 # cdylib is the wasm artifact trunk bundles (carries the #[wasm_bindgen(start)]
