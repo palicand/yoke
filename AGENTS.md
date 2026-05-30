@@ -75,6 +75,13 @@ All commands assume the Nix devShell is active (direnv handles this on
 6. **Commits:** title line only, no body. Commits are squashed on merge;
    commit titles use Conventional Commits prefixes (`feat`, `fix`,
    `docs`, `chore`, `refactor`, `test`).
+7. **Public edit ops carry their CLI.** Adding or modifying a public-facing
+   edit operation (`yoke_edit::op::EditOp`) requires updating the `yokectl`
+   CLI in the same change: the op's command, batch-`apply` coverage,
+   shell-completion entry, introspection where the dimension warrants it, and
+   generated docs. An op present in the library but absent from the CLI is a
+   silent capability gap (the CLI is a first-class consumer for agentic /
+   headless flows) and a drift source.
 
 ## Spec / plan workflow
 
