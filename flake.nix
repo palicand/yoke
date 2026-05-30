@@ -15,12 +15,13 @@
       let
         pkgs = import nixpkgs { inherit system; };
 
-        # Single source of truth: rust-toolchain.toml.
-        # First `nix develop` after edits will print the real sha256 if this
-        # placeholder is wrong; substitute the printed hash in place.
+        # Single source of truth: rust-toolchain.toml, pinned to an explicit
+        # version so the fetched channel manifest is immutable. When bumping
+        # the version there, the first `nix develop` prints the new sha256 in a
+        # hash-mismatch error; substitute the printed hash here.
         rustToolchain = fenix.packages.${system}.fromToolchainFile {
           file   = ./rust-toolchain.toml;
-          sha256 = "sha256-gh/xTkxKHL4eiRXzWv8KP7vfjSk61Iq48x47BEDFgfk=";
+          sha256 = "sha256-mvUGEOHYJpn3ikC5hckneuGixaC+yGrkMM/liDIDgoU=";
         };
       in {
         devShells.default = pkgs.mkShell {
