@@ -58,6 +58,7 @@ Unit tests alongside the existing op tests: replace-on-existing, error on unboun
 - **Completion** — add `CatalogKind::Modifier` to the [completion catalog](../../../crates/yokectl/src/completion/catalog.rs), backed by the §1 keyword enumerator, and attach `CatalogValueCompleter(CatalogKind::Modifier)` to the `modifier` argument (input keeps `CatalogKind::Input`). Completion offers the keyword; numeric arguments are typed by hand.
 - **Introspection** — add `catalog modifiers` (`CatalogCmd::Modifiers` + `run_modifiers` in [`commands/catalog.rs`](../../../crates/yokectl/src/commands/catalog.rs)), filling the one catalog dimension that lacks introspection (inputs/outputs/preferences/modes/channels already have it). Reuses the §1 enumerator; honors the existing `human` / `json` / `ndjson` output formats.
 - **Docs** — generated from the clap tree by the existing `docs` subcommand; no manual doc edits, but the generated output now includes `set-modifier` and `catalog modifiers`.
+- **Readback** — `yokectl bindings` surfaces the modifier (added to `GroupedBinding` in [`commands/view.rs`](../../../crates/yokectl/src/commands/view.rs)): the JSON always carries a `modifier` field; the human view appends `[<modifier>]` only when it is not `normal`, mirroring the binding-row pill convention. Closes the write-without-readback gap — a modifier set via `set-modifier` is visible in `bindings`, not only in `show`.
 
 ### 4. `AGENTS.md`
 
@@ -73,7 +74,8 @@ No changes to `yoke-volume` or `yoke-gui` in this slice.
 |---|---|---|
 | `yoke-config` | keyword enumerator lists every known modifier; round-trips against `from_csv`/`to_csv` | host `cargo test` |
 | `yoke-edit` | `SetModifier` apply: replace on existing binding, error on unbound input, error + suggestion on unknown modifier, arg-carrying round-trip; batch `apply` reaches it via serde | host `cargo test` |
-| `yokectl` | `set-modifier` parses and applies (good + bad input/modifier exit codes); `catalog modifiers` lists in each output format; completion yields modifier keywords | existing CLI test harness |
+| `yokectl` | `set-modifier` parses and applies (good + bad input/modifier exit codes); `catalog modifiers` lists keywords; completion yields modifier keywords; `bindings` surfaces the set modifier | existing CLI test harness |
+| `yokectl` fuzz | `SetModifier` (single + batch `apply`) and `catalog modifiers` added to the proptest action/edit-op strategies — exercised by the no-panic, exit-and-json, atomicity, and round-trip invariants | `cargo test -p yokectl --test property` |
 
 All standard gates stay green: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and the `wasm32` build of `yoke-config` (the keyword enumerator is `const`/pure, dual-target-safe).
 
