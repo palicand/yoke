@@ -38,3 +38,13 @@ fn set_modifier_unknown_modifier_exits_5() {
         .assert()
         .code(5);
 }
+
+#[test]
+fn catalog_modifiers_lists_keywords() {
+    yokectl()
+        .args(["catalog", "modifiers"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("delay_on"))
+        .stdout(predicates::str::contains("toggle"));
+}

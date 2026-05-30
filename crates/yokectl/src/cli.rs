@@ -379,4 +379,6 @@ pub enum CatalogCmd {
     Modes,
     #[command(about = "List Channel values")]
     Channels,
+    #[command(about = "List modifier keywords")]
+    Modifiers,
 }

@@ -12,6 +12,7 @@ Commands:
   preferences  List preference keys with their declared value types
   modes        List SubProfileMode values
   channels     List Channel values
+  modifiers    List modifier keywords
   help         Print this message or the help of the given subcommand(s)
 
 Options:

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use yoke_config::catalog::{Channel, Input, Output, PreferenceSpec, SubProfileMode};
+use yoke_config::catalog::{Channel, Input, Modifier, Output, PreferenceSpec, SubProfileMode};
 
 use crate::output::Output as CliOutput;
 
@@ -35,6 +35,11 @@ pub fn run_channels(out: &CliOutput) -> Result<()> {
         .map(|c| c.canonical_csv().to_string())
         .collect();
     emit(out, "channels", &entries)
+}
+
+pub fn run_modifiers(out: &CliOutput) -> Result<()> {
+    let entries: Vec<String> = Modifier::KEYWORDS.iter().map(|s| (*s).to_string()).collect();
+    emit(out, "modifiers", &entries)
 }
 
 fn emit(out: &CliOutput, key: &str, entries: &[String]) -> Result<()> {

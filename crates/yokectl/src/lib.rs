@@ -74,6 +74,7 @@ pub fn run_with_provider(
             CatalogCmd::Preferences => commands::catalog::run_preferences(out),
             CatalogCmd::Modes => commands::catalog::run_modes(out),
             CatalogCmd::Channels => commands::catalog::run_channels(out),
+            CatalogCmd::Modifiers => commands::catalog::run_modifiers(out),
         },
         other => run_with_volume(out, provider, other),
     }
