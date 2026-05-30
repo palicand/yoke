@@ -53,6 +53,26 @@ pub enum Modifier {
 }
 
 impl Modifier {
+    /// CSV keywords (the leading token of a modifier phrase) for every typed
+    /// modifier, excluding `Unknown`. Keyword-only: the argument grammar is
+    /// open, so this is not a closed set of full values.
+    pub const KEYWORDS: &'static [&'static str] = &[
+        "normal",
+        "toggle",
+        "delay_on",
+        "delay_off",
+        "greater_than",
+        "less_than",
+        "repeat",
+        "pulse",
+        "duty",
+        "force_off",
+        "delayed_latch",
+        "tap",
+        "increment_value",
+        "decrement_value",
+    ];
+
     pub fn from_csv(s: &str) -> Option<Self> {
         fn unknown(name: &str, args: &[&str]) -> Modifier {
             Modifier::Unknown {
@@ -339,6 +359,21 @@ mod tests {
             assert!(
                 !matches!(m, Modifier::Unknown { .. }),
                 "{name} fell through to Unknown"
+            );
+        }
+    }
+
+    #[test]
+    fn keywords_lists_every_typed_modifier() {
+        // Every keyword must parse to a typed (non-Unknown) variant, and the
+        // list must cover all 14 documented modifiers.
+        // 14 = the documented modifier set (source URL in every_documented_modifier_parses).
+        assert_eq!(Modifier::KEYWORDS.len(), 14);
+        for kw in Modifier::KEYWORDS {
+            let m = Modifier::from_csv(kw).unwrap_or_else(|| panic!("could not parse {kw}"));
+            assert!(
+                !matches!(m, Modifier::Unknown { .. }),
+                "{kw} fell through to Unknown"
             );
         }
     }
