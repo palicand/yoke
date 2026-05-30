@@ -22,6 +22,7 @@ pub struct GroupedSubProfile<'a> {
 pub struct GroupedBinding {
     pub input: Option<String>,
     pub output: String,
+    pub modifier: String,
 }
 
 /// Sub-profiles are returned in declaration order; bindings within each group
@@ -37,6 +38,7 @@ pub fn group_bindings(profile: &Profile) -> Vec<GroupedSubProfile<'_>> {
                 .map(|b| GroupedBinding {
                     input: b.input.as_ref().map(Input::to_csv),
                     output: b.output.to_csv(),
+                    modifier: b.modifier.to_csv(),
                 })
                 .collect();
             bindings.sort_by(|a, b| a.input.cmp(&b.input));
@@ -79,7 +81,7 @@ pub fn run_bindings(
                 "channel": g.channel,
                 "sub_mode": if g.sub_mode.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(g.sub_mode.to_string()) },
                 "bindings": g.bindings.iter().map(|b| serde_json::json!({
-                    "input": b.input, "output": b.output,
+                    "input": b.input, "output": b.output, "modifier": b.modifier,
                 })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
         }),
@@ -93,12 +95,14 @@ pub fn run_bindings(
                     writeln!(w, "  (no bindings)")?;
                 } else {
                     for b in &g.bindings {
-                        writeln!(
-                            w,
-                            "  {:<15} -> {}",
-                            b.input.as_deref().unwrap_or("(none)"),
-                            b.output
-                        )?;
+                        let input = b.input.as_deref().unwrap_or("(none)");
+                        // "normal" is the default; suppress it so the common case stays clean
+                        // (mirrors the binding-row pill convention).
+                        if b.modifier == "normal" {
+                            writeln!(w, "  {:<15} -> {}", input, b.output)?;
+                        } else {
+                            writeln!(w, "  {:<15} -> {} [{}]", input, b.output, b.modifier)?;
+                        }
                     }
                 }
             }
@@ -481,6 +485,16 @@ mod tests {
         assert_eq!(g.len(), 1);
         assert_eq!(g[0].name, "Main");
         assert_eq!(g[0].bindings.len(), 1);
+    }
+
+    #[test]
+    fn grouped_binding_carries_modifier() {
+        let mut p = profile_with_one_binding();
+        if let SubProfileRow::Binding(b) = &mut p.sub_profiles[0].rows[0] {
+            b.modifier = Modifier::DelayOn { ms: Some(250) };
+        }
+        let g = group_bindings(&p);
+        assert_eq!(g[0].bindings[0].modifier, "delay_on 250");
     }
 
     #[test]

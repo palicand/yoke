@@ -46,6 +46,31 @@ fn set_modifier_unknown_modifier_exits_5() {
 }
 
 #[test]
+fn bindings_view_surfaces_set_modifier() {
+    let dir = tempdir().unwrap();
+    seed_and_bind(dir.path());
+    yokectl()
+        .arg("--fake-volume")
+        .arg(dir.path())
+        .args([
+            "set-modifier",
+            "default",
+            "Main",
+            "lip_soft",
+            "delay_on 250",
+        ])
+        .assert()
+        .success();
+    yokectl()
+        .arg("--fake-volume")
+        .arg(dir.path())
+        .args(["bindings", "default", "--sub-profile", "Main"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("delay_on 250"));
+}
+
+#[test]
 fn catalog_modifiers_lists_keywords() {
     yokectl()
         .args(["catalog", "modifiers"])

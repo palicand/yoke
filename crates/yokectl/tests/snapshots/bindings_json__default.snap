@@ -8,6 +8,7 @@ expression: stdout
       "bindings": [
         {
           "input": "left",
+          "modifier": "normal",
           "output": "mouse_left"
         }
       ],
