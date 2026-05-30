@@ -68,7 +68,7 @@ impl Write for SharedBuffer {
 }
 
 use proptest::prelude::*;
-use yoke_config::catalog::{Channel, SubProfileMode};
+use yoke_config::catalog::{Channel, Modifier, SubProfileMode};
 use yoke_edit::{EditOp, PreferenceValue};
 use yoke_index::ProfileSource;
 
@@ -97,6 +97,12 @@ pub enum Action {
         target: String,
         sub_profile: String,
         input: String,
+    },
+    SetModifier {
+        target: String,
+        sub_profile: String,
+        input: String,
+        modifier: String,
     },
     SetOverride {
         target: String,
@@ -177,6 +183,7 @@ pub enum Action {
     CatalogPreferences,
     CatalogModes,
     CatalogChannels,
+    CatalogModifiers,
     Device,
     List,
 }
@@ -224,6 +231,21 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         (0i64..=100).prop_map(PreferenceValue::Number),
         "[a-zA-Z]{1,8}".prop_map(PreferenceValue::Text),
     ];
+    // Modifier phrases: a keyword, optionally with a numeric arg. Out-of-range args
+    // (e.g. a u8 keyword given >255) round-trip to Unknown and are rejected by apply —
+    // exercising the rejection path without panicking.
+    let modifier_keywords: Vec<String> = Modifier::KEYWORDS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    let edit_modifier_strat = (
+        prop::sample::select(modifier_keywords.clone()),
+        prop::option::of(0u32..1000),
+    )
+        .prop_map(|(kw, arg)| match arg {
+            Some(n) => format!("{kw} {n}"),
+            None => kw,
+        });
     let edit_op_strat = prop_oneof![
         "[a-zA-Z]{1,8}".prop_map(|title| EditOp::SetTitle { title }),
         (edit_pref_key_strat.clone(), edit_pref_value.clone())
@@ -236,6 +258,13 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
                 sub_profile: "Main".into(),
                 input,
                 output,
+            }
+        }),
+        (edit_input_strat.clone(), edit_modifier_strat).prop_map(|(input, modifier)| {
+            EditOp::SetModifier {
+                sub_profile: "Main".into(),
+                input,
+                modifier,
             }
         }),
         edit_input_strat.prop_map(|input| EditOp::ClearBinding {
@@ -265,6 +294,15 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
             .to_vec(),
     );
 
+    let modifier_strat = (
+        prop::sample::select(modifier_keywords),
+        prop::option::of(0u32..1000),
+    )
+        .prop_map(|(kw, arg)| match arg {
+            Some(n) => format!("{kw} {n}"),
+            None => kw,
+        });
+
     prop_oneof![
         // --- read-only / catalog ---
         Just(Action::List),
@@ -274,6 +312,7 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         Just(Action::CatalogPreferences),
         Just(Action::CatalogModes),
         Just(Action::CatalogChannels),
+        Just(Action::CatalogModifiers),
         // --- profile read ---
         name_or_unknown.clone().prop_map(|t| Action::Show {
             target: t,
@@ -336,6 +375,17 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
                 output: o,
             }
         }),
+        (
+            name_or_unknown.clone(),
+            prop::sample::select(yoke_config::catalog::Input::all_csv_names().collect::<Vec<_>>()),
+            modifier_strat
+        )
+            .prop_map(|(t, i, m)| Action::SetModifier {
+                target: t,
+                sub_profile: "Main".into(),
+                input: i,
+                modifier: m,
+            }),
         (
             name_or_unknown.clone(),
             prop::sample::select(yoke_config::catalog::Input::all_csv_names().collect::<Vec<_>>())
@@ -471,6 +521,17 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
             target: target.clone(),
             sub_profile: sub_profile.clone(),
             input: input.clone(),
+        },
+        Action::SetModifier {
+            target,
+            sub_profile,
+            input,
+            modifier,
+        } => Commands::SetModifier {
+            target: target.clone(),
+            sub_profile: sub_profile.clone(),
+            input: input.clone(),
+            modifier: modifier.clone(),
         },
         Action::SetPreference { target, key, value } => Commands::SetPreference {
             target: target.clone(),
@@ -623,6 +684,9 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
         },
         Action::CatalogChannels => Commands::Catalog {
             cmd: yokectl::cli::CatalogCmd::Channels,
+        },
+        Action::CatalogModifiers => Commands::Catalog {
+            cmd: yokectl::cli::CatalogCmd::Modifiers,
         },
     };
     cli
