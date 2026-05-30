@@ -190,6 +190,17 @@ pub enum Commands {
         #[arg(help = "Input phrase to clear", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Input)))]
         input: String,
     },
+    #[command(about = "Set the modifier on an existing binding in a sub-profile")]
+    SetModifier {
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
+        target: String,
+        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
+        sub_profile: String,
+        #[arg(help = "Input phrase whose binding to modify", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Input)))]
+        input: String,
+        #[arg(help = "Modifier phrase, e.g. \"delay_on 250\" (validated against catalog::modifiers)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Modifier)))]
+        modifier: String,
+    },
     #[command(about = "Manage sub-profiles (add, delete, rename, clone)")]
     Subprofile {
         #[command(subcommand)]

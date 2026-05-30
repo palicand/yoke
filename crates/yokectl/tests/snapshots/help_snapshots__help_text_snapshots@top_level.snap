@@ -26,6 +26,7 @@ Commands:
   unset-override    Remove a per-sub-profile preference override
   set-binding       Bind an input phrase to an output in a sub-profile
   clear-binding     Remove a binding from a sub-profile
+  set-modifier      Set the modifier on an existing binding in a sub-profile
   subprofile        Manage sub-profiles (add, delete, rename, clone)
   apply             Apply a batch of edit operations atomically
   bindings          List bindings on a profile, grouped by sub-profile

@@ -1,5 +1,5 @@
 use clap_complete::CompletionCandidate;
-use yoke_config::catalog::{Channel, Input, Output, PreferenceSpec, SubProfileMode};
+use yoke_config::catalog::{Channel, Input, Modifier, Output, PreferenceSpec, SubProfileMode};
 
 #[derive(Clone, Copy)]
 pub enum CatalogKind {
@@ -8,6 +8,7 @@ pub enum CatalogKind {
     Preference,
     Mode,
     Channel,
+    Modifier,
 }
 
 #[derive(Clone, Copy)]
@@ -30,6 +31,7 @@ impl clap_complete::engine::ValueCandidates for CatalogValueCompleter {
                 .iter()
                 .map(|c| c.canonical_csv().to_string())
                 .collect(),
+            CatalogKind::Modifier => Modifier::KEYWORDS.iter().map(|s| (*s).to_string()).collect(),
         };
         names.into_iter().map(CompletionCandidate::new).collect()
     }
@@ -49,6 +51,12 @@ mod tests {
     #[test]
     fn preference_candidates_non_empty() {
         let c = CatalogValueCompleter(CatalogKind::Preference);
+        assert!(!c.candidates().is_empty());
+    }
+
+    #[test]
+    fn modifier_candidates_non_empty() {
+        let c = CatalogValueCompleter(CatalogKind::Modifier);
         assert!(!c.candidates().is_empty());
     }
 }

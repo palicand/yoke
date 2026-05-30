@@ -45,6 +45,7 @@ const TOP_LEAVES: &[&str] = &[
     "unset-override",
     "set-binding",
     "clear-binding",
+    "set-modifier",
     "apply",
     "install",
     "completions",

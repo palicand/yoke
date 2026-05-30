@@ -144,6 +144,12 @@ fn run_with_volume(
             sub_profile,
             input,
         } => commands::edit::run_clear_binding(provider, out, &target, &sub_profile, &input),
+        Commands::SetModifier {
+            target,
+            sub_profile,
+            input,
+            modifier,
+        } => commands::edit::run_set_modifier(provider, out, &target, &sub_profile, &input, &modifier),
         Commands::Apply {
             target,
             edits,

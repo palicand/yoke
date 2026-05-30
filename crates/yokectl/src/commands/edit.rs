@@ -197,3 +197,25 @@ pub fn run_clear_binding(
         |w| writeln!(w, "binding cleared"),
     )
 }
+
+pub fn run_set_modifier(
+    provider: &Arc<dyn VolumeProvider>,
+    out: &Output,
+    target: &str,
+    sp: &str,
+    input: &str,
+    modifier: &str,
+) -> Result<()> {
+    apply_single(
+        provider,
+        out,
+        target,
+        EditOp::SetModifier {
+            sub_profile: sp.to_string(),
+            input: input.to_string(),
+            modifier: modifier.to_string(),
+        },
+        &serde_json::json!({"action": "set-modifier"}),
+        |w| writeln!(w, "modifier set"),
+    )
+}

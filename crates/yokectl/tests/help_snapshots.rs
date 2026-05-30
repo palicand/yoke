@@ -41,6 +41,7 @@ const CASES: &[(&str, &[&str])] = &[
     ("unset_override", &["unset-override"]),
     ("set_binding", &["set-binding"]),
     ("clear_binding", &["clear-binding"]),
+    ("set_modifier", &["set-modifier"]),
     ("apply", &["apply"]),
     ("install", &["install"]),
     ("completions", &["completions"]),
