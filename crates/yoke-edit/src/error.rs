@@ -35,10 +35,7 @@ pub enum EditError {
         suggestions: Vec<String>,
     },
     #[error("no binding for input {input:?} in sub-profile {sub_profile:?}; set its output first")]
-    NoBindingForInput {
-        sub_profile: String,
-        input: String,
-    },
+    NoBindingForInput { sub_profile: String, input: String },
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]

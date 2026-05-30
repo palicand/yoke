@@ -38,7 +38,10 @@ pub fn run_channels(out: &CliOutput) -> Result<()> {
 }
 
 pub fn run_modifiers(out: &CliOutput) -> Result<()> {
-    let entries: Vec<String> = Modifier::KEYWORDS.iter().map(|s| (*s).to_string()).collect();
+    let entries: Vec<String> = Modifier::KEYWORDS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
     emit(out, "modifiers", &entries)
 }
 

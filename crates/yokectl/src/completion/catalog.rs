@@ -31,7 +31,10 @@ impl clap_complete::engine::ValueCandidates for CatalogValueCompleter {
                 .iter()
                 .map(|c| c.canonical_csv().to_string())
                 .collect(),
-            CatalogKind::Modifier => Modifier::KEYWORDS.iter().map(|s| (*s).to_string()).collect(),
+            CatalogKind::Modifier => Modifier::KEYWORDS
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
         };
         names.into_iter().map(CompletionCandidate::new).collect()
     }

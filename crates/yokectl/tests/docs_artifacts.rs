@@ -61,7 +61,14 @@ const NESTED_LEAVES: &[(&str, &[&str])] = &[
     ("index", &["list", "search", "show", "update", "browse"]),
     (
         "catalog",
-        &["inputs", "outputs", "preferences", "modes", "channels", "modifiers"],
+        &[
+            "inputs",
+            "outputs",
+            "preferences",
+            "modes",
+            "channels",
+            "modifiers",
+        ],
     ),
 ];
 

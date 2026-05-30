@@ -150,7 +150,14 @@ fn run_with_volume(
             sub_profile,
             input,
             modifier,
-        } => commands::edit::run_set_modifier(provider, out, &target, &sub_profile, &input, &modifier),
+        } => commands::edit::run_set_modifier(
+            provider,
+            out,
+            &target,
+            &sub_profile,
+            &input,
+            &modifier,
+        ),
         Commands::Apply {
             target,
             edits,

@@ -20,7 +20,13 @@ fn set_modifier_on_existing_binding_writes_csv() {
     yokectl()
         .arg("--fake-volume")
         .arg(dir.path())
-        .args(["set-modifier", "default", "Main", "lip_soft", "delay_on 250"])
+        .args([
+            "set-modifier",
+            "default",
+            "Main",
+            "lip_soft",
+            "delay_on 250",
+        ])
         .assert()
         .success();
     let csv = std::fs::read_to_string(dir.path().join("default.csv")).unwrap();
