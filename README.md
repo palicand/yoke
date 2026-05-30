@@ -49,8 +49,8 @@ yokectl topic install-sources               # in-binary topic page
 ```
 
 `yokectl manual` opens the upstream QuadStick user manual in a browser;
-`yokectl catalog` enumerates the inputs, outputs, preferences, modes, and
-channels the binder understands. `yokectl --help` lists every subcommand
+`yokectl catalog` enumerates the inputs, outputs, preferences, modes,
+channels, and modifiers the binder understands. `yokectl --help` lists every subcommand
 and `yokectl <cmd> --help` documents flags. The `topic` pages
 (`install-sources`, `binding-model`, `preferences`, `sip-puff`,
 `sub-profiles`) cover the concepts the flags assume.

@@ -2,18 +2,19 @@
 source: crates/yokectl/tests/help_snapshots.rs
 expression: stdout
 ---
-Set the modifier on an existing binding in a sub-profile
+Update an existing binding's output or modifier in a sub-profile
 
-Usage: yokectl set-modifier [OPTIONS] <TARGET> <SUB_PROFILE> <INPUT> <MODIFIER>
+Usage: yokectl update-binding [OPTIONS] --modifier <MODIFIER> <TARGET> <SUB_PROFILE> <INPUT> <OUTPUT>
 
 Arguments:
   <TARGET>       Profile name, file path, or '-' for stdin
   <SUB_PROFILE>  Sub-profile name
-  <INPUT>        Input phrase whose binding to modify
-  <MODIFIER>     Modifier phrase, e.g. "delay_on 250" (validated against catalog::modifiers)
+  <INPUT>        Input phrase (validated against catalog::inputs)
+  <OUTPUT>       Output name (validated against catalog::outputs)
 
 Options:
       --fake-volume <FAKE_VOLUME>  Use a directory as a fake volume backend instead of the platform device
+      --modifier <MODIFIER>        New modifier phrase, e.g. "delay_on 250"
       --json                       Emit machine-readable JSON on stdout (NDJSON for watch)
   -v, --verbose...                 Increase tracing verbosity on stderr; repeat (-vv reveals info, -vvv debug)
       --no-color                   Disable ANSI styling (NO_COLOR=1 or non-TTY stdout also disable)

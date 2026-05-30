@@ -86,6 +86,10 @@ pub fn run_bindings(
             })).collect::<Vec<_>>(),
         }),
         |w| {
+            // The default modifier is suppressed so the common case stays clean
+            // (mirrors the binding-row pill convention); derive it from the typed
+            // default rather than hardcoding the keyword.
+            let default_modifier = yoke_config::catalog::Modifier::Normal.to_csv();
             for (i, g) in groups.iter().enumerate() {
                 if i > 0 {
                     writeln!(w)?;
@@ -96,9 +100,7 @@ pub fn run_bindings(
                 } else {
                     for b in &g.bindings {
                         let input = b.input.as_deref().unwrap_or("(none)");
-                        // "normal" is the default; suppress it so the common case stays clean
-                        // (mirrors the binding-row pill convention).
-                        if b.modifier == "normal" {
+                        if b.modifier == default_modifier {
                             writeln!(w, "  {:<15} -> {}", input, b.output)?;
                         } else {
                             writeln!(w, "  {:<15} -> {} [{}]", input, b.output, b.modifier)?;

@@ -30,19 +30,23 @@ fn apply_one(profile: Profile, op: &EditOp) -> Result<Profile, EditError> {
         EditOp::DeleteSubProfile { name } => apply_delete_sub_profile(profile, name),
         EditOp::RenameSubProfile { from, to } => apply_rename_sub_profile(profile, from, to),
         EditOp::CloneSubProfile { from, to } => apply_clone_sub_profile(profile, from, to),
-        EditOp::SetBinding {
+        EditOp::AddBinding {
             sub_profile,
             input,
             output,
-        } => apply_set_binding(profile, sub_profile, input, output),
-        EditOp::ClearBinding { sub_profile, input } => {
-            apply_clear_binding(profile, sub_profile, input)
-        }
-        EditOp::SetModifier {
+            modifier,
+        } => apply_add_binding(profile, sub_profile, input, output, modifier.as_deref()),
+        EditOp::UpdateBinding {
+            sub_profile,
+            input,
+            output,
+            modifier,
+        } => apply_update_binding(profile, sub_profile, input, output, modifier),
+        EditOp::ClearBinding {
             sub_profile,
             input,
             modifier,
-        } => apply_set_modifier(profile, sub_profile, input, modifier),
+        } => apply_clear_binding(profile, sub_profile, input, modifier.as_deref()),
         EditOp::SetPreference { key, value } => apply_set_preference(profile, key, value),
         EditOp::UnsetPreference { key } => Ok(apply_unset_preference(profile, key)),
         EditOp::SetOverride {
@@ -129,29 +133,42 @@ fn require_unique_sub_profile_name(profile: &Profile, name: &str) -> Result<(), 
     Ok(())
 }
 
-fn apply_set_binding(
+// A binding row is identified by its (input, modifier) pair, which maps to exactly one
+// output. `add` appends a new pair (POST), `update` mutates the single matching row (PUT),
+// `clear` deletes by input or by the unique (input, modifier) pair (DELETE).
+fn apply_add_binding(
     mut profile: Profile,
     sub_profile: &str,
     input: &str,
     output: &str,
+    modifier: Option<&str>,
 ) -> Result<Profile, EditError> {
     let sp_idx = sub_profile_index(&profile, sub_profile)?;
     let parsed_input = parse_input(input)?;
     let parsed_output = parse_output(output)?;
+    let parsed_modifier = match modifier {
+        Some(m) => parse_modifier(m)?,
+        None => Modifier::Normal,
+    };
     let target = &mut profile.sub_profiles[sp_idx];
-    let existing = target.rows.iter_mut().find(|r| match r {
-        SubProfileRow::Binding(b) => b.input.as_ref() == Some(&parsed_input),
-        SubProfileRow::Override(_) => false,
+    // (input, modifier) maps to exactly one output; refuse to create a second mapping.
+    let existing_output = target.bindings().find_map(|b| {
+        (b.input.as_ref() == Some(&parsed_input) && b.modifier == parsed_modifier)
+            .then(|| b.output.to_csv())
     });
-    if let Some(SubProfileRow::Binding(b)) = existing {
-        b.output = parsed_output;
-    } else {
-        target.rows.push(SubProfileRow::Binding(Binding::new(
-            parsed_output,
-            Modifier::Normal,
-            Some(parsed_input),
-        )));
+    if let Some(output) = existing_output {
+        return Err(EditError::BindingExists {
+            sub_profile: sub_profile.to_owned(),
+            input: input.to_owned(),
+            modifier: parsed_modifier.to_csv(),
+            output,
+        });
     }
+    target.rows.push(SubProfileRow::Binding(Binding::new(
+        parsed_output,
+        parsed_modifier,
+        Some(parsed_input),
+    )));
     Ok(profile)
 }
 
@@ -159,58 +176,111 @@ fn apply_clear_binding(
     mut profile: Profile,
     sub_profile: &str,
     input: &str,
+    modifier: Option<&str>,
 ) -> Result<Profile, EditError> {
     let sp_idx = sub_profile_index(&profile, sub_profile)?;
     let parsed_input = parse_input(input)?;
+    let parsed_modifier = match modifier {
+        Some(m) => Some(parse_modifier(m)?),
+        None => None,
+    };
     let target = &mut profile.sub_profiles[sp_idx];
     let before = target.rows.len();
     target.rows.retain(|r| match r {
-        SubProfileRow::Binding(b) => b.input.as_ref() != Some(&parsed_input),
-        SubProfileRow::Override(_) => true,
+        SubProfileRow::Binding(b) if b.input.as_ref() == Some(&parsed_input) => {
+            // No modifier given: remove every row for this input (keep none). Modifier
+            // given: keep rows whose modifier differs, dropping the unique matching one.
+            parsed_modifier.as_ref().is_some_and(|m| b.modifier != *m)
+        }
+        _ => true,
     });
     if target.rows.len() == before {
-        // Catalog-valid identifier with no row in this scope reads as "unknown" to the user.
-        return Err(EditError::UnknownInput {
+        return Err(EditError::BindingNotFound {
+            sub_profile: sub_profile.to_owned(),
             input: input.to_owned(),
-            suggestions: vec![],
         });
     }
     Ok(profile)
 }
 
-// Suggestions are keyword-only: Modifier::KEYWORDS holds leading tokens, not full phrases.
 fn parse_modifier(raw: &str) -> Result<Modifier, EditError> {
     match Modifier::from_csv(raw) {
         Some(m) if !matches!(m, Modifier::Unknown { .. }) => Ok(m),
-        _ => Err(EditError::UnknownModifier {
-            modifier: raw.to_owned(),
-            suggestions: suggestions(raw, Modifier::KEYWORDS.iter().copied()),
-        }),
+        _ => {
+            // Match the leading token against Modifier::KEYWORDS (which holds keywords,
+            // not full phrases): a valid keyword with a bad argument (e.g. "delay_on abc")
+            // also round-trips to Unknown, and scoring the whole phrase would exceed the
+            // edit-distance cap and surface no suggestion at all.
+            let keyword = raw.split_whitespace().next().unwrap_or(raw);
+            Err(EditError::UnknownModifier {
+                modifier: raw.to_owned(),
+                suggestions: suggestions(keyword, Modifier::KEYWORDS.iter().copied()),
+            })
+        }
     }
 }
 
-fn apply_set_modifier(
+fn apply_update_binding(
     mut profile: Profile,
     sub_profile: &str,
     input: &str,
+    output: &str,
     modifier: &str,
 ) -> Result<Profile, EditError> {
     let sp_idx = sub_profile_index(&profile, sub_profile)?;
     let parsed_input = parse_input(input)?;
+    let parsed_output = parse_output(output)?;
     let parsed_modifier = parse_modifier(modifier)?;
     let target = &mut profile.sub_profiles[sp_idx];
-    let existing = target.rows.iter_mut().find(|r| match r {
-        SubProfileRow::Binding(b) => b.input.as_ref() == Some(&parsed_input),
-        SubProfileRow::Override(_) => false,
-    });
-    if let Some(SubProfileRow::Binding(b)) = existing {
-        b.modifier = parsed_modifier;
-        Ok(profile)
-    } else {
-        Err(EditError::NoBindingForInput {
+
+    // Anchor the target row by whichever of (input, modifier) / (input, output) the user
+    // already has; change the other field. (input, modifier) is unique by the add invariant;
+    // (input, output) may not be, so a multi-match there is ambiguous.
+    let mut exact = false;
+    let mut by_modifier: Vec<usize> = Vec::new();
+    let mut by_output: Vec<usize> = Vec::new();
+    for (i, r) in target.rows.iter().enumerate() {
+        if let SubProfileRow::Binding(b) = r {
+            if b.input.as_ref() != Some(&parsed_input) {
+                continue;
+            }
+            let same_modifier = b.modifier == parsed_modifier;
+            let same_output = b.output == parsed_output;
+            if same_modifier && same_output {
+                exact = true;
+            } else if same_modifier {
+                by_modifier.push(i);
+            } else if same_output {
+                by_output.push(i);
+            }
+        }
+    }
+
+    if exact {
+        return Ok(profile); // the requested binding already exists verbatim
+    }
+    match (by_modifier.as_slice(), by_output.as_slice()) {
+        ([], []) => Err(EditError::BindingNotFound {
             sub_profile: sub_profile.to_owned(),
             input: input.to_owned(),
-        })
+        }),
+        ([i], []) => {
+            if let SubProfileRow::Binding(b) = &mut target.rows[*i] {
+                b.output = parsed_output;
+            }
+            Ok(profile)
+        }
+        ([], [i]) => {
+            if let SubProfileRow::Binding(b) = &mut target.rows[*i] {
+                b.modifier = parsed_modifier;
+            }
+            Ok(profile)
+        }
+        _ => Err(EditError::AmbiguousBinding {
+            sub_profile: sub_profile.to_owned(),
+            input: input.to_owned(),
+            output: output.to_owned(),
+        }),
     }
 }
 
@@ -603,16 +673,144 @@ mod tests {
         assert_eq!(err.index, 1);
     }
 
-    #[test]
-    fn set_binding_rejects_unknown_input() {
+    use yoke_config::catalog::KbKey;
+
+    fn binding(output: Output, modifier: Modifier, input: Input) -> SubProfileRow {
+        SubProfileRow::Binding(Binding::new(output, modifier, Some(input)))
+    }
+
+    fn main_with(rows: Vec<SubProfileRow>) -> Profile {
         let mut p = empty_profile();
-        p.sub_profiles.push(empty_sp("Main"));
+        let mut sp = empty_sp("Main");
+        sp.rows = rows;
+        p.sub_profiles.push(sp);
+        p
+    }
+
+    fn bindings_of(p: &Profile) -> Vec<&Binding> {
+        p.sub_profiles[0].bindings().collect()
+    }
+
+    // --- add-binding (POST) ---
+
+    #[test]
+    fn add_binding_creates_when_input_unbound() {
+        let out = apply(
+            main_with(vec![]),
+            &[EditOp::AddBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+                modifier: Some("toggle".into()),
+            }],
+        )
+        .unwrap();
+        let bs = bindings_of(&out);
+        assert_eq!(bs.len(), 1);
+        assert_eq!(bs[0].output, Output::Keyboard(KbKey::A));
+        assert_eq!(bs[0].modifier, Modifier::Toggle);
+        assert_eq!(bs[0].input, Some(Input::Lip { soft: true }));
+    }
+
+    #[test]
+    fn add_binding_defaults_modifier_to_normal_when_omitted() {
+        let out = apply(
+            main_with(vec![]),
+            &[EditOp::AddBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+                modifier: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(bindings_of(&out)[0].modifier, Modifier::Normal);
+    }
+
+    #[test]
+    fn add_binding_appends_parallel_output_for_same_input() {
+        // existing input, new (modifier, output) -> add a second (chord) row
+        let p = main_with(vec![binding(
+            Output::Keyboard(KbKey::Enter),
+            Modifier::Normal,
+            Input::Lip { soft: true },
+        )]);
+        let out = apply(
+            p,
+            &[EditOp::AddBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+                modifier: Some("toggle".into()),
+            }],
+        )
+        .unwrap();
+        assert_eq!(bindings_of(&out).len(), 2);
+    }
+
+    #[test]
+    fn add_binding_allows_duplicate_output_with_distinct_modifier() {
+        // same (input, output), different modifier -> allowed (worst case is a redundant dup)
+        let p = main_with(vec![binding(
+            Output::Keyboard(KbKey::A),
+            Modifier::Normal,
+            Input::Lip { soft: true },
+        )]);
+        let out = apply(
+            p,
+            &[EditOp::AddBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+                modifier: Some("toggle".into()),
+            }],
+        )
+        .unwrap();
+        assert_eq!(bindings_of(&out).len(), 2);
+    }
+
+    #[test]
+    fn add_binding_rejects_existing_input_modifier_pair() {
+        // (input, modifier) already maps to an output -> conflict, regardless of the new output
+        let p = main_with(vec![binding(
+            Output::Keyboard(KbKey::A),
+            Modifier::Toggle,
+            Input::Lip { soft: true },
+        )]);
         let err = apply(
             p,
-            &[EditOp::SetBinding {
+            &[EditOp::AddBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_b".into(),
+                modifier: Some("toggle".into()),
+            }],
+        )
+        .unwrap_err();
+        match err.error {
+            EditError::BindingExists {
+                input,
+                modifier,
+                output,
+                ..
+            } => {
+                assert_eq!(input, "lip_soft");
+                assert_eq!(modifier, "toggle");
+                assert_eq!(output, "kb_a"); // reports the output it already maps to
+            }
+            other => panic!("expected BindingExists, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn add_binding_rejects_unknown_input() {
+        let err = apply(
+            main_with(vec![]),
+            &[EditOp::AddBinding {
                 sub_profile: "Main".into(),
                 input: "lip_sof".into(),
                 output: "kb_a".into(),
+                modifier: None,
             }],
         )
         .unwrap_err();
@@ -629,15 +827,14 @@ mod tests {
     }
 
     #[test]
-    fn set_binding_rejects_unknown_output() {
-        let mut p = empty_profile();
-        p.sub_profiles.push(empty_sp("Main"));
+    fn add_binding_rejects_unknown_output() {
         let err = apply(
-            p,
-            &[EditOp::SetBinding {
+            main_with(vec![]),
+            &[EditOp::AddBinding {
                 sub_profile: "Main".into(),
                 input: "lip_soft".into(),
                 output: "kb_eter".into(),
+                modifier: None,
             }],
         )
         .unwrap_err();
@@ -657,140 +854,14 @@ mod tests {
     }
 
     #[test]
-    fn set_binding_rejects_missing_sub_profile() {
-        let p = empty_profile();
+    fn add_binding_rejects_unknown_modifier_with_suggestion() {
         let err = apply(
-            p,
-            &[EditOp::SetBinding {
-                sub_profile: "Ghost".into(),
-                input: "lip_soft".into(),
-                output: "kb_enter".into(),
-            }],
-        )
-        .unwrap_err();
-        assert_eq!(
-            err.error,
-            EditError::SubProfileNotFound {
-                name: "Ghost".into()
-            }
-        );
-    }
-
-    #[test]
-    fn set_binding_appends_or_replaces_existing() {
-        let mut p = empty_profile();
-        p.sub_profiles.push(empty_sp("Main"));
-        let out = apply(
-            p,
-            &[EditOp::SetBinding {
+            main_with(vec![]),
+            &[EditOp::AddBinding {
                 sub_profile: "Main".into(),
                 input: "lip_soft".into(),
-                output: "kb_enter".into(),
-            }],
-        )
-        .unwrap();
-        assert_eq!(out.sub_profiles[0].bindings().count(), 1);
-    }
-
-    #[test]
-    fn clear_binding_removes_existing() {
-        use yoke_config::catalog::{Input, KbKey, Modifier, Output};
-        use yoke_config::model::{Binding, SubProfileRow};
-        let mut p = empty_profile();
-        let mut sp = empty_sp("Main");
-        sp.rows.push(SubProfileRow::Binding(Binding::new(
-            Output::Keyboard(KbKey::Enter),
-            Modifier::Normal,
-            Some(Input::Lip { soft: true }),
-        )));
-        p.sub_profiles.push(sp);
-        let out = apply(
-            p,
-            &[EditOp::ClearBinding {
-                sub_profile: "Main".into(),
-                input: "lip_soft".into(),
-            }],
-        )
-        .unwrap();
-        assert_eq!(out.sub_profiles[0].bindings().count(), 0);
-    }
-
-    #[test]
-    fn set_modifier_replaces_on_existing_binding() {
-        use yoke_config::catalog::{Input, KbKey, Modifier, Output};
-        use yoke_config::model::{Binding, SubProfileRow};
-        let mut p = empty_profile();
-        let mut sp = empty_sp("Main");
-        let mut b = Binding::new(
-            Output::Keyboard(KbKey::Enter),
-            Modifier::Normal,
-            Some(Input::Lip { soft: true }),
-        );
-        b.comment = Some("keep me".to_owned());
-        sp.rows.push(SubProfileRow::Binding(b));
-        p.sub_profiles.push(sp);
-        let out = apply(
-            p,
-            &[EditOp::SetModifier {
-                sub_profile: "Main".into(),
-                input: "lip_soft".into(),
-                modifier: "delay_on 250".into(),
-            }],
-        )
-        .unwrap();
-        let b = out.sub_profiles[0]
-            .rows
-            .iter()
-            .find_map(|r| match r {
-                SubProfileRow::Binding(b) => Some(b),
-                SubProfileRow::Override(_) => None,
-            })
-            .expect("binding still present");
-        assert_eq!(b.modifier, Modifier::DelayOn { ms: Some(250) });
-        assert_eq!(b.output, Output::Keyboard(KbKey::Enter)); // output untouched
-        assert_eq!(b.comment.as_deref(), Some("keep me")); // comment preserved across modifier replace
-    }
-
-    #[test]
-    fn set_modifier_rejects_unbound_input() {
-        let mut p = empty_profile();
-        p.sub_profiles.push(empty_sp("Main"));
-        let err = apply(
-            p,
-            &[EditOp::SetModifier {
-                sub_profile: "Main".into(),
-                input: "lip_soft".into(),
-                modifier: "toggle".into(),
-            }],
-        )
-        .unwrap_err();
-        assert_eq!(
-            err.error,
-            EditError::NoBindingForInput {
-                sub_profile: "Main".into(),
-                input: "lip_soft".into(),
-            }
-        );
-    }
-
-    #[test]
-    fn set_modifier_rejects_unknown_modifier_with_suggestion() {
-        use yoke_config::catalog::{Input, KbKey, Modifier, Output};
-        use yoke_config::model::{Binding, SubProfileRow};
-        let mut p = empty_profile();
-        let mut sp = empty_sp("Main");
-        sp.rows.push(SubProfileRow::Binding(Binding::new(
-            Output::Keyboard(KbKey::Enter),
-            Modifier::Normal,
-            Some(Input::Lip { soft: true }),
-        )));
-        p.sub_profiles.push(sp);
-        let err = apply(
-            p,
-            &[EditOp::SetModifier {
-                sub_profile: "Main".into(),
-                input: "lip_soft".into(),
-                modifier: "togle".into(),
+                output: "kb_a".into(),
+                modifier: Some("togle".into()),
             }],
         )
         .unwrap_err();
@@ -806,6 +877,344 @@ mod tests {
                 );
             }
             other => panic!("expected UnknownModifier, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn add_binding_rejects_missing_sub_profile() {
+        let err = apply(
+            empty_profile(),
+            &[EditOp::AddBinding {
+                sub_profile: "Ghost".into(),
+                input: "lip_soft".into(),
+                output: "kb_enter".into(),
+                modifier: None,
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.error,
+            EditError::SubProfileNotFound {
+                name: "Ghost".into()
+            }
+        );
+    }
+
+    // --- update-binding (PUT) ---
+
+    #[test]
+    fn update_binding_changes_output_anchored_on_modifier() {
+        // (input, modifier) exists, output is new -> change that row's output
+        let p = main_with(vec![binding(
+            Output::Keyboard(KbKey::A),
+            Modifier::Toggle,
+            Input::Lip { soft: true },
+        )]);
+        let out = apply(
+            p,
+            &[EditOp::UpdateBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_b".into(),
+                modifier: "toggle".into(),
+            }],
+        )
+        .unwrap();
+        let bs = bindings_of(&out);
+        assert_eq!(bs.len(), 1);
+        assert_eq!(bs[0].output, Output::Keyboard(KbKey::B));
+        assert_eq!(bs[0].modifier, Modifier::Toggle);
+    }
+
+    #[test]
+    fn update_binding_changes_modifier_anchored_on_output() {
+        // (input, output) exists, modifier is new -> change that row's modifier (the old set-modifier use case)
+        let mut b = Binding::new(
+            Output::Keyboard(KbKey::A),
+            Modifier::Normal,
+            Some(Input::Lip { soft: true }),
+        );
+        b.comment = Some("keep me".to_owned());
+        let p = main_with(vec![SubProfileRow::Binding(b)]);
+        let out = apply(
+            p,
+            &[EditOp::UpdateBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+                modifier: "delay_on 250".into(),
+            }],
+        )
+        .unwrap();
+        let bs = bindings_of(&out);
+        assert_eq!(bs.len(), 1);
+        assert_eq!(bs[0].modifier, Modifier::DelayOn { ms: Some(250) });
+        assert_eq!(bs[0].output, Output::Keyboard(KbKey::A)); // output untouched
+        assert_eq!(bs[0].comment.as_deref(), Some("keep me")); // comment preserved
+    }
+
+    #[test]
+    fn update_binding_is_noop_on_exact_triple() {
+        let p = main_with(vec![binding(
+            Output::Keyboard(KbKey::A),
+            Modifier::Toggle,
+            Input::Lip { soft: true },
+        )]);
+        let snapshot = p.clone();
+        let out = apply(
+            p,
+            &[EditOp::UpdateBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+                modifier: "toggle".into(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(out, snapshot);
+    }
+
+    #[test]
+    fn update_binding_rejects_unbound_input() {
+        let err = apply(
+            main_with(vec![]),
+            &[EditOp::UpdateBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+                modifier: "toggle".into(),
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.error,
+            EditError::BindingNotFound {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn update_binding_rejects_when_no_anchor_matches() {
+        // input is bound, but neither (input, modifier) nor (input, output) matches
+        let p = main_with(vec![binding(
+            Output::Keyboard(KbKey::A),
+            Modifier::Normal,
+            Input::Lip { soft: true },
+        )]);
+        let err = apply(
+            p,
+            &[EditOp::UpdateBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_b".into(),
+                modifier: "toggle".into(),
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.error,
+            EditError::BindingNotFound {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn update_binding_rejects_ambiguous_output_match() {
+        // two rows share (input, output); a new modifier cannot pick one
+        let p = main_with(vec![
+            binding(
+                Output::Keyboard(KbKey::A),
+                Modifier::Normal,
+                Input::Lip { soft: true },
+            ),
+            binding(
+                Output::Keyboard(KbKey::A),
+                Modifier::Toggle,
+                Input::Lip { soft: true },
+            ),
+        ]);
+        let err = apply(
+            p,
+            &[EditOp::UpdateBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+                modifier: "delay_on 250".into(),
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.error,
+            EditError::AmbiguousBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn update_binding_rejects_when_anchors_match_different_rows() {
+        // (input, modifier) matches one row, (input, output) another -> ambiguous intent
+        let p = main_with(vec![
+            binding(
+                Output::Keyboard(KbKey::A),
+                Modifier::Toggle,
+                Input::Lip { soft: true },
+            ),
+            binding(
+                Output::Keyboard(KbKey::B),
+                Modifier::Normal,
+                Input::Lip { soft: true },
+            ),
+        ]);
+        let err = apply(
+            p,
+            &[EditOp::UpdateBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_b".into(),
+                modifier: "toggle".into(),
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.error,
+            EditError::AmbiguousBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_b".into(),
+            }
+        );
+    }
+
+    // --- clear-binding (DELETE) ---
+
+    #[test]
+    fn clear_binding_removes_all_rows_for_input_when_modifier_omitted() {
+        let p = main_with(vec![
+            binding(
+                Output::Keyboard(KbKey::A),
+                Modifier::Normal,
+                Input::Lip { soft: true },
+            ),
+            binding(
+                Output::Keyboard(KbKey::B),
+                Modifier::Toggle,
+                Input::Lip { soft: true },
+            ),
+            binding(
+                Output::Keyboard(KbKey::Enter),
+                Modifier::Normal,
+                Input::Center,
+            ),
+        ]);
+        let out = apply(
+            p,
+            &[EditOp::ClearBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                modifier: None,
+            }],
+        )
+        .unwrap();
+        let bs = bindings_of(&out);
+        assert_eq!(bs.len(), 1);
+        assert_eq!(bs[0].input, Some(Input::Center));
+    }
+
+    #[test]
+    fn clear_binding_removes_only_matching_modifier_row() {
+        let p = main_with(vec![
+            binding(
+                Output::Keyboard(KbKey::A),
+                Modifier::Normal,
+                Input::Lip { soft: true },
+            ),
+            binding(
+                Output::Keyboard(KbKey::B),
+                Modifier::Toggle,
+                Input::Lip { soft: true },
+            ),
+        ]);
+        let out = apply(
+            p,
+            &[EditOp::ClearBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                modifier: Some("toggle".into()),
+            }],
+        )
+        .unwrap();
+        let bs = bindings_of(&out);
+        assert_eq!(bs.len(), 1);
+        assert_eq!(bs[0].modifier, Modifier::Normal);
+    }
+
+    #[test]
+    fn clear_binding_rejects_unbound_input() {
+        // catalog-valid input with no binding -> BindingNotFound, not UnknownInput
+        let err = apply(
+            main_with(vec![]),
+            &[EditOp::ClearBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                modifier: None,
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.error,
+            EditError::BindingNotFound {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn clear_binding_rejects_missing_modifier_row() {
+        let p = main_with(vec![binding(
+            Output::Keyboard(KbKey::A),
+            Modifier::Normal,
+            Input::Lip { soft: true },
+        )]);
+        let err = apply(
+            p,
+            &[EditOp::ClearBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                modifier: Some("toggle".into()),
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.error,
+            EditError::BindingNotFound {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn clear_binding_rejects_unknown_input_parse() {
+        let err = apply(
+            main_with(vec![]),
+            &[EditOp::ClearBinding {
+                sub_profile: "Main".into(),
+                input: "lip_sof".into(),
+                modifier: None,
+            }],
+        )
+        .unwrap_err();
+        match err.error {
+            EditError::UnknownInput { input, .. } => assert_eq!(input, "lip_sof"),
+            other => panic!("expected UnknownInput, got {other:?}"),
         }
     }
 
@@ -983,43 +1392,5 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(p, snapshot);
-    }
-
-    #[test]
-    fn set_binding_replace_preserves_modifier_and_comment() {
-        use yoke_config::catalog::{Input, KbKey, Output};
-        use yoke_config::model::{Binding, SubProfileRow};
-        let mut p = empty_profile();
-        let mut sp = empty_sp("Main");
-        let mut b = Binding::new(
-            Output::Keyboard(KbKey::Enter),
-            Modifier::Toggle,
-            Some(Input::Lip { soft: true }),
-        );
-        b.comment = Some("don't wipe me".to_owned());
-        sp.rows.push(SubProfileRow::Binding(b));
-        p.sub_profiles.push(sp);
-
-        let out = apply(
-            p,
-            &[EditOp::SetBinding {
-                sub_profile: "Main".into(),
-                input: "lip_soft".into(),
-                output: "kb_a".into(),
-            }],
-        )
-        .unwrap();
-
-        let row = out.sub_profiles[0]
-            .rows
-            .iter()
-            .find_map(|r| match r {
-                SubProfileRow::Binding(b) => Some(b),
-                SubProfileRow::Override(_) => None,
-            })
-            .expect("expected the replaced binding to still be present");
-        assert_eq!(row.output, Output::Keyboard(KbKey::A));
-        assert!(matches!(row.modifier, Modifier::Toggle));
-        assert_eq!(row.comment.as_deref(), Some("don't wipe me"));
     }
 }

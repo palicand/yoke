@@ -22,19 +22,22 @@ pub enum EditOp {
     UnsetPreference {
         key: String,
     },
-    SetBinding {
+    AddBinding {
         sub_profile: String,
         input: String,
         output: String,
+        modifier: Option<String>,
+    },
+    UpdateBinding {
+        sub_profile: String,
+        input: String,
+        output: String,
+        modifier: String,
     },
     ClearBinding {
         sub_profile: String,
         input: String,
-    },
-    SetModifier {
-        sub_profile: String,
-        input: String,
-        modifier: String,
+        modifier: Option<String>,
     },
     SetOverride {
         sub_profile: String,
@@ -110,15 +113,57 @@ mod tests {
     }
 
     #[test]
-    fn edit_op_set_modifier_round_trips_kebab_case_tag() {
-        let op = EditOp::SetModifier {
+    fn edit_op_add_binding_round_trips_kebab_case_tag() {
+        let op = EditOp::AddBinding {
             sub_profile: "Main".into(),
             input: "lip_soft".into(),
+            output: "kb_a".into(),
+            modifier: Some("delay_on 250".into()),
+        };
+        let json = serde_json::to_value(&op).unwrap();
+        assert_eq!(json["op"], "add-binding");
+        assert_eq!(json["output"], "kb_a");
+        assert_eq!(json["modifier"], "delay_on 250");
+        let back: EditOp = serde_json::from_value(json).unwrap();
+        assert_eq!(op, back);
+    }
+
+    #[test]
+    fn edit_op_add_binding_omits_modifier_when_none() {
+        let op = EditOp::AddBinding {
+            sub_profile: "Main".into(),
+            input: "lip_soft".into(),
+            output: "kb_a".into(),
+            modifier: None,
+        };
+        let back: EditOp = serde_json::from_value(serde_json::to_value(&op).unwrap()).unwrap();
+        assert_eq!(op, back);
+    }
+
+    #[test]
+    fn edit_op_update_binding_round_trips_kebab_case_tag() {
+        let op = EditOp::UpdateBinding {
+            sub_profile: "Main".into(),
+            input: "lip_soft".into(),
+            output: "kb_a".into(),
             modifier: "delay_on 250".into(),
         };
         let json = serde_json::to_value(&op).unwrap();
-        assert_eq!(json["op"], "set-modifier");
+        assert_eq!(json["op"], "update-binding");
         assert_eq!(json["modifier"], "delay_on 250");
+        let back: EditOp = serde_json::from_value(json).unwrap();
+        assert_eq!(op, back);
+    }
+
+    #[test]
+    fn edit_op_clear_binding_round_trips_with_optional_modifier() {
+        let op = EditOp::ClearBinding {
+            sub_profile: "Main".into(),
+            input: "lip_soft".into(),
+            modifier: Some("toggle".into()),
+        };
+        let json = serde_json::to_value(&op).unwrap();
+        assert_eq!(json["op"], "clear-binding");
         let back: EditOp = serde_json::from_value(json).unwrap();
         assert_eq!(op, back);
     }

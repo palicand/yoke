@@ -73,6 +73,32 @@ impl Modifier {
         "decrement_value",
     ];
 
+    /// The CSV keyword (leading token) for a typed modifier, or `None` for `Unknown`.
+    /// Exhaustive by construction: a new `Modifier` variant cannot compile without an arm
+    /// here, which is the single point that forces it to declare a keyword — and the
+    /// `keyword_is_consistent_with_from_csv_for_every_listed_keyword` test ties that token
+    /// back to [`Self::KEYWORDS`] and `from_csv`.
+    #[must_use]
+    pub const fn keyword(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::Normal => "normal",
+            Self::Toggle => "toggle",
+            Self::DelayOn { .. } => "delay_on",
+            Self::DelayOff { .. } => "delay_off",
+            Self::GreaterThan { .. } => "greater_than",
+            Self::LessThan { .. } => "less_than",
+            Self::Repeat { .. } => "repeat",
+            Self::Pulse { .. } => "pulse",
+            Self::Duty { .. } => "duty",
+            Self::ForceOff { .. } => "force_off",
+            Self::DelayedLatch { .. } => "delayed_latch",
+            Self::Tap { .. } => "tap",
+            Self::IncrementValue { .. } => "increment_value",
+            Self::DecrementValue { .. } => "decrement_value",
+            Self::Unknown { .. } => return None,
+        })
+    }
+
     pub fn from_csv(s: &str) -> Option<Self> {
         fn unknown(name: &str, args: &[&str]) -> Modifier {
             Modifier::Unknown {
@@ -376,5 +402,23 @@ mod tests {
                 "{kw} fell through to Unknown"
             );
         }
+    }
+
+    #[test]
+    fn keyword_is_consistent_with_from_csv_for_every_listed_keyword() {
+        // `keyword()` is the single per-variant source of the leading token. Every entry
+        // in KEYWORDS must parse to a typed variant whose `keyword()` returns that same
+        // token, so KEYWORDS / from_csv / keyword() can never silently disagree.
+        for kw in Modifier::KEYWORDS {
+            let m = Modifier::from_csv(kw).unwrap_or_else(|| panic!("could not parse {kw}"));
+            assert_eq!(m.keyword(), Some(*kw), "keyword() disagrees for {kw}");
+        }
+    }
+
+    #[test]
+    fn unknown_modifier_has_no_keyword() {
+        let m = Modifier::from_csv("future_modifier 1").unwrap();
+        assert!(matches!(m, Modifier::Unknown { .. }));
+        assert_eq!(m.keyword(), None);
     }
 }

@@ -1,8 +1,5 @@
 use super::*;
 
-const SEED: &str =
-    "QuadStick Configuration,Version 1.4,Mock,Default\r\n,,,\r\n*Main,sip_puff,,A\r\n";
-
 #[test]
 fn show_raw_output_is_captured_through_output() {
     let (_dir, provider) = seed_tempdir(&[("default.csv", SEED)]);

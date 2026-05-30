@@ -1,8 +1,5 @@
 use super::*;
 
-const SEED: &str =
-    "QuadStick Configuration,Version 1.4,Mock,Default\r\n,,,\r\n*Main,sip_puff,,A\r\n";
-
 proptest! {
     #![proptest_config(ProptestConfig { cases: 256, .. ProptestConfig::default() })]
 

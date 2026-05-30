@@ -1,0 +1,22 @@
+---
+source: crates/yokectl/tests/json_snapshots.rs
+expression: v
+---
+{
+  "modifiers": [
+    "normal",
+    "toggle",
+    "delay_on",
+    "delay_off",
+    "greater_than",
+    "less_than",
+    "repeat",
+    "pulse",
+    "duty",
+    "force_off",
+    "delayed_latch",
+    "tap",
+    "increment_value",
+    "decrement_value"
+  ]
+}
