@@ -157,6 +157,10 @@ fn classify_edit(err: &yoke_edit::EditError, index: usize) -> ExitInfo {
             "edit-unknown-modifier",
             serde_json::json!({"modifier": modifier, "suggestions": suggestions, "index": index}),
         ),
+        E::InvalidModifierArguments { keyword, modifier } => (
+            "edit-invalid-modifier-arguments",
+            serde_json::json!({"keyword": keyword, "modifier": modifier, "index": index}),
+        ),
         E::BindingExists {
             sub_profile,
             input,

@@ -74,10 +74,15 @@ impl Modifier {
     ];
 
     /// The CSV keyword (leading token) for a typed modifier, or `None` for `Unknown`.
-    /// Exhaustive by construction: a new `Modifier` variant cannot compile without an arm
-    /// here, which is the single point that forces it to declare a keyword — and the
-    /// `keyword_is_consistent_with_from_csv_for_every_listed_keyword` test ties that token
-    /// back to [`Self::KEYWORDS`] and `from_csv`.
+    ///
+    /// This match is exhaustive, so adding a `Modifier` variant is a compile error until it
+    /// declares its keyword here. [`Self::KEYWORDS`] is a separate, hand-maintained list (it
+    /// must be a `const` for completion and `catalog`); adding a variant does NOT update it
+    /// automatically. The `keywords_*` tests cross-check the two in both directions — every
+    /// `KEYWORDS` entry parses to a typed variant whose `keyword()` returns it, and every
+    /// typed variant's `keyword()` is present in `KEYWORDS` — so a new variant left out of
+    /// `KEYWORDS` is caught there rather than silently dropping from completion, `catalog
+    /// modifiers`, and typo suggestions.
     #[must_use]
     pub const fn keyword(&self) -> Option<&'static str> {
         Some(match self {
@@ -420,5 +425,56 @@ mod tests {
         let m = Modifier::from_csv("future_modifier 1").unwrap();
         assert!(matches!(m, Modifier::Unknown { .. }));
         assert_eq!(m.keyword(), None);
+    }
+
+    #[test]
+    fn keywords_contains_every_typed_variant_keyword() {
+        // Reverse of `keyword_is_consistent_with_from_csv_for_every_listed_keyword`: every
+        // typed variant's keyword() must appear in KEYWORDS. Adding a `Modifier` variant is
+        // a compile error in `keyword()` (exhaustive match); this test then fails unless the
+        // new keyword is also added to the hand-maintained KEYWORDS list, so it cannot
+        // silently drop from completion, `catalog modifiers`, and typo suggestions.
+        let one_per_variant = [
+            Modifier::Normal,
+            Modifier::Toggle,
+            Modifier::DelayOn { ms: None },
+            Modifier::DelayOff { ms: None },
+            Modifier::GreaterThan {
+                pct: None,
+                upper: None,
+            },
+            Modifier::LessThan { pct: None },
+            Modifier::Repeat {
+                hz: None,
+                delay_ms: None,
+            },
+            Modifier::Pulse {
+                ms: None,
+                count: None,
+            },
+            Modifier::Duty { ms: None },
+            Modifier::ForceOff { ms: None },
+            Modifier::DelayedLatch { ms: None },
+            Modifier::Tap {
+                window_ms: None,
+                pulse_ms: None,
+            },
+            Modifier::IncrementValue {
+                amount: None,
+                interval_ms: None,
+            },
+            Modifier::DecrementValue {
+                amount: None,
+                interval_ms: None,
+            },
+        ];
+        assert_eq!(one_per_variant.len(), Modifier::KEYWORDS.len());
+        for m in &one_per_variant {
+            let kw = m.keyword().expect("typed variant has a keyword");
+            assert!(
+                Modifier::KEYWORDS.contains(&kw),
+                "{kw} produced by keyword() is missing from KEYWORDS"
+            );
+        }
     }
 }

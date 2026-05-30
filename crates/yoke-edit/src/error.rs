@@ -34,6 +34,8 @@ pub enum EditError {
         modifier: String,
         suggestions: Vec<String>,
     },
+    #[error("modifier {keyword:?} does not accept the arguments in {modifier:?}")]
+    InvalidModifierArguments { keyword: String, modifier: String },
     #[error(
         "input {input:?} with modifier {modifier:?} already maps to {output:?} in sub-profile {sub_profile:?}; use update-binding to change it"
     )]

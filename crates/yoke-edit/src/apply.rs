@@ -207,15 +207,25 @@ fn parse_modifier(raw: &str) -> Result<Modifier, EditError> {
     match Modifier::from_csv(raw) {
         Some(m) if !matches!(m, Modifier::Unknown { .. }) => Ok(m),
         _ => {
-            // Match the leading token against Modifier::KEYWORDS (which holds keywords,
-            // not full phrases): a valid keyword with a bad argument (e.g. "delay_on abc")
-            // also round-trips to Unknown, and scoring the whole phrase would exceed the
-            // edit-distance cap and surface no suggestion at all.
+            // `from_csv` round-trips both an unrecognized keyword and a recognized keyword
+            // carrying bad/extra arguments (e.g. "delay_on abc") to Unknown. Split the two on
+            // the leading token, scored against Modifier::KEYWORDS (which holds keywords, not
+            // full phrases): a known keyword means the arguments are at fault, so report that
+            // directly instead of suggesting the keyword back to itself; an unknown keyword
+            // gets the usual edit-distance suggestions (scoring the whole phrase would exceed
+            // the cap and surface none).
             let keyword = raw.split_whitespace().next().unwrap_or(raw);
-            Err(EditError::UnknownModifier {
-                modifier: raw.to_owned(),
-                suggestions: suggestions(keyword, Modifier::KEYWORDS.iter().copied()),
-            })
+            if Modifier::KEYWORDS.contains(&keyword) {
+                Err(EditError::InvalidModifierArguments {
+                    keyword: keyword.to_owned(),
+                    modifier: raw.to_owned(),
+                })
+            } else {
+                Err(EditError::UnknownModifier {
+                    modifier: raw.to_owned(),
+                    suggestions: suggestions(keyword, Modifier::KEYWORDS.iter().copied()),
+                })
+            }
         }
     }
 }
@@ -878,6 +888,29 @@ mod tests {
             }
             other => panic!("expected UnknownModifier, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn add_binding_reports_invalid_arguments_for_known_keyword() {
+        // A real keyword with a bad argument is an argument error, not an unknown modifier:
+        // it must not echo the keyword back as a "did you mean" suggestion.
+        let err = apply(
+            main_with(vec![]),
+            &[EditOp::AddBinding {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                output: "kb_a".into(),
+                modifier: Some("delay_on abc".into()),
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.error,
+            EditError::InvalidModifierArguments {
+                keyword: "delay_on".into(),
+                modifier: "delay_on abc".into(),
+            }
+        );
     }
 
     #[test]

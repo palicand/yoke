@@ -32,7 +32,12 @@ fn add_binding_with_modifier_writes_csv() {
         .assert()
         .success();
     let csv = std::fs::read_to_string(dir.path().join("default.csv")).unwrap();
-    assert!(csv.contains("delay_on 250"), "modifier not written:\n{csv}");
+    // The modifier must land on the lip_soft -> kb_a row (CSV order is output,modifier,input),
+    // not merely appear somewhere in the file.
+    assert!(
+        csv.contains("kb_a,delay_on 250,lip_soft"),
+        "modifier not on the lip_soft -> kb_a row:\n{csv}"
+    );
 }
 
 #[test]
@@ -68,7 +73,15 @@ fn update_binding_changes_modifier_writes_csv() {
         .assert()
         .success();
     let csv = std::fs::read_to_string(dir.path().join("default.csv")).unwrap();
-    assert!(csv.contains("delay_on 250"), "modifier not written:\n{csv}");
+    // The modifier changed in place on the lip_soft -> kb_a row; the old normal row is gone.
+    assert!(
+        csv.contains("kb_a,delay_on 250,lip_soft"),
+        "modifier not updated on the lip_soft -> kb_a row:\n{csv}"
+    );
+    assert!(
+        !csv.contains("kb_a,normal,lip_soft"),
+        "old normal row should have been replaced, not duplicated:\n{csv}"
+    );
 }
 
 #[test]
@@ -152,10 +165,15 @@ fn clear_binding_with_modifier_removes_only_that_row() {
         .assert()
         .success();
     let csv = std::fs::read_to_string(dir.path().join("default.csv")).unwrap();
+    // Only the toggle row (lip_soft -> kb_b) is gone; the normal row (lip_soft -> kb_a) survives.
     assert!(!csv.contains("toggle"), "toggle row not removed:\n{csv}");
     assert!(
-        csv.contains("lip_soft"),
-        "normal row wrongly removed:\n{csv}"
+        !csv.contains("kb_b"),
+        "wrong row removed; kb_b (the toggle row) should be gone:\n{csv}"
+    );
+    assert!(
+        csv.contains("kb_a,normal,lip_soft"),
+        "normal lip_soft -> kb_a row wrongly removed:\n{csv}"
     );
 }
 

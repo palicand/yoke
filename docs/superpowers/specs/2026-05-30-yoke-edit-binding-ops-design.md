@@ -67,7 +67,7 @@ EditOp::ClearBinding  { sub_profile, input, modifier: Option<String> }
 
 `serde(tag = "op", rename_all = "kebab-case")` makes these reachable in batch `apply` as `{"op":"add-binding",…}` etc. with no extra wiring. `SetBinding` and `SetModifier` are **removed** (pre-1.0, no aliases).
 
-Errors (in [`error.rs`](../../../crates/yoke-edit/src/error.rs)): `BindingExists { sub_profile, input, modifier, output }`, `BindingNotFound { sub_profile, input }`, `AmbiguousBinding { sub_profile, input, output }`. `NoBindingForInput` is removed. Modifier parsing reuses `parse_modifier`, which now scores the **leading keyword token** against `KEYWORDS` so a valid keyword with a bad argument (`delay_on abc`) still surfaces a suggestion instead of an empty list. `clear-binding` on a valid-but-unbound input now returns `BindingNotFound` rather than the old `UnknownInput { suggestions: [] }` fudge.
+Errors (in [`error.rs`](../../../crates/yoke-edit/src/error.rs)): `BindingExists { sub_profile, input, modifier, output }`, `BindingNotFound { sub_profile, input }`, `AmbiguousBinding { sub_profile, input, output }`. `NoBindingForInput` is removed. Modifier parsing reuses `parse_modifier`, which splits the failure on the **leading keyword token**: an unknown keyword yields `UnknownModifier { modifier, suggestions }` scored against `KEYWORDS`, while a *recognized* keyword carrying bad/extra arguments (`delay_on abc`) yields `InvalidModifierArguments { keyword, modifier }` — reporting the argument fault directly instead of echoing the keyword back as its own suggestion. `clear-binding` on a valid-but-unbound input now returns `BindingNotFound` rather than the old `UnknownInput { suggestions: [] }` fudge.
 
 ### 3. `yokectl` — commands, completion, introspection, docs, readback
 
@@ -76,7 +76,7 @@ Errors (in [`error.rs`](../../../crates/yoke-edit/src/error.rs)): `BindingExists
 - **Introspection** — `catalog modifiers` (`CatalogCmd::Modifiers` + `run_modifiers`), the dimension that lacked introspection; human / json / ndjson, pinned by a `catalog_modifiers_json_snapshot`.
 - **Docs** — generated from the clap tree; output now lists `add-binding` / `update-binding` / `clear-binding` and `catalog modifiers`.
 - **Readback** — `yokectl bindings` surfaces the modifier (`GroupedBinding` in [`commands/view.rs`](../../../crates/yokectl/src/commands/view.rs)): JSON always carries `modifier`; the human view appends `[<modifier>]` only when it is not the default, derived from `Modifier::Normal.to_csv()` rather than a hardcoded literal.
-- **Error envelopes** — `edit-binding-exists`, `edit-binding-not-found`, `edit-ambiguous-binding` in [`error.rs`](../../../crates/yokectl/src/error.rs).
+- **Error envelopes** — `edit-binding-exists`, `edit-binding-not-found`, `edit-ambiguous-binding`, `edit-invalid-modifier-arguments` in [`error.rs`](../../../crates/yokectl/src/error.rs).
 
 ### 4. `AGENTS.md`
 
