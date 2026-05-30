@@ -31,6 +31,11 @@ pub enum EditOp {
         sub_profile: String,
         input: String,
     },
+    SetModifier {
+        sub_profile: String,
+        input: String,
+        modifier: String,
+    },
     SetOverride {
         sub_profile: String,
         key: String,
@@ -100,6 +105,20 @@ mod tests {
         assert_eq!(json["op"], "set-preference");
         assert_eq!(json["key"], "volume");
         assert_eq!(json["value"], 55);
+        let back: EditOp = serde_json::from_value(json).unwrap();
+        assert_eq!(op, back);
+    }
+
+    #[test]
+    fn edit_op_set_modifier_round_trips_kebab_case_tag() {
+        let op = EditOp::SetModifier {
+            sub_profile: "Main".into(),
+            input: "lip_soft".into(),
+            modifier: "delay_on 250".into(),
+        };
+        let json = serde_json::to_value(&op).unwrap();
+        assert_eq!(json["op"], "set-modifier");
+        assert_eq!(json["modifier"], "delay_on 250");
         let back: EditOp = serde_json::from_value(json).unwrap();
         assert_eq!(op, back);
     }

@@ -38,6 +38,11 @@ fn apply_one(profile: Profile, op: &EditOp) -> Result<Profile, EditError> {
         EditOp::ClearBinding { sub_profile, input } => {
             apply_clear_binding(profile, sub_profile, input)
         }
+        EditOp::SetModifier {
+            sub_profile,
+            input,
+            modifier,
+        } => apply_set_modifier(profile, sub_profile, input, modifier),
         EditOp::SetPreference { key, value } => apply_set_preference(profile, key, value),
         EditOp::UnsetPreference { key } => Ok(apply_unset_preference(profile, key)),
         EditOp::SetOverride {
@@ -171,6 +176,42 @@ fn apply_clear_binding(
         });
     }
     Ok(profile)
+}
+
+// Suggestions are keyword-only: Modifier::KEYWORDS holds leading tokens, not full phrases.
+fn parse_modifier(raw: &str) -> Result<Modifier, EditError> {
+    match Modifier::from_csv(raw) {
+        Some(m) if !matches!(m, Modifier::Unknown { .. }) => Ok(m),
+        _ => Err(EditError::UnknownModifier {
+            modifier: raw.to_owned(),
+            suggestions: suggestions(raw, Modifier::KEYWORDS.iter().copied()),
+        }),
+    }
+}
+
+fn apply_set_modifier(
+    mut profile: Profile,
+    sub_profile: &str,
+    input: &str,
+    modifier: &str,
+) -> Result<Profile, EditError> {
+    let sp_idx = sub_profile_index(&profile, sub_profile)?;
+    let parsed_input = parse_input(input)?;
+    let parsed_modifier = parse_modifier(modifier)?;
+    let target = &mut profile.sub_profiles[sp_idx];
+    let existing = target.rows.iter_mut().find(|r| match r {
+        SubProfileRow::Binding(b) => b.input.as_ref() == Some(&parsed_input),
+        SubProfileRow::Override(_) => false,
+    });
+    if let Some(SubProfileRow::Binding(b)) = existing {
+        b.modifier = parsed_modifier;
+        Ok(profile)
+    } else {
+        Err(EditError::NoBindingForInput {
+            sub_profile: sub_profile.to_owned(),
+            input: input.to_owned(),
+        })
+    }
 }
 
 fn parse_input(raw: &str) -> Result<Input, EditError> {
@@ -672,6 +713,100 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out.sub_profiles[0].bindings().count(), 0);
+    }
+
+    #[test]
+    fn set_modifier_replaces_on_existing_binding() {
+        use yoke_config::catalog::{Input, KbKey, Modifier, Output};
+        use yoke_config::model::{Binding, SubProfileRow};
+        let mut p = empty_profile();
+        let mut sp = empty_sp("Main");
+        let mut b = Binding::new(
+            Output::Keyboard(KbKey::Enter),
+            Modifier::Normal,
+            Some(Input::Lip { soft: true }),
+        );
+        b.comment = Some("keep me".to_owned());
+        sp.rows.push(SubProfileRow::Binding(b));
+        p.sub_profiles.push(sp);
+        let out = apply(
+            p,
+            &[EditOp::SetModifier {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                modifier: "delay_on 250".into(),
+            }],
+        )
+        .unwrap();
+        let b = out.sub_profiles[0]
+            .rows
+            .iter()
+            .find_map(|r| match r {
+                SubProfileRow::Binding(b) => Some(b),
+                SubProfileRow::Override(_) => None,
+            })
+            .expect("binding still present");
+        assert_eq!(b.modifier, Modifier::DelayOn { ms: Some(250) });
+        assert_eq!(b.output, Output::Keyboard(KbKey::Enter)); // output untouched
+        assert_eq!(b.comment.as_deref(), Some("keep me")); // comment preserved across modifier replace
+    }
+
+    #[test]
+    fn set_modifier_rejects_unbound_input() {
+        let mut p = empty_profile();
+        p.sub_profiles.push(empty_sp("Main"));
+        let err = apply(
+            p,
+            &[EditOp::SetModifier {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                modifier: "toggle".into(),
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.error,
+            EditError::NoBindingForInput {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn set_modifier_rejects_unknown_modifier_with_suggestion() {
+        use yoke_config::catalog::{Input, KbKey, Modifier, Output};
+        use yoke_config::model::{Binding, SubProfileRow};
+        let mut p = empty_profile();
+        let mut sp = empty_sp("Main");
+        sp.rows.push(SubProfileRow::Binding(Binding::new(
+            Output::Keyboard(KbKey::Enter),
+            Modifier::Normal,
+            Some(Input::Lip { soft: true }),
+        )));
+        p.sub_profiles.push(sp);
+        let err = apply(
+            p,
+            &[EditOp::SetModifier {
+                sub_profile: "Main".into(),
+                input: "lip_soft".into(),
+                modifier: "togle".into(),
+            }],
+        )
+        .unwrap_err();
+        match err.error {
+            EditError::UnknownModifier {
+                modifier,
+                suggestions,
+            } => {
+                assert_eq!(modifier, "togle");
+                assert!(
+                    suggestions.iter().any(|s| s == "toggle"),
+                    "expected 'toggle' in {suggestions:?}"
+                );
+            }
+            other => panic!("expected UnknownModifier, got {other:?}"),
+        }
     }
 
     #[test]

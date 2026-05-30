@@ -29,6 +29,16 @@ pub enum EditError {
     SubProfileExists { name: String },
     #[error("cannot delete the last remaining sub-profile")]
     LastSubProfileDeletion,
+    #[error("unknown modifier: {modifier:?}; did you mean: {suggestions:?}")]
+    UnknownModifier {
+        modifier: String,
+        suggestions: Vec<String>,
+    },
+    #[error("no binding for input {input:?} in sub-profile {sub_profile:?}; set its output first")]
+    NoBindingForInput {
+        sub_profile: String,
+        input: String,
+    },
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]
