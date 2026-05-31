@@ -168,6 +168,13 @@ macOS enumeration is racy. Refer to the maintainer's local wire-protocol
 notes for the underlying USB-level details (those notes are not in this
 repo yet — see the repository map for why).
 
+`yoke-config` stays inline-literal-only (no checked-in CSVs). `yoke-edit` and
+`yokectl` MAY check in real corpus profiles under `crates/<crate>/tests/fixtures/`
+as always-on regression fixtures for corruption-class guards (e.g. sub-profile
+index addressing), because a `YOKE_CORPUS_DIR`-gated test is skipped in CI and
+cannot guard the class there. The full corpus is still cross-validated via
+`YOKE_CORPUS_DIR` for breadth.
+
 ## What lives where (decisions reference)
 
 - The Yoke name: `design_handoff_quadstick_config/NAMING.md` in the
