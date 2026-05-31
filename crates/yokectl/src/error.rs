@@ -150,6 +150,38 @@ fn classify_edit(err: &yoke_edit::EditError, index: usize) -> ExitInfo {
             serde_json::json!({"name": name, "index": index}),
         ),
         E::LastSubProfileDeletion => ("edit-last-subprofile", serde_json::json!({"index": index})),
+        E::UnknownModifier {
+            modifier,
+            suggestions,
+        } => (
+            "edit-unknown-modifier",
+            serde_json::json!({"modifier": modifier, "suggestions": suggestions, "index": index}),
+        ),
+        E::InvalidModifierArguments { keyword, modifier } => (
+            "edit-invalid-modifier-arguments",
+            serde_json::json!({"keyword": keyword, "modifier": modifier, "index": index}),
+        ),
+        E::BindingExists {
+            sub_profile,
+            input,
+            modifier,
+            output,
+        } => (
+            "edit-binding-exists",
+            serde_json::json!({"sub_profile": sub_profile, "input": input, "modifier": modifier, "output": output, "index": index}),
+        ),
+        E::BindingNotFound { sub_profile, input } => (
+            "edit-binding-not-found",
+            serde_json::json!({"sub_profile": sub_profile, "input": input, "index": index}),
+        ),
+        E::AmbiguousBinding {
+            sub_profile,
+            input,
+            output,
+        } => (
+            "edit-ambiguous-binding",
+            serde_json::json!({"sub_profile": sub_profile, "input": input, "output": output, "index": index}),
+        ),
     };
     ExitInfo {
         code: 5,

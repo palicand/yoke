@@ -29,6 +29,34 @@ pub enum EditError {
     SubProfileExists { name: String },
     #[error("cannot delete the last remaining sub-profile")]
     LastSubProfileDeletion,
+    #[error("unknown modifier: {modifier:?}; did you mean: {suggestions:?}")]
+    UnknownModifier {
+        modifier: String,
+        suggestions: Vec<String>,
+    },
+    #[error("modifier {keyword:?} does not accept the arguments in {modifier:?}")]
+    InvalidModifierArguments { keyword: String, modifier: String },
+    #[error(
+        "input {input:?} with modifier {modifier:?} already maps to {output:?} in sub-profile {sub_profile:?}; use update-binding to change it"
+    )]
+    BindingExists {
+        sub_profile: String,
+        input: String,
+        modifier: String,
+        output: String,
+    },
+    #[error(
+        "no binding for input {input:?} in sub-profile {sub_profile:?} matches the given modifier/output"
+    )]
+    BindingNotFound { sub_profile: String, input: String },
+    #[error(
+        "input {input:?} maps to {output:?} via multiple modifiers in sub-profile {sub_profile:?}; specify the modifier to disambiguate"
+    )]
+    AmbiguousBinding {
+        sub_profile: String,
+        input: String,
+        output: String,
+    },
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]

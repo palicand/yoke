@@ -68,9 +68,20 @@ impl Write for SharedBuffer {
 }
 
 use proptest::prelude::*;
-use yoke_config::catalog::{Channel, SubProfileMode};
+use yoke_config::catalog::{Channel, Modifier, SubProfileMode};
 use yoke_edit::{EditOp, PreferenceValue};
 use yoke_index::ProfileSource;
+
+/// Seed profile shared by the property invariants. It carries a real `Main` sub-profile
+/// with one binding (`left -> mouse_left [normal]`), so the sub-profile-scoped edit ops
+/// (add/update/clear binding, overrides) actually reach their success and not-found
+/// branches during fuzzing rather than bailing out at `SubProfileNotFound`.
+pub const SEED: &str = "QuadStick Configuration,Version 1.4,Mock,Default\r\n\
+Profile Name,Main,Mouse,usb\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_left,normal,left,\r\n\
+\r\n";
 
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -87,16 +98,25 @@ pub enum Action {
         target: String,
         key: String,
     },
-    SetBinding {
+    AddBinding {
         target: String,
         sub_profile: String,
         input: String,
         output: String,
+        modifier: Option<String>,
+    },
+    UpdateBinding {
+        target: String,
+        sub_profile: String,
+        input: String,
+        output: String,
+        modifier: String,
     },
     ClearBinding {
         target: String,
         sub_profile: String,
         input: String,
+        modifier: Option<String>,
     },
     SetOverride {
         target: String,
@@ -177,6 +197,7 @@ pub enum Action {
     CatalogPreferences,
     CatalogModes,
     CatalogChannels,
+    CatalogModifiers,
     Device,
     List,
 }
@@ -224,6 +245,24 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         (0i64..=100).prop_map(PreferenceValue::Number),
         "[a-zA-Z]{1,8}".prop_map(PreferenceValue::Text),
     ];
+    // Modifier phrases: a keyword optionally followed by a numeric arg. u8-typed
+    // modifiers (greater_than/less_than) given >255 round-trip to Unknown and are
+    // rejected by apply; u32-typed modifiers accept the whole range. A fresh strategy is
+    // built per use (`mod_phrase()`) because proptest combinators are not `Clone`.
+    let modifier_keywords: Vec<String> = Modifier::KEYWORDS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    let mod_phrase = || {
+        (
+            prop::sample::select(modifier_keywords.clone()),
+            prop::option::of(0u32..1000),
+        )
+            .prop_map(|(kw, arg)| match arg {
+                Some(n) => format!("{kw} {n}"),
+                None => kw,
+            })
+    };
     let edit_op_strat = prop_oneof![
         "[a-zA-Z]{1,8}".prop_map(|title| EditOp::SetTitle { title }),
         (edit_pref_key_strat.clone(), edit_pref_value.clone())
@@ -231,16 +270,31 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         edit_pref_key_strat
             .clone()
             .prop_map(|key| EditOp::UnsetPreference { key }),
-        (edit_input_strat.clone(), edit_output_strat).prop_map(|(input, output)| {
-            EditOp::SetBinding {
+        (
+            edit_input_strat.clone(),
+            edit_output_strat.clone(),
+            prop::option::of(mod_phrase()),
+        )
+            .prop_map(|(input, output, modifier)| EditOp::AddBinding {
                 sub_profile: "Main".into(),
                 input,
                 output,
+                modifier,
+            }),
+        (edit_input_strat.clone(), edit_output_strat, mod_phrase()).prop_map(
+            |(input, output, modifier)| EditOp::UpdateBinding {
+                sub_profile: "Main".into(),
+                input,
+                output,
+                modifier,
+            },
+        ),
+        (edit_input_strat, prop::option::of(mod_phrase())).prop_map(|(input, modifier)| {
+            EditOp::ClearBinding {
+                sub_profile: "Main".into(),
+                input,
+                modifier,
             }
-        }),
-        edit_input_strat.prop_map(|input| EditOp::ClearBinding {
-            sub_profile: "Main".into(),
-            input,
         }),
         (edit_pref_key_strat.clone(), edit_pref_value.clone()).prop_map(|(key, value)| {
             EditOp::SetOverride {
@@ -274,6 +328,7 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         Just(Action::CatalogPreferences),
         Just(Action::CatalogModes),
         Just(Action::CatalogChannels),
+        Just(Action::CatalogModifiers),
         // --- profile read ---
         name_or_unknown.clone().prop_map(|t| Action::Show {
             target: t,
@@ -328,22 +383,42 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
             }),
         (name_or_unknown.clone(), pref_key_strat.clone())
             .prop_map(|(t, k)| Action::UnsetPreference { target: t, key: k }),
-        (name_or_unknown.clone(), input_strat, output_strat).prop_map(|(t, i, o)| {
-            Action::SetBinding {
+        (
+            name_or_unknown.clone(),
+            input_strat.clone(),
+            output_strat.clone(),
+            prop::option::of(mod_phrase()),
+        )
+            .prop_map(|(t, i, o, m)| Action::AddBinding {
                 target: t,
                 sub_profile: "Main".into(),
                 input: i,
                 output: o,
-            }
-        }),
+                modifier: m,
+            }),
         (
             name_or_unknown.clone(),
-            prop::sample::select(yoke_config::catalog::Input::all_csv_names().collect::<Vec<_>>())
+            input_strat.clone(),
+            output_strat,
+            mod_phrase(),
         )
-            .prop_map(|(t, i)| Action::ClearBinding {
+            .prop_map(|(t, i, o, m)| Action::UpdateBinding {
                 target: t,
                 sub_profile: "Main".into(),
-                input: i
+                input: i,
+                output: o,
+                modifier: m,
+            }),
+        (
+            name_or_unknown.clone(),
+            input_strat,
+            prop::option::of(mod_phrase())
+        )
+            .prop_map(|(t, i, m)| Action::ClearBinding {
+                target: t,
+                sub_profile: "Main".into(),
+                input: i,
+                modifier: m,
             }),
         (
             name_or_unknown.clone(),
@@ -452,25 +527,42 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
             sub_profile: sub_profile.clone(),
             raw: *raw,
         },
-        Action::SetBinding {
+        Action::AddBinding {
             target,
             sub_profile,
             input,
             output,
-        } => Commands::SetBinding {
+            modifier,
+        } => Commands::AddBinding {
             target: target.clone(),
             sub_profile: sub_profile.clone(),
             input: input.clone(),
             output: output.clone(),
+            modifier: modifier.clone(),
+        },
+        Action::UpdateBinding {
+            target,
+            sub_profile,
+            input,
+            output,
+            modifier,
+        } => Commands::UpdateBinding {
+            target: target.clone(),
+            sub_profile: sub_profile.clone(),
+            input: input.clone(),
+            output: output.clone(),
+            modifier: modifier.clone(),
         },
         Action::ClearBinding {
             target,
             sub_profile,
             input,
+            modifier,
         } => Commands::ClearBinding {
             target: target.clone(),
             sub_profile: sub_profile.clone(),
             input: input.clone(),
+            modifier: modifier.clone(),
         },
         Action::SetPreference { target, key, value } => Commands::SetPreference {
             target: target.clone(),
@@ -623,6 +715,9 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
         },
         Action::CatalogChannels => Commands::Catalog {
             cmd: yokectl::cli::CatalogCmd::Channels,
+        },
+        Action::CatalogModifiers => Commands::Catalog {
+            cmd: yokectl::cli::CatalogCmd::Modifiers,
         },
     };
     cli

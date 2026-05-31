@@ -36,7 +36,7 @@ fn edit_unknown_input_exits_5_with_suggestion() {
             "--fake-volume",
             dir.path().to_str().unwrap(),
             "--json",
-            "set-binding",
+            "add-binding",
             "default",
             "Main",
             "lip_sof",

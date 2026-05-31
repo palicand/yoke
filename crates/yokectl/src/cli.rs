@@ -170,8 +170,8 @@ pub enum Commands {
         #[arg(help = "Preference key", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Preference)))]
         key: String,
     },
-    #[command(about = "Bind an input phrase to an output in a sub-profile")]
-    SetBinding {
+    #[command(about = "Add a new binding (input -> output, optional modifier) to a sub-profile")]
+    AddBinding {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
         #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
@@ -180,8 +180,25 @@ pub enum Commands {
         input: String,
         #[arg(help = "Output name (validated against catalog::outputs)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Output)))]
         output: String,
+        #[arg(long, help = "Modifier phrase, e.g. \"delay_on 250\" (default: normal)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Modifier)))]
+        modifier: Option<String>,
     },
-    #[command(about = "Remove a binding from a sub-profile")]
+    #[command(about = "Update an existing binding's output or modifier in a sub-profile")]
+    UpdateBinding {
+        #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
+        target: String,
+        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
+        sub_profile: String,
+        #[arg(help = "Input phrase (validated against catalog::inputs)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Input)))]
+        input: String,
+        #[arg(help = "Output name (validated against catalog::outputs)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Output)))]
+        output: String,
+        #[arg(long, help = "New modifier phrase, e.g. \"delay_on 250\"", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Modifier)))]
+        modifier: String,
+    },
+    #[command(
+        about = "Remove a binding from a sub-profile (all rows for an input, or one modifier's row)"
+    )]
     ClearBinding {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
@@ -189,6 +206,8 @@ pub enum Commands {
         sub_profile: String,
         #[arg(help = "Input phrase to clear", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Input)))]
         input: String,
+        #[arg(long, help = "Only clear the row with this modifier (default: all rows for the input)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Modifier)))]
+        modifier: Option<String>,
     },
     #[command(about = "Manage sub-profiles (add, delete, rename, clone)")]
     Subprofile {
@@ -368,4 +387,6 @@ pub enum CatalogCmd {
     Modes,
     #[command(about = "List Channel values")]
     Channels,
+    #[command(about = "List modifier keywords")]
+    Modifiers,
 }

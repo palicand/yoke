@@ -74,6 +74,7 @@ pub fn run_with_provider(
             CatalogCmd::Preferences => commands::catalog::run_preferences(out),
             CatalogCmd::Modes => commands::catalog::run_modes(out),
             CatalogCmd::Channels => commands::catalog::run_channels(out),
+            CatalogCmd::Modifiers => commands::catalog::run_modifiers(out),
         },
         other => run_with_volume(out, provider, other),
     }
@@ -131,19 +132,49 @@ fn run_with_volume(
             sub_profile,
             key,
         } => commands::edit::run_unset_override(provider, out, &target, &sub_profile, &key),
-        Commands::SetBinding {
+        Commands::AddBinding {
             target,
             sub_profile,
             input,
             output: output_s,
-        } => {
-            commands::edit::run_set_binding(provider, out, &target, &sub_profile, &input, &output_s)
-        }
+            modifier,
+        } => commands::edit::run_add_binding(
+            provider,
+            out,
+            &target,
+            &sub_profile,
+            &input,
+            &output_s,
+            modifier.as_deref(),
+        ),
+        Commands::UpdateBinding {
+            target,
+            sub_profile,
+            input,
+            output: output_s,
+            modifier,
+        } => commands::edit::run_update_binding(
+            provider,
+            out,
+            &target,
+            &sub_profile,
+            &input,
+            &output_s,
+            &modifier,
+        ),
         Commands::ClearBinding {
             target,
             sub_profile,
             input,
-        } => commands::edit::run_clear_binding(provider, out, &target, &sub_profile, &input),
+            modifier,
+        } => commands::edit::run_clear_binding(
+            provider,
+            out,
+            &target,
+            &sub_profile,
+            &input,
+            modifier.as_deref(),
+        ),
         Commands::Apply {
             target,
             edits,

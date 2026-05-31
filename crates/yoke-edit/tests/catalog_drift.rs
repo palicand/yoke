@@ -33,10 +33,11 @@ fn empty_profile_with_main() -> Profile {
 fn assert_input_accepted(p: &Profile, input: &str) {
     let r = apply(
         p.clone(),
-        &[EditOp::SetBinding {
+        &[EditOp::AddBinding {
             sub_profile: "Main".into(),
             input: input.into(),
             output: "kb_a".into(),
+            modifier: None,
         }],
     );
     assert!(r.is_ok(), "input {input:?} rejected unexpectedly: {r:?}");
@@ -45,17 +46,18 @@ fn assert_input_accepted(p: &Profile, input: &str) {
 fn assert_output_accepted(p: &Profile, output: &str) {
     let r = apply(
         p.clone(),
-        &[EditOp::SetBinding {
+        &[EditOp::AddBinding {
             sub_profile: "Main".into(),
             input: "lip".into(),
             output: output.into(),
+            modifier: None,
         }],
     );
     assert!(r.is_ok(), "output {output:?} rejected unexpectedly: {r:?}");
 }
 
 #[test]
-fn every_input_catalog_variant_is_accepted_by_set_binding() {
+fn every_input_catalog_variant_is_accepted_by_add_binding() {
     let p = empty_profile_with_main();
     // Mouthpiece + sip/puff + mp_position combinations exercise SipPuff::ALL and MpPosition::ALL.
     for sp in SipPuff::ALL {
@@ -107,7 +109,7 @@ fn every_input_catalog_variant_is_accepted_by_set_binding() {
 }
 
 #[test]
-fn every_output_catalog_variant_is_accepted_by_set_binding() {
+fn every_output_catalog_variant_is_accepted_by_add_binding() {
     let p = empty_profile_with_main();
     for k in KbKey::ALL {
         assert_output_accepted(&p, k.as_csv());

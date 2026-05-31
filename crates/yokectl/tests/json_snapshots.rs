@@ -160,3 +160,10 @@ fn catalog_channels_json_snapshot() {
     let v = run_json(&["catalog", "channels"], dir.path());
     insta::assert_json_snapshot!(v);
 }
+
+#[test]
+fn catalog_modifiers_json_snapshot() {
+    let dir = tempdir().unwrap();
+    let v = run_json(&["catalog", "modifiers"], dir.path());
+    insta::assert_json_snapshot!(v);
+}

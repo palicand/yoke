@@ -43,7 +43,8 @@ const TOP_LEAVES: &[&str] = &[
     "unset-preference",
     "set-override",
     "unset-override",
-    "set-binding",
+    "add-binding",
+    "update-binding",
     "clear-binding",
     "apply",
     "install",
@@ -60,7 +61,14 @@ const NESTED_LEAVES: &[(&str, &[&str])] = &[
     ("index", &["list", "search", "show", "update", "browse"]),
     (
         "catalog",
-        &["inputs", "outputs", "preferences", "modes", "channels"],
+        &[
+            "inputs",
+            "outputs",
+            "preferences",
+            "modes",
+            "channels",
+            "modifiers",
+        ],
     ),
 ];
 

@@ -41,7 +41,9 @@ yokectl install "Destiny 2"                 # fetch by community-index name
 yokectl install https://docs.google.com/... # fetch by URL (CSV/Sheets)
 yokectl install ./profile.csv               # install a local file
 yokectl index list                          # browse the community index
-yokectl set-binding destiny "sip hard" "left mouse"
+yokectl add-binding destiny Main lip_soft kb_a       # add a binding (optional --modifier)
+yokectl update-binding destiny Main lip_soft kb_a --modifier "delay_on 250"
+yokectl clear-binding destiny Main lip_soft          # remove binding(s) for an input
 yokectl apply ops.json                      # atomic batch edit
 yokectl completions fish                    # shell completion script
 yokectl docs --format md --out ./docs       # generate reference docs
@@ -49,8 +51,8 @@ yokectl topic install-sources               # in-binary topic page
 ```
 
 `yokectl manual` opens the upstream QuadStick user manual in a browser;
-`yokectl catalog` enumerates the inputs, outputs, preferences, modes, and
-channels the binder understands. `yokectl --help` lists every subcommand
+`yokectl catalog` enumerates the inputs, outputs, preferences, modes,
+channels, and modifiers the binder understands. `yokectl --help` lists every subcommand
 and `yokectl <cmd> --help` documents flags. The `topic` pages
 (`install-sources`, `binding-model`, `preferences`, `sip-puff`,
 `sub-profiles`) cover the concepts the flags assume.

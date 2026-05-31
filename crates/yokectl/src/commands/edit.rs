@@ -156,25 +156,51 @@ pub fn run_unset_override(
     )
 }
 
-pub fn run_set_binding(
+pub fn run_add_binding(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
     sp: &str,
     input: &str,
     output_s: &str,
+    modifier: Option<&str>,
 ) -> Result<()> {
     apply_single(
         provider,
         out,
         target,
-        EditOp::SetBinding {
+        EditOp::AddBinding {
             sub_profile: sp.to_string(),
             input: input.to_string(),
             output: output_s.to_string(),
+            modifier: modifier.map(str::to_string),
         },
-        &serde_json::json!({"action": "set-binding"}),
-        |w| writeln!(w, "binding set"),
+        &serde_json::json!({"action": "add-binding"}),
+        |w| writeln!(w, "binding added"),
+    )
+}
+
+pub fn run_update_binding(
+    provider: &Arc<dyn VolumeProvider>,
+    out: &Output,
+    target: &str,
+    sp: &str,
+    input: &str,
+    output_s: &str,
+    modifier: &str,
+) -> Result<()> {
+    apply_single(
+        provider,
+        out,
+        target,
+        EditOp::UpdateBinding {
+            sub_profile: sp.to_string(),
+            input: input.to_string(),
+            output: output_s.to_string(),
+            modifier: modifier.to_string(),
+        },
+        &serde_json::json!({"action": "update-binding"}),
+        |w| writeln!(w, "binding updated"),
     )
 }
 
@@ -184,6 +210,7 @@ pub fn run_clear_binding(
     target: &str,
     sp: &str,
     input: &str,
+    modifier: Option<&str>,
 ) -> Result<()> {
     apply_single(
         provider,
@@ -192,6 +219,7 @@ pub fn run_clear_binding(
         EditOp::ClearBinding {
             sub_profile: sp.to_string(),
             input: input.to_string(),
+            modifier: modifier.map(str::to_string),
         },
         &serde_json::json!({"action": "clear-binding"}),
         |w| writeln!(w, "binding cleared"),

@@ -1,8 +1,5 @@
 use super::*;
 
-const SEED: &str =
-    "QuadStick Configuration,Version 1.4,Mock,Default\r\n,,,\r\n*Main,sip_puff,,A\r\n";
-
 proptest! {
     #![proptest_config(ProptestConfig { cases: 128, .. ProptestConfig::default() })]
 
@@ -16,10 +13,11 @@ proptest! {
         let mut ops: Vec<EditOp> = (0..good_count)
             .map(|_| EditOp::SetTitle { title: "A".into() })
             .collect();
-        ops.push(EditOp::SetBinding {
+        ops.push(EditOp::AddBinding {
             sub_profile: "DoesNotExist".into(),
             input: "lip".into(),
             output: "touch".into(),
+            modifier: None,
         });
         let edits_path = dir.path().join("edits.json");
         let envelope = serde_json::json!({ "edits": ops });
