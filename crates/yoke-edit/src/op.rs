@@ -23,29 +23,29 @@ pub enum EditOp {
         key: String,
     },
     AddBinding {
-        sub_profile: String,
+        sub_profile: usize,
         input: String,
         output: String,
         modifier: Option<String>,
     },
     UpdateBinding {
-        sub_profile: String,
+        sub_profile: usize,
         input: String,
         output: String,
         modifier: String,
     },
     ClearBinding {
-        sub_profile: String,
+        sub_profile: usize,
         input: String,
         modifier: Option<String>,
     },
     SetOverride {
-        sub_profile: String,
+        sub_profile: usize,
         key: String,
         value: PreferenceValue,
     },
     UnsetOverride {
-        sub_profile: String,
+        sub_profile: usize,
         key: String,
     },
     AddSubProfile {
@@ -55,14 +55,14 @@ pub enum EditOp {
         channel: Channel,
     },
     DeleteSubProfile {
-        name: String,
+        index: usize,
     },
     RenameSubProfile {
-        from: String,
+        index: usize,
         to: String,
     },
     CloneSubProfile {
-        from: String,
+        index: usize,
         to: String,
     },
 }
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn edit_op_add_binding_round_trips_kebab_case_tag() {
         let op = EditOp::AddBinding {
-            sub_profile: "Main".into(),
+            sub_profile: 0,
             input: "lip_soft".into(),
             output: "kb_a".into(),
             modifier: Some("delay_on 250".into()),
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn edit_op_add_binding_omits_modifier_when_none() {
         let op = EditOp::AddBinding {
-            sub_profile: "Main".into(),
+            sub_profile: 0,
             input: "lip_soft".into(),
             output: "kb_a".into(),
             modifier: None,
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn edit_op_update_binding_round_trips_kebab_case_tag() {
         let op = EditOp::UpdateBinding {
-            sub_profile: "Main".into(),
+            sub_profile: 0,
             input: "lip_soft".into(),
             output: "kb_a".into(),
             modifier: "delay_on 250".into(),
@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn edit_op_clear_binding_round_trips_with_optional_modifier() {
         let op = EditOp::ClearBinding {
-            sub_profile: "Main".into(),
+            sub_profile: 0,
             input: "lip_soft".into(),
             modifier: Some("toggle".into()),
         };
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn edit_op_rename_sub_profile_round_trips() {
         let op = EditOp::RenameSubProfile {
-            from: "Main".into(),
+            index: 0,
             to: "Cougar".into(),
         };
         let json = serde_json::to_value(&op).unwrap();
