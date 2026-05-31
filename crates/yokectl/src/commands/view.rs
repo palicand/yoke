@@ -53,64 +53,76 @@ pub fn group_bindings(profile: &Profile) -> Vec<GroupedSubProfile<'_>> {
         .collect()
 }
 
+/// Builds the JSON envelope for `bindings`, carrying each group's true index so a
+/// filtered query keeps the original `sub_profile_index` rather than re-counting from 0.
+pub(crate) fn bindings_json(
+    groups_with_index: &[(usize, &GroupedSubProfile)],
+) -> serde_json::Value {
+    serde_json::json!({
+        "sub_profiles": groups_with_index.iter().map(|(i, g)| serde_json::json!({
+            "sub_profile_index": i,
+            "name": g.name,
+            "mode": g.mode,
+            "channel": g.channel,
+            "sub_mode": if g.sub_mode.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(g.sub_mode.to_string()) },
+            "bindings": g.bindings.iter().map(|b| serde_json::json!({
+                "input": b.input, "output": b.output, "modifier": b.modifier,
+            })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+    })
+}
+
 pub fn run_bindings(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    sub_profile: Option<&str>,
+    sub_profile: Option<usize>,
 ) -> Result<()> {
     let t = crate::target::Target::classify(target);
     let bytes = t.read_bytes(provider.as_ref())?;
     let parsed = yoke_config::parse(&bytes).context("parsing profile")?;
-    let mut groups = group_bindings(&parsed.model);
-    if let Some(filter) = sub_profile {
-        if !groups.iter().any(|g| g.name == filter) {
-            return Err(anyhow::Error::from(
-                crate::error::CliError::SubProfileNameNotFound {
-                    name: filter.to_string(),
-                },
-            ));
+    let groups = group_bindings(&parsed.model);
+    // Number before filtering so a single-sub-profile query keeps the true index.
+    let mut numbered: Vec<(usize, &GroupedSubProfile)> = groups.iter().enumerate().collect();
+    if let Some(idx) = sub_profile {
+        if idx >= numbered.len() {
+            return Err(crate::error::CliError::SubProfileIndexOutOfRange {
+                index: idx,
+                len: numbered.len(),
+            }
+            .into());
         }
-        groups.retain(|g| g.name == filter);
+        numbered.retain(|(i, _)| *i == idx);
     }
-    out.emit(
-        &serde_json::json!({
-            "sub_profiles": groups.iter().map(|g| serde_json::json!({
-                "name": g.name,
-                "mode": g.mode,
-                "channel": g.channel,
-                "sub_mode": if g.sub_mode.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(g.sub_mode.to_string()) },
-                "bindings": g.bindings.iter().map(|b| serde_json::json!({
-                    "input": b.input, "output": b.output, "modifier": b.modifier,
-                })).collect::<Vec<_>>(),
-            })).collect::<Vec<_>>(),
-        }),
-        |w| {
-            // The default modifier is suppressed so the common case stays clean
-            // (mirrors the binding-row pill convention); derive it from the typed
-            // default rather than hardcoding the keyword.
-            let default_modifier = yoke_config::catalog::Modifier::Normal.to_csv();
-            for (i, g) in groups.iter().enumerate() {
-                if i > 0 {
-                    writeln!(w)?;
-                }
-                writeln!(w, "{} (mode={} channel={})", g.name, g.mode, g.channel)?;
-                if g.bindings.is_empty() {
-                    writeln!(w, "  (no bindings)")?;
-                } else {
-                    for b in &g.bindings {
-                        let input = b.input.as_deref().unwrap_or("(none)");
-                        if b.modifier == default_modifier {
-                            writeln!(w, "  {:<15} -> {}", input, b.output)?;
-                        } else {
-                            writeln!(w, "  {:<15} -> {} [{}]", input, b.output, b.modifier)?;
-                        }
+    out.emit(&bindings_json(&numbered), |w| {
+        // The default modifier is suppressed so the common case stays clean
+        // (mirrors the binding-row pill convention); derive it from the typed
+        // default rather than hardcoding the keyword.
+        let default_modifier = yoke_config::catalog::Modifier::Normal.to_csv();
+        for (pos, (i, g)) in numbered.iter().enumerate() {
+            if pos > 0 {
+                writeln!(w)?;
+            }
+            writeln!(
+                w,
+                "[#{i}] {} (mode={} channel={})",
+                g.name, g.mode, g.channel
+            )?;
+            if g.bindings.is_empty() {
+                writeln!(w, "  (no bindings)")?;
+            } else {
+                for b in &g.bindings {
+                    let input = b.input.as_deref().unwrap_or("(none)");
+                    if b.modifier == default_modifier {
+                        writeln!(w, "  {:<15} -> {}", input, b.output)?;
+                    } else {
+                        writeln!(w, "  {:<15} -> {} [{}]", input, b.output, b.modifier)?;
                     }
                 }
             }
-            Ok(())
-        },
-    )
+        }
+        Ok(())
+    })
 }
 
 /// `overridden` is set whenever the sub-profile carries an override for this key,
@@ -218,35 +230,48 @@ pub fn run_preferences(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    sub_profile: Option<&str>,
+    sub_profile: Option<usize>,
     raw: bool,
 ) -> Result<()> {
     let t = crate::target::Target::classify(target);
     let bytes = t.read_bytes(provider.as_ref())?;
     let parsed = yoke_config::parse(&bytes).context("parsing profile")?;
-    if let Some(filter) = sub_profile
-        && !parsed
-            .model
-            .sub_profiles
-            .iter()
-            .any(|sp| sp.header.profile_name == filter)
-    {
-        return Err(anyhow::Error::from(
-            crate::error::CliError::SubProfileNameNotFound {
-                name: filter.to_string(),
-            },
-        ));
-    }
     if raw {
         let mut data = raw_preferences(&parsed.model);
-        if let Some(filter) = sub_profile {
-            data.per_sub_profile_overrides.retain(|(n, _)| n == filter);
+        if let Some(idx) = sub_profile {
+            if idx >= data.per_sub_profile_overrides.len() {
+                return Err(crate::error::CliError::SubProfileIndexOutOfRange {
+                    index: idx,
+                    len: data.per_sub_profile_overrides.len(),
+                }
+                .into());
+            }
+            data.per_sub_profile_overrides = data
+                .per_sub_profile_overrides
+                .into_iter()
+                .enumerate()
+                .filter(|(i, _)| *i == idx)
+                .map(|(_, e)| e)
+                .collect();
         }
         emit_raw_preferences(out, &data)
     } else {
         let mut data = effective_preferences(&parsed.model);
-        if let Some(filter) = sub_profile {
-            data.per_sub_profile.retain(|(n, _)| n == filter);
+        if let Some(idx) = sub_profile {
+            if idx >= data.per_sub_profile.len() {
+                return Err(crate::error::CliError::SubProfileIndexOutOfRange {
+                    index: idx,
+                    len: data.per_sub_profile.len(),
+                }
+                .into());
+            }
+            data.per_sub_profile = data
+                .per_sub_profile
+                .into_iter()
+                .enumerate()
+                .filter(|(i, _)| *i == idx)
+                .map(|(_, e)| e)
+                .collect();
         }
         emit_effective_preferences(out, &data)
     }
@@ -497,6 +522,67 @@ mod tests {
         }
         let g = group_bindings(&p);
         assert_eq!(g[0].bindings[0].modifier, "delay_on 250");
+    }
+
+    fn profile_with_three_sub_profiles() -> Profile {
+        let sub = |name: &str| SubProfile {
+            header: SubProfileHeader {
+                profile_name: name.into(),
+                mode: SubProfileMode::Mouse,
+                sub_mode: String::new(),
+                channel: Channel::Usb,
+                column_header_label: "Output or Function".into(),
+            },
+            rows: vec![SubProfileRow::Binding(Binding::new(
+                Output::Touch,
+                Modifier::Normal,
+                Some(Input::Lip { soft: false }),
+            ))],
+        };
+        Profile {
+            top_line: TopLine {
+                label: "QuadStick Configuration".into(),
+                version: "Version 1.4".into(),
+                source: String::new(),
+                title: "Default".into(),
+                trailing_cells: vec![],
+                width: 4,
+            },
+            sub_profiles: vec![sub("Zero"), sub("One"), sub("Two")],
+            preferences: None,
+            infrared: vec![],
+        }
+    }
+
+    #[test]
+    fn bindings_json_numbers_every_group() {
+        let p = profile_with_three_sub_profiles();
+        let groups = group_bindings(&p);
+        let numbered: Vec<(usize, &GroupedSubProfile)> = groups.iter().enumerate().collect();
+        let v = bindings_json(&numbered);
+        let subs = v["sub_profiles"].as_array().expect("array");
+        assert_eq!(subs.len(), 3);
+        for (i, sub) in subs.iter().enumerate() {
+            assert_eq!(sub["sub_profile_index"], serde_json::json!(i));
+        }
+    }
+
+    #[test]
+    fn bindings_json_filtered_keeps_true_index() {
+        let p = profile_with_three_sub_profiles();
+        let groups = group_bindings(&p);
+        // Simulate `--sub-profile 1`: number first, then keep only index 1.
+        let numbered: Vec<(usize, &GroupedSubProfile)> =
+            groups.iter().enumerate().filter(|(i, _)| *i == 1).collect();
+        let v = bindings_json(&numbered);
+        let subs = v["sub_profiles"].as_array().expect("array");
+        assert_eq!(subs.len(), 1);
+        assert_eq!(
+            subs[0]["sub_profile_index"],
+            serde_json::json!(1),
+            "filtered group must keep its original index, not re-count to 0"
+        );
+        assert_eq!(subs[0]["name"], serde_json::json!("One"));
     }
 
     #[test]

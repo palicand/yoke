@@ -30,7 +30,7 @@ fn bindings_json_filtered() {
         .arg("bindings")
         .arg("default")
         .arg("--sub-profile")
-        .arg("Main")
+        .arg("0")
         .assert()
         .success();
     let stdout: serde_json::Value =

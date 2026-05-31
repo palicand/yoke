@@ -40,6 +40,6 @@ fn preferences_json_raw() {
 
 #[test]
 fn preferences_json_filtered() {
-    let v = run(&["preferences", "default", "--sub-profile", "Main"]);
+    let v = run(&["preferences", "default", "--sub-profile", "0"]);
     insta::assert_json_snapshot!("filtered", v);
 }

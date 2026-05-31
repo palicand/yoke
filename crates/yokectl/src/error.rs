@@ -23,8 +23,8 @@ pub enum CliError {
     UnknownChannel { value: String },
     #[error("malformed edits file: {message}")]
     MalformedEdits { message: String },
-    #[error("sub-profile not found: {name}")]
-    SubProfileNameNotFound { name: String },
+    #[error("sub-profile index {index} is out of range (profile has {len} sub-profiles)")]
+    SubProfileIndexOutOfRange { index: usize, len: usize },
 }
 
 pub fn classify(err: &Error) -> ExitInfo {
@@ -78,10 +78,10 @@ fn classify_cli(err: &CliError) -> ExitInfo {
             "cli-malformed-edits",
             serde_json::json!({"message": message}),
         ),
-        CliError::SubProfileNameNotFound { name } => (
-            5,
-            "edit-subprofile-not-found",
-            serde_json::json!({"name": name}),
+        CliError::SubProfileIndexOutOfRange { index, len } => (
+            2,
+            "cli-subprofile-index-out-of-range",
+            serde_json::json!({"index": index, "len": len}),
         ),
     };
     ExitInfo {

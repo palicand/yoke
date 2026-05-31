@@ -125,7 +125,7 @@ fn bindings_view_surfaces_modifier() {
     yokectl()
         .arg("--fake-volume")
         .arg(dir.path())
-        .args(["bindings", "default", "--sub-profile", "Main"])
+        .args(["bindings", "default", "--sub-profile", "0"])
         .assert()
         .success()
         .stdout(predicates::str::contains("delay_on 250"));

@@ -183,12 +183,12 @@ fn run_with_volume(
         Commands::Bindings {
             target,
             sub_profile,
-        } => commands::view::run_bindings(provider, out, &target, sub_profile.as_deref()),
+        } => commands::view::run_bindings(provider, out, &target, sub_profile),
         Commands::Preferences {
             target,
             sub_profile,
             raw,
-        } => commands::view::run_preferences(provider, out, &target, sub_profile.as_deref(), raw),
+        } => commands::view::run_preferences(provider, out, &target, sub_profile, raw),
         Commands::Install {
             source,
             as_name,

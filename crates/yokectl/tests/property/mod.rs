@@ -178,11 +178,11 @@ pub enum Action {
     },
     Bindings {
         target: String,
-        sub_profile: Option<String>,
+        sub_profile: Option<usize>,
     },
     Preferences {
         target: String,
-        sub_profile: Option<String>,
+        sub_profile: Option<usize>,
         raw: bool,
     },
     Apply {
@@ -514,7 +514,7 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
             sub_profile,
         } => Commands::Bindings {
             target: target.clone(),
-            sub_profile: sub_profile.clone(),
+            sub_profile: *sub_profile,
         },
         Action::Preferences {
             target,
@@ -522,7 +522,7 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
             raw,
         } => Commands::Preferences {
             target: target.clone(),
-            sub_profile: sub_profile.clone(),
+            sub_profile: *sub_profile,
             raw: *raw,
         },
         Action::AddBinding {

@@ -47,16 +47,22 @@ fn preferences_raw_shows_overrides_block() {
 }
 
 #[test]
-fn preferences_missing_sub_profile_exits_5() {
+fn preferences_out_of_range_sub_profile_exits_2() {
     let dir = tempdir().unwrap();
     seed_profile(dir.path(), "default.csv", FIXTURE);
-    yokectl()
+    let out = yokectl()
+        .arg("--json")
         .arg("--fake-volume")
         .arg(dir.path())
         .arg("preferences")
         .arg("default")
         .arg("--sub-profile")
-        .arg("Nope")
+        .arg("9")
         .assert()
-        .code(5);
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+    let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(v["error"]["code"], "cli-subprofile-index-out-of-range");
 }

@@ -77,8 +77,8 @@ pub enum Commands {
     Preferences {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(long, help = "Restrict output to a single sub-profile by name")]
-        sub_profile: Option<String>,
+        #[arg(long, help = "Restrict output to a single sub-profile by index (0-based)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        sub_profile: Option<usize>,
         #[arg(
             long,
             help = "Show layered view: top-level + per-sub-profile overrides, no resolution"
@@ -230,8 +230,8 @@ pub enum Commands {
     Bindings {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(long, help = "Restrict output to a single sub-profile by name")]
-        sub_profile: Option<String>,
+        #[arg(long, help = "Restrict output to a single sub-profile by index (0-based)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        sub_profile: Option<usize>,
     },
     #[command(
         about = "Install a profile from a path, URL, or community-index name",
