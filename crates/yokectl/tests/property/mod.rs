@@ -72,16 +72,32 @@ use yoke_config::catalog::{Channel, Modifier, SubProfileMode};
 use yoke_edit::{EditOp, PreferenceValue};
 use yoke_index::ProfileSource;
 
-/// Seed profile shared by the property invariants. It carries a real `Main` sub-profile
-/// at index 0 with one binding (`left -> mouse_left [normal]`), so the sub-profile-scoped
-/// edit ops (add/update/clear binding, overrides) actually reach their success and
-/// not-found branches during fuzzing rather than bailing out at `SubProfileIndexOutOfRange`.
+/// Seed profile shared by the property invariants. It carries three real sub-profiles
+/// (`Main`, `Alt`, `Third`), each with one binding, so index-addressed edit ops fuzzed
+/// across in-range (0..=2) and out-of-range indices reach both branches — success on a
+/// valid layer vs. `SubProfileIndexOutOfRange` on an invalid one — rather than only ever
+/// resolving to a single layer. Having distinct layers makes "edit index 1, not index 0"
+/// observable.
 pub const SEED: &str = "QuadStick Configuration,Version 1.4,Mock,Default\r\n\
 Profile Name,Main,Mouse,usb\r\n\
 ,,Normal,\r\n\
 Output or Function,Function,usb,\r\n\
 mouse_left,normal,left,\r\n\
+\r\n\
+Profile Name,Alt,Mouse,usb\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_right,normal,right,\r\n\
+\r\n\
+Profile Name,Third,Mouse,usb\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+kb_a,normal,lip,\r\n\
 \r\n";
+
+/// Number of sub-profiles in [`SEED`]. Index strategies span `0..SEED_SUB_PROFILES + 2`
+/// (in-range plus a margin of out-of-range) so the out-of-range branch is fuzzed.
+pub const SEED_SUB_PROFILES: usize = 3;
 
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -202,6 +218,20 @@ pub enum Action {
     List,
 }
 
+/// Sub-profile index spanning in-range (`0..SEED_SUB_PROFILES`) and out-of-range
+/// (`SEED_SUB_PROFILES..SEED_SUB_PROFILES + 2`). A fresh strategy is built per use because
+/// proptest combinators are not `Clone`.
+fn sub_profile_index() -> impl Strategy<Value = usize> {
+    0usize..SEED_SUB_PROFILES + 2
+}
+
+/// Optional sub-profile filter for the view commands: `None` (whole profile) or a single
+/// index drawn from the same in-range/out-of-range span as [`sub_profile_index`], so the
+/// out-of-range (exit-2) branch of `bindings`/`preferences --sub-profile` is fuzzed.
+fn sub_profile_index_opt() -> impl Strategy<Value = Option<usize>> {
+    prop_oneof![Just(None), (0usize..SEED_SUB_PROFILES + 2).prop_map(Some),]
+}
+
 pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
     let name_or_unknown = if seed_names.is_empty() {
         Just(String::from("unknown")).boxed()
@@ -271,45 +301,64 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
             .clone()
             .prop_map(|key| EditOp::UnsetPreference { key }),
         (
+            sub_profile_index(),
             edit_input_strat.clone(),
             edit_output_strat.clone(),
             prop::option::of(mod_phrase()),
         )
-            .prop_map(|(input, output, modifier)| EditOp::AddBinding {
-                sub_profile: 0,
-                input,
-                output,
-                modifier,
+            .prop_map(
+                |(sub_profile, input, output, modifier)| EditOp::AddBinding {
+                    sub_profile,
+                    input,
+                    output,
+                    modifier,
+                }
+            ),
+        (
+            sub_profile_index(),
+            edit_input_strat.clone(),
+            edit_output_strat,
+            mod_phrase()
+        )
+            .prop_map(
+                |(sub_profile, input, output, modifier)| EditOp::UpdateBinding {
+                    sub_profile,
+                    input,
+                    output,
+                    modifier,
+                }
+            ),
+        (
+            sub_profile_index(),
+            edit_input_strat,
+            prop::option::of(mod_phrase())
+        )
+            .prop_map(|(sub_profile, input, modifier)| {
+                EditOp::ClearBinding {
+                    sub_profile,
+                    input,
+                    modifier,
+                }
             }),
-        (edit_input_strat.clone(), edit_output_strat, mod_phrase()).prop_map(
-            |(input, output, modifier)| EditOp::UpdateBinding {
-                sub_profile: 0,
-                input,
-                output,
-                modifier,
-            },
-        ),
-        (edit_input_strat, prop::option::of(mod_phrase())).prop_map(|(input, modifier)| {
-            EditOp::ClearBinding {
-                sub_profile: 0,
-                input,
-                modifier,
-            }
-        }),
-        (edit_pref_key_strat.clone(), edit_pref_value.clone()).prop_map(|(key, value)| {
-            EditOp::SetOverride {
-                sub_profile: 0,
-                key,
-                value,
-            }
-        }),
-        edit_pref_key_strat.prop_map(|key| EditOp::UnsetOverride {
-            sub_profile: 0,
-            key,
-        }),
-        (0usize..4).prop_map(|index| EditOp::DeleteSubProfile { index }),
-        (0usize..4, "[a-zA-Z]{1,8}").prop_map(|(index, to)| EditOp::RenameSubProfile { index, to }),
-        (0usize..4, "[a-zA-Z]{1,8}").prop_map(|(index, to)| EditOp::CloneSubProfile { index, to }),
+        (
+            sub_profile_index(),
+            edit_pref_key_strat.clone(),
+            edit_pref_value.clone()
+        )
+            .prop_map(|(sub_profile, key, value)| {
+                EditOp::SetOverride {
+                    sub_profile,
+                    key,
+                    value,
+                }
+            }),
+        (sub_profile_index(), edit_pref_key_strat)
+            .prop_map(|(sub_profile, key)| { EditOp::UnsetOverride { sub_profile, key } }),
+        sub_profile_index().prop_map(|index| EditOp::DeleteSubProfile { index }),
+        (sub_profile_index(), "[a-zA-Z]{1,8}")
+            .prop_map(|(index, to)| EditOp::RenameSubProfile { index, to }),
+        (sub_profile_index(), "[a-zA-Z]{1,8}")
+            .prop_map(|(index, to)| EditOp::CloneSubProfile { index, to }),
     ];
 
     let push_bytes = Just(
@@ -339,19 +388,25 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         name_or_unknown
             .clone()
             .prop_map(|t| Action::Validate { target: t }),
-        name_or_unknown.clone().prop_map(|t| Action::Bindings {
-            target: t,
-            sub_profile: None
+        (name_or_unknown.clone(), sub_profile_index_opt()).prop_map(|(t, sub_profile)| {
+            Action::Bindings {
+                target: t,
+                sub_profile,
+            }
         }),
-        name_or_unknown.clone().prop_map(|t| Action::Preferences {
-            target: t,
-            sub_profile: None,
-            raw: false
+        (name_or_unknown.clone(), sub_profile_index_opt()).prop_map(|(t, sub_profile)| {
+            Action::Preferences {
+                target: t,
+                sub_profile,
+                raw: false,
+            }
         }),
-        name_or_unknown.clone().prop_map(|t| Action::Preferences {
-            target: t,
-            sub_profile: None,
-            raw: true
+        (name_or_unknown.clone(), sub_profile_index_opt()).prop_map(|(t, sub_profile)| {
+            Action::Preferences {
+                target: t,
+                sub_profile,
+                raw: true,
+            }
         }),
         // --- profile write ---
         name_or_unknown
@@ -383,57 +438,63 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
             .prop_map(|(t, k)| Action::UnsetPreference { target: t, key: k }),
         (
             name_or_unknown.clone(),
+            sub_profile_index(),
             input_strat.clone(),
             output_strat.clone(),
             prop::option::of(mod_phrase()),
         )
-            .prop_map(|(t, i, o, m)| Action::AddBinding {
+            .prop_map(|(t, sub_profile, i, o, m)| Action::AddBinding {
                 target: t,
-                sub_profile: 0,
+                sub_profile,
                 input: i,
                 output: o,
                 modifier: m,
             }),
         (
             name_or_unknown.clone(),
+            sub_profile_index(),
             input_strat.clone(),
             output_strat,
             mod_phrase(),
         )
-            .prop_map(|(t, i, o, m)| Action::UpdateBinding {
+            .prop_map(|(t, sub_profile, i, o, m)| Action::UpdateBinding {
                 target: t,
-                sub_profile: 0,
+                sub_profile,
                 input: i,
                 output: o,
                 modifier: m,
             }),
         (
             name_or_unknown.clone(),
+            sub_profile_index(),
             input_strat,
             prop::option::of(mod_phrase())
         )
-            .prop_map(|(t, i, m)| Action::ClearBinding {
+            .prop_map(|(t, sub_profile, i, m)| Action::ClearBinding {
                 target: t,
-                sub_profile: 0,
+                sub_profile,
                 input: i,
                 modifier: m,
             }),
         (
             name_or_unknown.clone(),
+            sub_profile_index(),
             pref_key_strat.clone(),
             pref_value.clone()
         )
-            .prop_map(|(t, k, v)| Action::SetOverride {
+            .prop_map(|(t, sub_profile, k, v)| Action::SetOverride {
                 target: t,
-                sub_profile: 0,
+                sub_profile,
                 key: k,
                 value: v
             }),
-        (name_or_unknown.clone(), pref_key_strat).prop_map(|(t, k)| Action::UnsetOverride {
-            target: t,
-            sub_profile: 0,
-            key: k
-        }),
+        (name_or_unknown.clone(), sub_profile_index(), pref_key_strat).prop_map(
+            |(t, sub_profile, k)| Action::UnsetOverride {
+                target: t,
+                sub_profile,
+                key: k
+            }
+        ),
         // --- sub-profile management ---
         (
             name_or_unknown.clone(),
@@ -448,22 +509,28 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
                 channel,
                 sub_mode: None,
             }),
-        (name_or_unknown.clone(), 0usize..4)
+        (name_or_unknown.clone(), sub_profile_index())
             .prop_map(|(t, index)| Action::DeleteSubProfile { target: t, index }),
-        (name_or_unknown.clone(), 0usize..4, "[a-zA-Z]{1,8}").prop_map(|(t, index, to)| {
-            Action::RenameSubProfile {
+        (
+            name_or_unknown.clone(),
+            sub_profile_index(),
+            "[a-zA-Z]{1,8}"
+        )
+            .prop_map(|(t, index, to)| Action::RenameSubProfile {
                 target: t,
                 index,
                 to,
-            }
-        }),
-        (name_or_unknown.clone(), 0usize..4, "[a-zA-Z]{1,8}").prop_map(|(t, index, to)| {
-            Action::CloneSubProfile {
+            }),
+        (
+            name_or_unknown.clone(),
+            sub_profile_index(),
+            "[a-zA-Z]{1,8}"
+        )
+            .prop_map(|(t, index, to)| Action::CloneSubProfile {
                 target: t,
                 index,
                 to,
-            }
-        }),
+            }),
         // --- batch apply ---
         (
             name_or_unknown.clone(),
