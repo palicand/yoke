@@ -136,10 +136,16 @@ and targets:
 
 ```toml
 [toolchain]
-channel    = "stable"
+channel    = "1.96.0"
 components = ["rustfmt", "clippy", "rust-analyzer"]
 targets    = ["wasm32-unknown-unknown"]
 ```
+
+The channel is pinned to an explicit version, not a rolling alias like
+`stable`: fenix fetches the channel manifest as a fixed-output derivation
+with a pinned hash, and a rolling alias rewrites that manifest on every
+upstream release — breaking the hash and the devShell. Bump the version
+deliberately and substitute the new hash in `flake.nix`.
 
 This file is committed. Two consumers read it without redundancy:
 
