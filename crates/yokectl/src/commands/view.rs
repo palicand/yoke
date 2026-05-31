@@ -66,7 +66,7 @@ pub fn run_bindings(
     if let Some(filter) = sub_profile {
         if !groups.iter().any(|g| g.name == filter) {
             return Err(anyhow::Error::from(
-                yoke_edit::EditError::SubProfileNotFound {
+                crate::error::CliError::SubProfileNameNotFound {
                     name: filter.to_string(),
                 },
             ));
@@ -232,7 +232,7 @@ pub fn run_preferences(
             .any(|sp| sp.header.profile_name == filter)
     {
         return Err(anyhow::Error::from(
-            yoke_edit::EditError::SubProfileNotFound {
+            crate::error::CliError::SubProfileNameNotFound {
                 name: filter.to_string(),
             },
         ));

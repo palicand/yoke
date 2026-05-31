@@ -23,6 +23,8 @@ pub enum CliError {
     UnknownChannel { value: String },
     #[error("malformed edits file: {message}")]
     MalformedEdits { message: String },
+    #[error("sub-profile not found: {name}")]
+    SubProfileNameNotFound { name: String },
 }
 
 pub fn classify(err: &Error) -> ExitInfo {
@@ -75,6 +77,11 @@ fn classify_cli(err: &CliError) -> ExitInfo {
             4,
             "cli-malformed-edits",
             serde_json::json!({"message": message}),
+        ),
+        CliError::SubProfileNameNotFound { name } => (
+            5,
+            "edit-subprofile-not-found",
+            serde_json::json!({"name": name}),
         ),
     };
     ExitInfo {
@@ -141,13 +148,9 @@ fn classify_edit(err: &yoke_edit::EditError, index: usize) -> ExitInfo {
             "edit-invalid-value",
             serde_json::json!({"key": key, "value": value, "expected_type": expected_type, "index": index}),
         ),
-        E::SubProfileNotFound { name } => (
-            "edit-subprofile-not-found",
-            serde_json::json!({"name": name, "index": index}),
-        ),
-        E::SubProfileExists { name } => (
-            "edit-subprofile-exists",
-            serde_json::json!({"name": name, "index": index}),
+        E::SubProfileIndexOutOfRange { index: i, len } => (
+            "edit-subprofile-index-out-of-range",
+            serde_json::json!({"sub_profile_index": i, "len": len, "index": index}),
         ),
         E::LastSubProfileDeletion => ("edit-last-subprofile", serde_json::json!({"index": index})),
         E::UnknownModifier {

@@ -8,7 +8,7 @@ Usage: yokectl clear-binding [OPTIONS] <TARGET> <SUB_PROFILE> <INPUT>
 
 Arguments:
   <TARGET>       Profile name, file path, or '-' for stdin
-  <SUB_PROFILE>  Sub-profile name
+  <SUB_PROFILE>  Sub-profile index (0-based; see `yokectl bindings`)
   <INPUT>        Input phrase to clear
 
 Options:

@@ -39,7 +39,7 @@ fn subprofile_lifecycle_add_clone_rename_delete() {
             "subprofile",
             "clone",
             "default",
-            "Alt",
+            "1",
             "Alt2",
         ])
         .assert()
@@ -56,20 +56,13 @@ fn subprofile_lifecycle_add_clone_rename_delete() {
             "subprofile",
             "rename",
             "default",
-            "Alt2",
+            "2",
             "Renamed",
         ])
         .assert()
         .success();
     yokectl()
-        .args([
-            "--fake-volume",
-            vol,
-            "subprofile",
-            "delete",
-            "default",
-            "Alt",
-        ])
+        .args(["--fake-volume", vol, "subprofile", "delete", "default", "1"])
         .assert()
         .success();
 }

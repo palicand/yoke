@@ -126,12 +126,12 @@ fn run_with_volume(
             sub_profile,
             key,
             value,
-        } => commands::edit::run_set_override(provider, out, &target, &sub_profile, &key, &value),
+        } => commands::edit::run_set_override(provider, out, &target, sub_profile, &key, &value),
         Commands::UnsetOverride {
             target,
             sub_profile,
             key,
-        } => commands::edit::run_unset_override(provider, out, &target, &sub_profile, &key),
+        } => commands::edit::run_unset_override(provider, out, &target, sub_profile, &key),
         Commands::AddBinding {
             target,
             sub_profile,
@@ -142,7 +142,7 @@ fn run_with_volume(
             provider,
             out,
             &target,
-            &sub_profile,
+            sub_profile,
             &input,
             &output_s,
             modifier.as_deref(),
@@ -157,7 +157,7 @@ fn run_with_volume(
             provider,
             out,
             &target,
-            &sub_profile,
+            sub_profile,
             &input,
             &output_s,
             &modifier,
@@ -171,7 +171,7 @@ fn run_with_volume(
             provider,
             out,
             &target,
-            &sub_profile,
+            sub_profile,
             &input,
             modifier.as_deref(),
         ),
@@ -221,14 +221,14 @@ fn run_with_volume(
                 &channel,
                 sub_mode.as_deref(),
             ),
-            SubprofileCmd::Delete { target, name } => {
-                commands::subprofile::run_delete(provider, out, &target, &name)
+            SubprofileCmd::Delete { target, index } => {
+                commands::subprofile::run_delete(provider, out, &target, index)
             }
-            SubprofileCmd::Rename { target, from, to } => {
-                commands::subprofile::run_rename(provider, out, &target, &from, &to)
+            SubprofileCmd::Rename { target, index, to } => {
+                commands::subprofile::run_rename(provider, out, &target, index, &to)
             }
-            SubprofileCmd::Clone { target, from, to } => {
-                commands::subprofile::run_clone(provider, out, &target, &from, &to)
+            SubprofileCmd::Clone { target, index, to } => {
+                commands::subprofile::run_clone(provider, out, &target, index, &to)
             }
         },
         Commands::Completions { .. }

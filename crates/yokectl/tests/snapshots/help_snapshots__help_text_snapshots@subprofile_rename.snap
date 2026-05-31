@@ -4,11 +4,11 @@ expression: stdout
 ---
 Rename a sub-profile (header only)
 
-Usage: yokectl subprofile rename [OPTIONS] <TARGET> <FROM> <TO>
+Usage: yokectl subprofile rename [OPTIONS] <TARGET> <INDEX> <TO>
 
 Arguments:
   <TARGET>  Profile name, file path, or '-' for stdin
-  <FROM>    Existing sub-profile name
+  <INDEX>   Sub-profile index (0-based)
   <TO>      New sub-profile name
 
 Options:

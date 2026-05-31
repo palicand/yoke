@@ -275,7 +275,7 @@ fn apply_batch_rejects_and_does_not_modify_file_on_invalid_op() {
     let edits = dir.path().join("edits.json");
     std::fs::write(
         &edits,
-        r#"{"edits":[{"op":"set-title","title":"A"},{"op":"delete-sub-profile","name":"Ghost"}]}"#,
+        r#"{"edits":[{"op":"set-title","title":"A"},{"op":"delete-sub-profile","index":99}]}"#,
     )
     .unwrap();
     yokectl()
@@ -388,7 +388,7 @@ fn subprofile_add_then_delete_round_trips_through_canonical_write_fallback() {
             "subprofile",
             "delete",
             "default",
-            "Alt",
+            "1",
         ])
         .assert()
         .success();

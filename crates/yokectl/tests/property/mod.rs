@@ -73,9 +73,9 @@ use yoke_edit::{EditOp, PreferenceValue};
 use yoke_index::ProfileSource;
 
 /// Seed profile shared by the property invariants. It carries a real `Main` sub-profile
-/// with one binding (`left -> mouse_left [normal]`), so the sub-profile-scoped edit ops
-/// (add/update/clear binding, overrides) actually reach their success and not-found
-/// branches during fuzzing rather than bailing out at `SubProfileNotFound`.
+/// at index 0 with one binding (`left -> mouse_left [normal]`), so the sub-profile-scoped
+/// edit ops (add/update/clear binding, overrides) actually reach their success and
+/// not-found branches during fuzzing rather than bailing out at `SubProfileIndexOutOfRange`.
 pub const SEED: &str = "QuadStick Configuration,Version 1.4,Mock,Default\r\n\
 Profile Name,Main,Mouse,usb\r\n\
 ,,Normal,\r\n\
@@ -100,33 +100,33 @@ pub enum Action {
     },
     AddBinding {
         target: String,
-        sub_profile: String,
+        sub_profile: usize,
         input: String,
         output: String,
         modifier: Option<String>,
     },
     UpdateBinding {
         target: String,
-        sub_profile: String,
+        sub_profile: usize,
         input: String,
         output: String,
         modifier: String,
     },
     ClearBinding {
         target: String,
-        sub_profile: String,
+        sub_profile: usize,
         input: String,
         modifier: Option<String>,
     },
     SetOverride {
         target: String,
-        sub_profile: String,
+        sub_profile: usize,
         key: String,
         value: PreferenceValue,
     },
     UnsetOverride {
         target: String,
-        sub_profile: String,
+        sub_profile: usize,
         key: String,
     },
     AddSubProfile {
@@ -138,16 +138,16 @@ pub enum Action {
     },
     DeleteSubProfile {
         target: String,
-        name: String,
+        index: usize,
     },
     RenameSubProfile {
         target: String,
-        from: String,
+        index: usize,
         to: String,
     },
     CloneSubProfile {
         target: String,
-        from: String,
+        index: usize,
         to: String,
     },
     Push {
@@ -276,14 +276,14 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
             prop::option::of(mod_phrase()),
         )
             .prop_map(|(input, output, modifier)| EditOp::AddBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input,
                 output,
                 modifier,
             }),
         (edit_input_strat.clone(), edit_output_strat, mod_phrase()).prop_map(
             |(input, output, modifier)| EditOp::UpdateBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input,
                 output,
                 modifier,
@@ -291,27 +291,25 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         ),
         (edit_input_strat, prop::option::of(mod_phrase())).prop_map(|(input, modifier)| {
             EditOp::ClearBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input,
                 modifier,
             }
         }),
         (edit_pref_key_strat.clone(), edit_pref_value.clone()).prop_map(|(key, value)| {
             EditOp::SetOverride {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 key,
                 value,
             }
         }),
         edit_pref_key_strat.prop_map(|key| EditOp::UnsetOverride {
-            sub_profile: "Main".into(),
+            sub_profile: 0,
             key,
         }),
-        "[a-zA-Z]{1,8}".prop_map(|name| EditOp::DeleteSubProfile { name }),
-        ("[a-zA-Z]{1,8}", "[a-zA-Z]{1,8}")
-            .prop_map(|(from, to)| EditOp::RenameSubProfile { from, to }),
-        ("[a-zA-Z]{1,8}", "[a-zA-Z]{1,8}")
-            .prop_map(|(from, to)| EditOp::CloneSubProfile { from, to }),
+        (0usize..4).prop_map(|index| EditOp::DeleteSubProfile { index }),
+        (0usize..4, "[a-zA-Z]{1,8}").prop_map(|(index, to)| EditOp::RenameSubProfile { index, to }),
+        (0usize..4, "[a-zA-Z]{1,8}").prop_map(|(index, to)| EditOp::CloneSubProfile { index, to }),
     ];
 
     let push_bytes = Just(
@@ -391,7 +389,7 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         )
             .prop_map(|(t, i, o, m)| Action::AddBinding {
                 target: t,
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: i,
                 output: o,
                 modifier: m,
@@ -404,7 +402,7 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         )
             .prop_map(|(t, i, o, m)| Action::UpdateBinding {
                 target: t,
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: i,
                 output: o,
                 modifier: m,
@@ -416,7 +414,7 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         )
             .prop_map(|(t, i, m)| Action::ClearBinding {
                 target: t,
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: i,
                 modifier: m,
             }),
@@ -427,13 +425,13 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
         )
             .prop_map(|(t, k, v)| Action::SetOverride {
                 target: t,
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 key: k,
                 value: v
             }),
         (name_or_unknown.clone(), pref_key_strat).prop_map(|(t, k)| Action::UnsetOverride {
             target: t,
-            sub_profile: "Main".into(),
+            sub_profile: 0,
             key: k
         }),
         // --- sub-profile management ---
@@ -450,19 +448,19 @@ pub fn action_strategy(seed_names: &[String]) -> impl Strategy<Value = Action> {
                 channel,
                 sub_mode: None,
             }),
-        (name_or_unknown.clone(), "[a-zA-Z]{1,8}")
-            .prop_map(|(t, name)| Action::DeleteSubProfile { target: t, name }),
-        (name_or_unknown.clone(), "[a-zA-Z]{1,8}", "[a-zA-Z]{1,8}").prop_map(|(t, from, to)| {
+        (name_or_unknown.clone(), 0usize..4)
+            .prop_map(|(t, index)| Action::DeleteSubProfile { target: t, index }),
+        (name_or_unknown.clone(), 0usize..4, "[a-zA-Z]{1,8}").prop_map(|(t, index, to)| {
             Action::RenameSubProfile {
                 target: t,
-                from,
+                index,
                 to,
             }
         }),
-        (name_or_unknown.clone(), "[a-zA-Z]{1,8}", "[a-zA-Z]{1,8}").prop_map(|(t, from, to)| {
+        (name_or_unknown.clone(), 0usize..4, "[a-zA-Z]{1,8}").prop_map(|(t, index, to)| {
             Action::CloneSubProfile {
                 target: t,
-                from,
+                index,
                 to,
             }
         }),
@@ -535,7 +533,7 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
             modifier,
         } => Commands::AddBinding {
             target: target.clone(),
-            sub_profile: sub_profile.clone(),
+            sub_profile: *sub_profile,
             input: input.clone(),
             output: output.clone(),
             modifier: modifier.clone(),
@@ -548,7 +546,7 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
             modifier,
         } => Commands::UpdateBinding {
             target: target.clone(),
-            sub_profile: sub_profile.clone(),
+            sub_profile: *sub_profile,
             input: input.clone(),
             output: output.clone(),
             modifier: modifier.clone(),
@@ -560,7 +558,7 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
             modifier,
         } => Commands::ClearBinding {
             target: target.clone(),
-            sub_profile: sub_profile.clone(),
+            sub_profile: *sub_profile,
             input: input.clone(),
             modifier: modifier.clone(),
         },
@@ -580,7 +578,7 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
             value,
         } => Commands::SetOverride {
             target: target.clone(),
-            sub_profile: sub_profile.clone(),
+            sub_profile: *sub_profile,
             key: key.clone(),
             value: pref_value_to_string(value),
         },
@@ -590,7 +588,7 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
             key,
         } => Commands::UnsetOverride {
             target: target.clone(),
-            sub_profile: sub_profile.clone(),
+            sub_profile: *sub_profile,
             key: key.clone(),
         },
         Action::SetTitle { target, title } => Commands::SetTitle {
@@ -639,23 +637,23 @@ pub fn action_to_cli(action: &Action, base: &Cli, scratch: &Path) -> Cli {
                 sub_mode: sub_mode.clone(),
             },
         },
-        Action::DeleteSubProfile { target, name } => Commands::Subprofile {
+        Action::DeleteSubProfile { target, index } => Commands::Subprofile {
             cmd: yokectl::cli::SubprofileCmd::Delete {
                 target: target.clone(),
-                name: name.clone(),
+                index: *index,
             },
         },
-        Action::RenameSubProfile { target, from, to } => Commands::Subprofile {
+        Action::RenameSubProfile { target, index, to } => Commands::Subprofile {
             cmd: yokectl::cli::SubprofileCmd::Rename {
                 target: target.clone(),
-                from: from.clone(),
+                index: *index,
                 to: to.clone(),
             },
         },
-        Action::CloneSubProfile { target, from, to } => Commands::Subprofile {
+        Action::CloneSubProfile { target, index, to } => Commands::Subprofile {
             cmd: yokectl::cli::SubprofileCmd::Clone {
                 target: target.clone(),
-                from: from.clone(),
+                index: *index,
                 to: to.clone(),
             },
         },

@@ -38,7 +38,7 @@ fn edit_unknown_input_exits_5_with_suggestion() {
             "--json",
             "add-binding",
             "default",
-            "Main",
+            "0",
             "lip_sof",
             "kb_a",
         ])

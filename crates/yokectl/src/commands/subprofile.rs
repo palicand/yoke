@@ -55,17 +55,15 @@ pub fn run_delete(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    name: &str,
+    index: usize,
 ) -> Result<()> {
     crate::commands::edit::apply_single(
         provider,
         out,
         target,
-        EditOp::DeleteSubProfile {
-            name: name.to_string(),
-        },
-        &serde_json::json!({"action": "subprofile-delete", "name": name}),
-        |w| writeln!(w, "deleted {name}"),
+        EditOp::DeleteSubProfile { index },
+        &serde_json::json!({"action": "subprofile-delete", "index": index}),
+        |w| writeln!(w, "deleted #{index}"),
     )
 }
 
@@ -73,7 +71,7 @@ pub fn run_rename(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    from: &str,
+    index: usize,
     to: &str,
 ) -> Result<()> {
     crate::commands::edit::apply_single(
@@ -81,11 +79,11 @@ pub fn run_rename(
         out,
         target,
         EditOp::RenameSubProfile {
-            from: from.to_string(),
+            index,
             to: to.to_string(),
         },
-        &serde_json::json!({"action": "subprofile-rename"}),
-        |w| writeln!(w, "renamed {from} -> {to}"),
+        &serde_json::json!({"action": "subprofile-rename", "index": index, "to": to}),
+        |w| writeln!(w, "renamed #{index} -> {to}"),
     )
 }
 
@@ -93,7 +91,7 @@ pub fn run_clone(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    from: &str,
+    index: usize,
     to: &str,
 ) -> Result<()> {
     crate::commands::edit::apply_single(
@@ -101,10 +99,10 @@ pub fn run_clone(
         out,
         target,
         EditOp::CloneSubProfile {
-            from: from.to_string(),
+            index,
             to: to.to_string(),
         },
-        &serde_json::json!({"action": "subprofile-clone"}),
-        |w| writeln!(w, "cloned {from} -> {to}"),
+        &serde_json::json!({"action": "subprofile-clone", "index": index, "to": to}),
+        |w| writeln!(w, "cloned #{index} -> {to}"),
     )
 }
