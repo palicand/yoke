@@ -135,7 +135,20 @@ fn write_canonical(profile: &Profile) -> Vec<u8> {
 }
 
 fn rebuild_sub_profile(sp: &SubProfile, template: &RawSection) -> RawSection {
-    let header_rows: Vec<RawRow> = template.rows.iter().take(3).cloned().collect();
+    let mut header_rows: Vec<RawRow> = template.rows.iter().take(3).cloned().collect();
+    // Persist the model's profile name into the verbatim-copied header. The name is the
+    // only header field a same-section-count edit (RenameSubProfile) can change, and the
+    // parser reads it untransformed from cell (0,1), so writing it back is byte-identical
+    // when unchanged and correct when renamed. Mode/sub-mode/channel are deliberately left
+    // verbatim: their canonical_csv form is not guaranteed to match the stored cell, and no
+    // current op mutates them without also changing the section count (which routes to the
+    // canonical writer instead).
+    if let Some(first) = header_rows.first_mut() {
+        if first.cells.len() < 2 {
+            first.cells.resize(2, String::new());
+        }
+        first.cells[1].clone_from(&sp.header.profile_name);
+    }
     let body_template_width = template.rows.first().map_or(4, |r| r.cells.len());
 
     let mut rows = header_rows;
@@ -350,6 +363,18 @@ kb_left_shift,delay_on 1000,lip,\r\n\
             std::str::from_utf8(&bytes).unwrap(),
             std::str::from_utf8(FIXTURE).unwrap()
         );
+    }
+
+    #[test]
+    fn renamed_sub_profile_persists_through_template_path() {
+        // A rename keeps the section count, so it stays on the template-fidelity writer;
+        // the new name must still survive the write rather than being silently dropped.
+        let r = parse(FIXTURE).expect("parse");
+        let mut model = r.model.clone();
+        "Renamed".clone_into(&mut model.sub_profiles[0].header.profile_name);
+        let bytes = write(&model, Some(&r.raw)).expect("write");
+        let back = parse(&bytes).expect("parse back");
+        assert_eq!(back.model.sub_profiles[0].header.profile_name, "Renamed");
     }
 
     #[test]
