@@ -11,7 +11,8 @@ expression: v
           "overridden": true,
           "value": "70"
         }
-      }
+      },
+      "sub_profile_index": 0
     }
   ],
   "top_level": {
