@@ -26,23 +26,29 @@ fn bindings_filter_to_single_sub_profile() {
         .arg("bindings")
         .arg("default")
         .arg("--sub-profile")
-        .arg("Main")
+        .arg("0")
         .assert()
         .success()
         .stdout(predicates::str::contains("Main"));
 }
 
 #[test]
-fn bindings_missing_sub_profile_exits_5() {
+fn bindings_out_of_range_sub_profile_exits_2() {
     let dir = tempdir().unwrap();
     seed_profile(dir.path(), "default.csv", FIXTURE_WITH_SUB);
-    yokectl()
+    let out = yokectl()
+        .arg("--json")
         .arg("--fake-volume")
         .arg(dir.path())
         .arg("bindings")
         .arg("default")
         .arg("--sub-profile")
-        .arg("Nope")
+        .arg("9")
         .assert()
-        .code(5);
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+    let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(v["error"]["code"], "cli-subprofile-index-out-of-range");
 }

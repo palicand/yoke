@@ -8,7 +8,7 @@ Usage: yokectl set-override [OPTIONS] <TARGET> <SUB_PROFILE> <KEY> <VALUE>
 
 Arguments:
   <TARGET>       Profile name, file path, or '-' for stdin
-  <SUB_PROFILE>  Sub-profile name
+  <SUB_PROFILE>  Sub-profile index (0-based; see `yokectl bindings`)
   <KEY>          Preference key (validated against catalog::preferences)
   <VALUE>        Preference value
 

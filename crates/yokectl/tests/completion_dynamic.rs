@@ -68,20 +68,20 @@ fn profile_name_completer_returns_silently_when_volume_missing() {
 }
 
 #[test]
-fn sub_profile_completer_lists_sub_profiles_of_target() {
+fn sub_profile_index_completer_lists_indexed_candidates_for_edit_command() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("default.csv"), common::FIXTURE_WITH_SUB).unwrap();
-    // Argument layout: yokectl(0) --fake-volume(1) <dir>(2) bindings(3) default(4) --sub-profile(5) ""(6)
+    // Argument layout: yokectl(0) --fake-volume(1) <dir>(2) add-binding(3) default(4) ""(5)
+    // Completing position 5 = sub-profile index on add-binding.
     let out = yokectl()
         .env("COMPLETE", "bash")
-        .env("_CLAP_COMPLETE_INDEX", "6")
+        .env("_CLAP_COMPLETE_INDEX", "5")
         .arg("--")
         .arg("yokectl")
         .arg("--fake-volume")
         .arg(dir.path())
-        .arg("bindings")
+        .arg("add-binding")
         .arg("default")
-        .arg("--sub-profile")
         .arg("")
         .assert()
         .success()
@@ -90,8 +90,8 @@ fn sub_profile_completer_lists_sub_profiles_of_target() {
         .clone();
     let s = String::from_utf8_lossy(&out);
     assert!(
-        s.contains("Main"),
-        "sub-profile candidates did not include 'Main': {s}"
+        s.contains('0'),
+        "sub-profile candidates did not include index '0': {s}"
     );
 }
 

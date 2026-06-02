@@ -34,7 +34,7 @@ fn assert_input_accepted(p: &Profile, input: &str) {
     let r = apply(
         p.clone(),
         &[EditOp::AddBinding {
-            sub_profile: "Main".into(),
+            sub_profile: 0,
             input: input.into(),
             output: "kb_a".into(),
             modifier: None,
@@ -47,7 +47,7 @@ fn assert_output_accepted(p: &Profile, output: &str) {
     let r = apply(
         p.clone(),
         &[EditOp::AddBinding {
-            sub_profile: "Main".into(),
+            sub_profile: 0,
             input: "lip".into(),
             output: output.into(),
             modifier: None,

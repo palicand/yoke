@@ -8,7 +8,7 @@ fn seed_and_bind(dir: &std::path::Path) {
     yokectl()
         .arg("--fake-volume")
         .arg(dir)
-        .args(["add-binding", "default", "Main", "lip_soft", "kb_a"])
+        .args(["add-binding", "default", "0", "lip_soft", "kb_a"])
         .assert()
         .success();
 }
@@ -23,7 +23,7 @@ fn add_binding_with_modifier_writes_csv() {
         .args([
             "add-binding",
             "default",
-            "Main",
+            "0",
             "lip_soft",
             "kb_a",
             "--modifier",
@@ -48,7 +48,7 @@ fn add_binding_duplicate_input_modifier_exits_5() {
     yokectl()
         .arg("--fake-volume")
         .arg(dir.path())
-        .args(["add-binding", "default", "Main", "lip_soft", "kb_b"])
+        .args(["add-binding", "default", "0", "lip_soft", "kb_b"])
         .assert()
         .code(5);
 }
@@ -64,7 +64,7 @@ fn update_binding_changes_modifier_writes_csv() {
         .args([
             "update-binding",
             "default",
-            "Main",
+            "0",
             "lip_soft",
             "kb_a",
             "--modifier",
@@ -94,7 +94,7 @@ fn update_binding_unknown_modifier_exits_5() {
         .args([
             "update-binding",
             "default",
-            "Main",
+            "0",
             "lip_soft",
             "kb_a",
             "--modifier",
@@ -114,7 +114,7 @@ fn bindings_view_surfaces_modifier() {
         .args([
             "update-binding",
             "default",
-            "Main",
+            "0",
             "lip_soft",
             "kb_a",
             "--modifier",
@@ -125,7 +125,7 @@ fn bindings_view_surfaces_modifier() {
     yokectl()
         .arg("--fake-volume")
         .arg(dir.path())
-        .args(["bindings", "default", "--sub-profile", "Main"])
+        .args(["bindings", "default", "--sub-profile", "0"])
         .assert()
         .success()
         .stdout(predicates::str::contains("delay_on 250"));
@@ -142,7 +142,7 @@ fn clear_binding_with_modifier_removes_only_that_row() {
         .args([
             "add-binding",
             "default",
-            "Main",
+            "0",
             "lip_soft",
             "kb_b",
             "--modifier",
@@ -157,7 +157,7 @@ fn clear_binding_with_modifier_removes_only_that_row() {
         .args([
             "clear-binding",
             "default",
-            "Main",
+            "0",
             "lip_soft",
             "--modifier",
             "toggle",

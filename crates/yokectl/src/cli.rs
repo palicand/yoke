@@ -6,7 +6,7 @@ use clap_complete::engine::ArgValueCandidates;
 use crate::completion::catalog::{CatalogKind, CatalogValueCompleter};
 use crate::completion::index::IndexEntryCompleter;
 use crate::completion::profile::ProfileNameCompleter;
-use crate::completion::subprofile::SubProfileNameCompleter;
+use crate::completion::subprofile::SubProfileIndexCompleter;
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
 pub enum DocsFormat {
@@ -77,8 +77,8 @@ pub enum Commands {
     Preferences {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(long, help = "Restrict output to a single sub-profile by name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
-        sub_profile: Option<String>,
+        #[arg(long, help = "Restrict output to a single sub-profile by index (0-based)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        sub_profile: Option<usize>,
         #[arg(
             long,
             help = "Show layered view: top-level + per-sub-profile overrides, no resolution"
@@ -154,8 +154,8 @@ pub enum Commands {
     SetOverride {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
-        sub_profile: String,
+        #[arg(help = "Sub-profile index (0-based; see `yokectl bindings`)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        sub_profile: usize,
         #[arg(help = "Preference key (validated against catalog::preferences)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Preference)))]
         key: String,
         #[arg(help = "Preference value")]
@@ -165,8 +165,8 @@ pub enum Commands {
     UnsetOverride {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
-        sub_profile: String,
+        #[arg(help = "Sub-profile index (0-based; see `yokectl bindings`)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        sub_profile: usize,
         #[arg(help = "Preference key", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Preference)))]
         key: String,
     },
@@ -174,8 +174,8 @@ pub enum Commands {
     AddBinding {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
-        sub_profile: String,
+        #[arg(help = "Sub-profile index (0-based; see `yokectl bindings`)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        sub_profile: usize,
         #[arg(help = "Input phrase (validated against catalog::inputs)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Input)))]
         input: String,
         #[arg(help = "Output name (validated against catalog::outputs)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Output)))]
@@ -187,8 +187,8 @@ pub enum Commands {
     UpdateBinding {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
-        sub_profile: String,
+        #[arg(help = "Sub-profile index (0-based; see `yokectl bindings`)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        sub_profile: usize,
         #[arg(help = "Input phrase (validated against catalog::inputs)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Input)))]
         input: String,
         #[arg(help = "Output name (validated against catalog::outputs)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Output)))]
@@ -202,8 +202,8 @@ pub enum Commands {
     ClearBinding {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
-        sub_profile: String,
+        #[arg(help = "Sub-profile index (0-based; see `yokectl bindings`)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        sub_profile: usize,
         #[arg(help = "Input phrase to clear", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Input)))]
         input: String,
         #[arg(long, help = "Only clear the row with this modifier (default: all rows for the input)", add = ArgValueCandidates::new(CatalogValueCompleter(CatalogKind::Modifier)))]
@@ -230,8 +230,8 @@ pub enum Commands {
     Bindings {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(long, help = "Restrict output to a single sub-profile by name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
-        sub_profile: Option<String>,
+        #[arg(long, help = "Restrict output to a single sub-profile by index (0-based)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        sub_profile: Option<usize>,
     },
     #[command(
         about = "Install a profile from a path, URL, or community-index name",
@@ -329,15 +329,15 @@ pub enum SubprofileCmd {
     Delete {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
-        name: String,
+        #[arg(help = "Sub-profile index (0-based)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        index: usize,
     },
     #[command(about = "Rename a sub-profile (header only)")]
     Rename {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Existing sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
-        from: String,
+        #[arg(help = "Sub-profile index (0-based)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        index: usize,
         #[arg(help = "New sub-profile name")]
         to: String,
     },
@@ -345,8 +345,8 @@ pub enum SubprofileCmd {
     Clone {
         #[arg(help = "Profile name, file path, or '-' for stdin", add = ArgValueCandidates::new(ProfileNameCompleter))]
         target: String,
-        #[arg(help = "Source sub-profile name", add = ArgValueCandidates::new(SubProfileNameCompleter))]
-        from: String,
+        #[arg(help = "Sub-profile index (0-based)", add = ArgValueCandidates::new(SubProfileIndexCompleter))]
+        index: usize,
         #[arg(help = "Destination sub-profile name")]
         to: String,
     },

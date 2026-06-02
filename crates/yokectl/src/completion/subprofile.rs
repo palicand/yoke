@@ -2,21 +2,22 @@ use clap_complete::CompletionCandidate;
 use std::ffi::OsString;
 
 #[derive(Clone)]
-pub struct SubProfileNameCompleter;
+pub struct SubProfileIndexCompleter;
 
-impl clap_complete::engine::ValueCandidates for SubProfileNameCompleter {
+impl clap_complete::engine::ValueCandidates for SubProfileIndexCompleter {
     fn candidates(&self) -> Vec<CompletionCandidate> {
         let argv: Vec<OsString> = std::env::args_os().collect();
-        names_from_argv(&argv)
+        index_candidates_from_argv(&argv)
             .into_iter()
-            .map(CompletionCandidate::new)
+            .map(|(idx, label)| CompletionCandidate::new(idx).help(Some(label.into())))
             .collect()
     }
 }
 
-/// Reads the profile identified by the first positional target in argv and
-/// returns the names of all sub-profiles within it.
-fn names_from_argv(argv: &[OsString]) -> Vec<String> {
+/// Reads the profile identified by the first positional target in argv and returns
+/// (index, label) pairs for every sub-profile, where label mirrors the GUI/`bindings`
+/// display ("Left joy · Normal").
+fn index_candidates_from_argv(argv: &[OsString]) -> Vec<(String, String)> {
     let provider = super::resolve_backend_for_completion(argv);
     let Some(target_str) = first_positional_target(argv) else {
         return Vec::new();
@@ -37,14 +38,32 @@ fn names_from_argv(argv: &[OsString]) -> Vec<String> {
             parsed
                 .model
                 .sub_profiles
-                .into_iter()
-                .map(|sp| sp.header.profile_name)
+                .iter()
+                .enumerate()
+                .map(|(i, sp)| (i.to_string(), sub_profile_label(sp)))
                 .collect()
         })
         .unwrap_or_default()
 }
 
-// Skips the binary name, global flags, and the subcommand keyword; returns the next non-flag token.
+fn sub_profile_label(sp: &yoke_config::model::SubProfile) -> String {
+    let base = {
+        let name = sp.header.profile_name.trim();
+        if name.is_empty() {
+            sp.header.mode.canonical_csv()
+        } else {
+            name.to_owned()
+        }
+    };
+    let sub = sp.header.sub_mode.trim();
+    if sub.is_empty() {
+        base
+    } else {
+        format!("{base} · {sub}")
+    }
+}
+
+// Skips the binary name, global flags, and the subcommand keyword(s); returns the next non-flag token.
 fn first_positional_target(argv: &[OsString]) -> Option<String> {
     // `clap_complete`'s `CompleteEnv` invokes us as `<bin> -- <bin> <user line...>`,
     // so the real command line begins after the `--` separator and is prefixed by a
@@ -54,7 +73,10 @@ fn first_positional_target(argv: &[OsString]) -> Option<String> {
         .iter()
         .position(|a| a == "--")
         .map_or_else(|| argv.iter().skip(1), |i| argv.iter().skip(i + 2));
-    let mut seen_subcommand = false;
+    // `subprofile` is the only command with a nested subcommand (`subprofile delete <target>`),
+    // so its target sits one keyword further in than a flat command's; skip two keywords there.
+    let mut keywords_to_skip = 1usize;
+    let mut skipped = 0usize;
     while let Some(arg) = it.next() {
         let s = arg.to_string_lossy();
         if s == "--fake-volume" {
@@ -64,8 +86,11 @@ fn first_positional_target(argv: &[OsString]) -> Option<String> {
         if s.starts_with('-') {
             continue;
         }
-        if !seen_subcommand {
-            seen_subcommand = true;
+        if skipped == 0 && s == "subprofile" {
+            keywords_to_skip = 2;
+        }
+        if skipped < keywords_to_skip {
+            skipped += 1;
             continue;
         }
         return Some(s.into_owned());
@@ -92,6 +117,19 @@ mod tests {
     }
 
     #[test]
+    fn first_positional_skips_nested_subprofile_subcommand() {
+        // `subprofile <cmd> <target>` nests one level: the target is the token after the
+        // nested subcommand keyword, not the keyword itself.
+        let argv = [
+            OsString::from("yokectl"),
+            OsString::from("subprofile"),
+            OsString::from("delete"),
+            OsString::from("default"),
+        ];
+        assert_eq!(first_positional_target(&argv), Some("default".to_string()));
+    }
+
+    #[test]
     fn first_positional_handles_complete_env_argv() {
         // The shape clap_complete actually injects: `<bin> -- <bin> <user line...>`.
         let argv = [
@@ -105,5 +143,26 @@ mod tests {
             OsString::from("Main"),
         ];
         assert_eq!(first_positional_target(&argv), Some("default".to_string()));
+    }
+
+    #[test]
+    fn index_candidates_label_each_sub_profile() {
+        // <bin> <subcommand> <target> ... ; target resolves to a local file fixture.
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../yoke-edit/tests/fixtures/default.csv"
+        );
+        let argv = [
+            OsString::from("yokectl"),
+            OsString::from("update-binding"),
+            OsString::from(path),
+        ];
+        let cands = index_candidates_from_argv(&argv);
+        assert_eq!(cands.len(), 7, "default.csv has 7 sub-profiles");
+        assert_eq!(cands[0].0, "0");
+        assert!(
+            !cands[0].1.is_empty(),
+            "each candidate carries a display label"
+        );
     }
 }

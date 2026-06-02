@@ -53,64 +53,86 @@ pub fn group_bindings(profile: &Profile) -> Vec<GroupedSubProfile<'_>> {
         .collect()
 }
 
+/// Builds the JSON envelope for `bindings`, carrying each group's true index so a
+/// filtered query keeps the original `sub_profile_index` rather than re-counting from 0.
+pub(crate) fn bindings_json(
+    groups_with_index: &[(usize, &GroupedSubProfile)],
+) -> serde_json::Value {
+    serde_json::json!({
+        "sub_profiles": groups_with_index.iter().map(|(i, g)| serde_json::json!({
+            "sub_profile_index": i,
+            "name": g.name,
+            "mode": g.mode,
+            "channel": g.channel,
+            "sub_mode": if g.sub_mode.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(g.sub_mode.to_string()) },
+            "bindings": g.bindings.iter().map(|b| serde_json::json!({
+                "input": b.input, "output": b.output, "modifier": b.modifier,
+            })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+    })
+}
+
+/// Numbers items by their declaration-order index — the address every edit op uses and that
+/// `bindings`/`preferences` show the user — then, when `idx` is set, keeps only that index.
+/// An out-of-range index refuses (the index the user passes must match what they were shown)
+/// rather than silently emitting nothing.
+fn number_and_filter<T>(
+    items: &[T],
+    idx: Option<usize>,
+) -> Result<Vec<(usize, &T)>, crate::error::CliError> {
+    let mut numbered: Vec<(usize, &T)> = items.iter().enumerate().collect();
+    if let Some(i) = idx {
+        if i >= numbered.len() {
+            return Err(crate::error::CliError::SubProfileIndexOutOfRange {
+                index: i,
+                len: numbered.len(),
+            });
+        }
+        numbered.retain(|(j, _)| *j == i);
+    }
+    Ok(numbered)
+}
+
 pub fn run_bindings(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    sub_profile: Option<&str>,
+    sub_profile: Option<usize>,
 ) -> Result<()> {
     let t = crate::target::Target::classify(target);
     let bytes = t.read_bytes(provider.as_ref())?;
     let parsed = yoke_config::parse(&bytes).context("parsing profile")?;
-    let mut groups = group_bindings(&parsed.model);
-    if let Some(filter) = sub_profile {
-        if !groups.iter().any(|g| g.name == filter) {
-            return Err(anyhow::Error::from(
-                yoke_edit::EditError::SubProfileNotFound {
-                    name: filter.to_string(),
-                },
-            ));
-        }
-        groups.retain(|g| g.name == filter);
-    }
-    out.emit(
-        &serde_json::json!({
-            "sub_profiles": groups.iter().map(|g| serde_json::json!({
-                "name": g.name,
-                "mode": g.mode,
-                "channel": g.channel,
-                "sub_mode": if g.sub_mode.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(g.sub_mode.to_string()) },
-                "bindings": g.bindings.iter().map(|b| serde_json::json!({
-                    "input": b.input, "output": b.output, "modifier": b.modifier,
-                })).collect::<Vec<_>>(),
-            })).collect::<Vec<_>>(),
-        }),
-        |w| {
-            // The default modifier is suppressed so the common case stays clean
-            // (mirrors the binding-row pill convention); derive it from the typed
-            // default rather than hardcoding the keyword.
-            let default_modifier = yoke_config::catalog::Modifier::Normal.to_csv();
-            for (i, g) in groups.iter().enumerate() {
-                if i > 0 {
-                    writeln!(w)?;
-                }
-                writeln!(w, "{} (mode={} channel={})", g.name, g.mode, g.channel)?;
-                if g.bindings.is_empty() {
-                    writeln!(w, "  (no bindings)")?;
-                } else {
-                    for b in &g.bindings {
-                        let input = b.input.as_deref().unwrap_or("(none)");
-                        if b.modifier == default_modifier {
-                            writeln!(w, "  {:<15} -> {}", input, b.output)?;
-                        } else {
-                            writeln!(w, "  {:<15} -> {} [{}]", input, b.output, b.modifier)?;
-                        }
+    let groups = group_bindings(&parsed.model);
+    let numbered = number_and_filter(&groups, sub_profile)?;
+    out.emit(&bindings_json(&numbered), |w| {
+        // The default modifier is suppressed so the common case stays clean
+        // (mirrors the binding-row pill convention); derive it from the typed
+        // default rather than hardcoding the keyword.
+        let default_modifier = yoke_config::catalog::Modifier::Normal.to_csv();
+        for (pos, (i, g)) in numbered.iter().enumerate() {
+            if pos > 0 {
+                writeln!(w)?;
+            }
+            writeln!(
+                w,
+                "[#{i}] {} (mode={} channel={})",
+                g.name, g.mode, g.channel
+            )?;
+            if g.bindings.is_empty() {
+                writeln!(w, "  (no bindings)")?;
+            } else {
+                for b in &g.bindings {
+                    let input = b.input.as_deref().unwrap_or("(none)");
+                    if b.modifier == default_modifier {
+                        writeln!(w, "  {:<15} -> {}", input, b.output)?;
+                    } else {
+                        writeln!(w, "  {:<15} -> {} [{}]", input, b.output, b.modifier)?;
                     }
                 }
             }
-            Ok(())
-        },
-    )
+        }
+        Ok(())
+    })
 }
 
 /// `overridden` is set whenever the sub-profile carries an override for this key,
@@ -121,16 +143,22 @@ pub struct EffectivePrefValue {
     pub overridden: bool,
 }
 
+/// One sub-profile's resolved preferences, paired with its display name (positional index
+/// is the `Vec` position).
+type EffectiveEntry = (String, BTreeMap<String, EffectivePrefValue>);
+/// One sub-profile's raw overrides, paired with its display name.
+type RawEntry = (String, BTreeMap<String, String>);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectivePreferences {
     pub top_level: BTreeMap<String, String>,
-    pub per_sub_profile: Vec<(String, BTreeMap<String, EffectivePrefValue>)>,
+    pub per_sub_profile: Vec<EffectiveEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawPreferences {
     pub top_level: BTreeMap<String, String>,
-    pub per_sub_profile_overrides: Vec<(String, BTreeMap<String, String>)>,
+    pub per_sub_profile_overrides: Vec<RawEntry>,
 }
 
 #[must_use]
@@ -218,45 +246,36 @@ pub fn run_preferences(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    sub_profile: Option<&str>,
+    sub_profile: Option<usize>,
     raw: bool,
 ) -> Result<()> {
     let t = crate::target::Target::classify(target);
     let bytes = t.read_bytes(provider.as_ref())?;
     let parsed = yoke_config::parse(&bytes).context("parsing profile")?;
-    if let Some(filter) = sub_profile
-        && !parsed
-            .model
-            .sub_profiles
-            .iter()
-            .any(|sp| sp.header.profile_name == filter)
-    {
-        return Err(anyhow::Error::from(
-            yoke_edit::EditError::SubProfileNotFound {
-                name: filter.to_string(),
-            },
-        ));
-    }
     if raw {
-        let mut data = raw_preferences(&parsed.model);
-        if let Some(filter) = sub_profile {
-            data.per_sub_profile_overrides.retain(|(n, _)| n == filter);
-        }
-        emit_raw_preferences(out, &data)
+        let data = raw_preferences(&parsed.model);
+        let numbered = number_and_filter(&data.per_sub_profile_overrides, sub_profile)?;
+        emit_raw_preferences(out, &data.top_level, &numbered)
     } else {
-        let mut data = effective_preferences(&parsed.model);
-        if let Some(filter) = sub_profile {
-            data.per_sub_profile.retain(|(n, _)| n == filter);
-        }
-        emit_effective_preferences(out, &data)
+        let data = effective_preferences(&parsed.model);
+        let numbered = number_and_filter(&data.per_sub_profile, sub_profile)?;
+        emit_effective_preferences(out, &data.top_level, &numbered)
     }
 }
 
-fn emit_effective_preferences(out: &Output, data: &EffectivePreferences) -> Result<()> {
+// `sub_profile_index` is carried alongside each block (and shown as `[#i]`) so a reader can map
+// an override back to the index they must pass to set-override/unset-override — names are not
+// unique, so the index is the only unambiguous handle.
+fn emit_effective_preferences(
+    out: &Output,
+    top_level: &BTreeMap<String, String>,
+    subs: &[(usize, &EffectiveEntry)],
+) -> Result<()> {
     out.emit(
         &serde_json::json!({
-            "top_level": data.top_level,
-            "sub_profiles": data.per_sub_profile.iter().map(|(name, prefs)| serde_json::json!({
+            "top_level": top_level,
+            "sub_profiles": subs.iter().map(|(i, (name, prefs))| serde_json::json!({
+                "sub_profile_index": i,
                 "name": name,
                 "preferences": prefs.iter().map(|(k, v)| (k.clone(), serde_json::json!({
                     "value": v.value, "overridden": v.overridden,
@@ -265,12 +284,12 @@ fn emit_effective_preferences(out: &Output, data: &EffectivePreferences) -> Resu
         }),
         |w| {
             writeln!(w, "Top-level:")?;
-            for (k, v) in &data.top_level {
+            for (k, v) in top_level {
                 writeln!(w, "  {k:<25} {v}")?;
             }
-            for (name, prefs) in &data.per_sub_profile {
+            for (i, (name, prefs)) in subs {
                 writeln!(w)?;
-                writeln!(w, "{name}:")?;
+                writeln!(w, "[#{i}] {name}:")?;
                 for (k, v) in prefs {
                     if v.overridden {
                         writeln!(w, "  {k:<25} {:<15} [override]", v.value)?;
@@ -284,23 +303,28 @@ fn emit_effective_preferences(out: &Output, data: &EffectivePreferences) -> Resu
     )
 }
 
-fn emit_raw_preferences(out: &Output, data: &RawPreferences) -> Result<()> {
+fn emit_raw_preferences(
+    out: &Output,
+    top_level: &BTreeMap<String, String>,
+    subs: &[(usize, &RawEntry)],
+) -> Result<()> {
     out.emit(
         &serde_json::json!({
-            "top_level": data.top_level,
-            "sub_profiles": data.per_sub_profile_overrides.iter().map(|(name, ov)| serde_json::json!({
+            "top_level": top_level,
+            "sub_profiles": subs.iter().map(|(i, (name, ov))| serde_json::json!({
+                "sub_profile_index": i,
                 "name": name,
                 "overrides": ov,
             })).collect::<Vec<_>>(),
         }),
         |w| {
             writeln!(w, "Top-level:")?;
-            for (k, v) in &data.top_level {
+            for (k, v) in top_level {
                 writeln!(w, "  {k:<25} {v}")?;
             }
-            for (name, ov) in &data.per_sub_profile_overrides {
+            for (i, (name, ov)) in subs {
                 writeln!(w)?;
-                writeln!(w, "{name} (overrides):")?;
+                writeln!(w, "[#{i}] {name} (overrides):")?;
                 if ov.is_empty() {
                     writeln!(w, "  (none)")?;
                 } else {
@@ -497,6 +521,67 @@ mod tests {
         }
         let g = group_bindings(&p);
         assert_eq!(g[0].bindings[0].modifier, "delay_on 250");
+    }
+
+    fn profile_with_three_sub_profiles() -> Profile {
+        let sub = |name: &str| SubProfile {
+            header: SubProfileHeader {
+                profile_name: name.into(),
+                mode: SubProfileMode::Mouse,
+                sub_mode: String::new(),
+                channel: Channel::Usb,
+                column_header_label: "Output or Function".into(),
+            },
+            rows: vec![SubProfileRow::Binding(Binding::new(
+                Output::Touch,
+                Modifier::Normal,
+                Some(Input::Lip { soft: false }),
+            ))],
+        };
+        Profile {
+            top_line: TopLine {
+                label: "QuadStick Configuration".into(),
+                version: "Version 1.4".into(),
+                source: String::new(),
+                title: "Default".into(),
+                trailing_cells: vec![],
+                width: 4,
+            },
+            sub_profiles: vec![sub("Zero"), sub("One"), sub("Two")],
+            preferences: None,
+            infrared: vec![],
+        }
+    }
+
+    #[test]
+    fn bindings_json_numbers_every_group() {
+        let p = profile_with_three_sub_profiles();
+        let groups = group_bindings(&p);
+        let numbered: Vec<(usize, &GroupedSubProfile)> = groups.iter().enumerate().collect();
+        let v = bindings_json(&numbered);
+        let subs = v["sub_profiles"].as_array().expect("array");
+        assert_eq!(subs.len(), 3);
+        for (i, sub) in subs.iter().enumerate() {
+            assert_eq!(sub["sub_profile_index"], serde_json::json!(i));
+        }
+    }
+
+    #[test]
+    fn bindings_json_filtered_keeps_true_index() {
+        let p = profile_with_three_sub_profiles();
+        let groups = group_bindings(&p);
+        // Simulate `--sub-profile 1`: number first, then keep only index 1.
+        let numbered: Vec<(usize, &GroupedSubProfile)> =
+            groups.iter().enumerate().filter(|(i, _)| *i == 1).collect();
+        let v = bindings_json(&numbered);
+        let subs = v["sub_profiles"].as_array().expect("array");
+        assert_eq!(subs.len(), 1);
+        assert_eq!(
+            subs[0]["sub_profile_index"],
+            serde_json::json!(1),
+            "filtered group must keep its original index, not re-count to 0"
+        );
+        assert_eq!(subs[0]["name"], serde_json::json!("One"));
     }
 
     #[test]

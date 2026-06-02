@@ -26,36 +26,38 @@ fn apply_one(profile: Profile, op: &EditOp) -> Result<Profile, EditError> {
             mode,
             sub_mode,
             channel,
-        } => apply_add_sub_profile(profile, name, mode, sub_mode, *channel),
-        EditOp::DeleteSubProfile { name } => apply_delete_sub_profile(profile, name),
-        EditOp::RenameSubProfile { from, to } => apply_rename_sub_profile(profile, from, to),
-        EditOp::CloneSubProfile { from, to } => apply_clone_sub_profile(profile, from, to),
+        } => Ok(apply_add_sub_profile(
+            profile, name, mode, sub_mode, *channel,
+        )),
+        EditOp::DeleteSubProfile { index } => apply_delete_sub_profile(profile, *index),
+        EditOp::RenameSubProfile { index, to } => apply_rename_sub_profile(profile, *index, to),
+        EditOp::CloneSubProfile { index, to } => apply_clone_sub_profile(profile, *index, to),
         EditOp::AddBinding {
             sub_profile,
             input,
             output,
             modifier,
-        } => apply_add_binding(profile, sub_profile, input, output, modifier.as_deref()),
+        } => apply_add_binding(profile, *sub_profile, input, output, modifier.as_deref()),
         EditOp::UpdateBinding {
             sub_profile,
             input,
             output,
             modifier,
-        } => apply_update_binding(profile, sub_profile, input, output, modifier),
+        } => apply_update_binding(profile, *sub_profile, input, output, modifier),
         EditOp::ClearBinding {
             sub_profile,
             input,
             modifier,
-        } => apply_clear_binding(profile, sub_profile, input, modifier.as_deref()),
+        } => apply_clear_binding(profile, *sub_profile, input, modifier.as_deref()),
         EditOp::SetPreference { key, value } => apply_set_preference(profile, key, value),
         EditOp::UnsetPreference { key } => Ok(apply_unset_preference(profile, key)),
         EditOp::SetOverride {
             sub_profile,
             key,
             value,
-        } => apply_set_override(profile, sub_profile, key, value),
+        } => apply_set_override(profile, *sub_profile, key, value),
         EditOp::UnsetOverride { sub_profile, key } => {
-            apply_unset_override(profile, sub_profile, key)
+            apply_unset_override(profile, *sub_profile, key)
         }
     }
 }
@@ -72,8 +74,7 @@ fn apply_add_sub_profile(
     mode: &yoke_config::catalog::SubProfileMode,
     sub_mode: &str,
     channel: yoke_config::catalog::Channel,
-) -> Result<Profile, EditError> {
-    require_unique_sub_profile_name(&profile, name)?;
+) -> Profile {
     profile.sub_profiles.push(SubProfile {
         header: SubProfileHeader {
             profile_name: name.to_owned(),
@@ -84,11 +85,11 @@ fn apply_add_sub_profile(
         },
         rows: vec![],
     });
-    Ok(profile)
+    profile
 }
 
-fn apply_delete_sub_profile(mut profile: Profile, name: &str) -> Result<Profile, EditError> {
-    let pos = sub_profile_index(&profile, name)?;
+fn apply_delete_sub_profile(mut profile: Profile, index: usize) -> Result<Profile, EditError> {
+    let pos = sub_profile_at(&profile, index)?;
     if profile.sub_profiles.len() == 1 {
         return Err(EditError::LastSubProfileDeletion);
     }
@@ -98,39 +99,24 @@ fn apply_delete_sub_profile(mut profile: Profile, name: &str) -> Result<Profile,
 
 fn apply_rename_sub_profile(
     mut profile: Profile,
-    from: &str,
+    index: usize,
     to: &str,
 ) -> Result<Profile, EditError> {
-    require_unique_sub_profile_name(&profile, to)?;
-    let pos = sub_profile_index(&profile, from)?;
+    let pos = sub_profile_at(&profile, index)?;
     to.clone_into(&mut profile.sub_profiles[pos].header.profile_name);
     Ok(profile)
 }
 
 fn apply_clone_sub_profile(
     mut profile: Profile,
-    from: &str,
+    index: usize,
     to: &str,
 ) -> Result<Profile, EditError> {
-    require_unique_sub_profile_name(&profile, to)?;
-    let pos = sub_profile_index(&profile, from)?;
+    let pos = sub_profile_at(&profile, index)?;
     let mut cloned = profile.sub_profiles[pos].clone();
     to.clone_into(&mut cloned.header.profile_name);
     profile.sub_profiles.push(cloned);
     Ok(profile)
-}
-
-fn require_unique_sub_profile_name(profile: &Profile, name: &str) -> Result<(), EditError> {
-    if profile
-        .sub_profiles
-        .iter()
-        .any(|sp| sp.header.profile_name == name)
-    {
-        return Err(EditError::SubProfileExists {
-            name: name.to_owned(),
-        });
-    }
-    Ok(())
 }
 
 // A binding row is identified by its (input, modifier) pair, which maps to exactly one
@@ -138,12 +124,12 @@ fn require_unique_sub_profile_name(profile: &Profile, name: &str) -> Result<(), 
 // `clear` deletes by input or by the unique (input, modifier) pair (DELETE).
 fn apply_add_binding(
     mut profile: Profile,
-    sub_profile: &str,
+    sub_profile: usize,
     input: &str,
     output: &str,
     modifier: Option<&str>,
 ) -> Result<Profile, EditError> {
-    let sp_idx = sub_profile_index(&profile, sub_profile)?;
+    let sp_idx = sub_profile_at(&profile, sub_profile)?;
     let parsed_input = parse_input(input)?;
     let parsed_output = parse_output(output)?;
     let parsed_modifier = match modifier {
@@ -158,7 +144,7 @@ fn apply_add_binding(
     });
     if let Some(output) = existing_output {
         return Err(EditError::BindingExists {
-            sub_profile: sub_profile.to_owned(),
+            sub_profile,
             input: input.to_owned(),
             modifier: parsed_modifier.to_csv(),
             output,
@@ -174,11 +160,11 @@ fn apply_add_binding(
 
 fn apply_clear_binding(
     mut profile: Profile,
-    sub_profile: &str,
+    sub_profile: usize,
     input: &str,
     modifier: Option<&str>,
 ) -> Result<Profile, EditError> {
-    let sp_idx = sub_profile_index(&profile, sub_profile)?;
+    let sp_idx = sub_profile_at(&profile, sub_profile)?;
     let parsed_input = parse_input(input)?;
     let parsed_modifier = match modifier {
         Some(m) => Some(parse_modifier(m)?),
@@ -196,7 +182,7 @@ fn apply_clear_binding(
     });
     if target.rows.len() == before {
         return Err(EditError::BindingNotFound {
-            sub_profile: sub_profile.to_owned(),
+            sub_profile,
             input: input.to_owned(),
         });
     }
@@ -232,12 +218,12 @@ fn parse_modifier(raw: &str) -> Result<Modifier, EditError> {
 
 fn apply_update_binding(
     mut profile: Profile,
-    sub_profile: &str,
+    sub_profile: usize,
     input: &str,
     output: &str,
     modifier: &str,
 ) -> Result<Profile, EditError> {
-    let sp_idx = sub_profile_index(&profile, sub_profile)?;
+    let sp_idx = sub_profile_at(&profile, sub_profile)?;
     let parsed_input = parse_input(input)?;
     let parsed_output = parse_output(output)?;
     let parsed_modifier = parse_modifier(modifier)?;
@@ -271,7 +257,7 @@ fn apply_update_binding(
     }
     match (by_modifier.as_slice(), by_output.as_slice()) {
         ([], []) => Err(EditError::BindingNotFound {
-            sub_profile: sub_profile.to_owned(),
+            sub_profile,
             input: input.to_owned(),
         }),
         ([i], []) => {
@@ -287,7 +273,7 @@ fn apply_update_binding(
             Ok(profile)
         }
         _ => Err(EditError::AmbiguousBinding {
-            sub_profile: sub_profile.to_owned(),
+            sub_profile,
             input: input.to_owned(),
             output: output.to_owned(),
         }),
@@ -320,14 +306,13 @@ fn parse_output(raw: &str) -> Result<Output, EditError> {
     }
 }
 
-fn sub_profile_index(profile: &Profile, name: &str) -> Result<usize, EditError> {
-    profile
-        .sub_profiles
-        .iter()
-        .position(|sp| sp.header.profile_name == name)
-        .ok_or_else(|| EditError::SubProfileNotFound {
-            name: name.to_owned(),
-        })
+const fn sub_profile_at(profile: &Profile, index: usize) -> Result<usize, EditError> {
+    let len = profile.sub_profiles.len();
+    if index < len {
+        Ok(index)
+    } else {
+        Err(EditError::SubProfileIndexOutOfRange { index, len })
+    }
 }
 
 fn lookup_preference_spec(key: &str) -> Result<PreferenceSpec, EditError> {
@@ -412,11 +397,11 @@ fn apply_unset_preference(mut profile: Profile, key: &str) -> Profile {
 
 fn apply_set_override(
     mut profile: Profile,
-    sub_profile: &str,
+    sub_profile: usize,
     key: &str,
     value: &PreferenceValue,
 ) -> Result<Profile, EditError> {
-    let sp_idx = sub_profile_index(&profile, sub_profile)?;
+    let sp_idx = sub_profile_at(&profile, sub_profile)?;
     let spec = lookup_preference_spec(key)?;
     let raw = coerce_value(&spec, value)?;
     let target = &mut profile.sub_profiles[sp_idx];
@@ -441,10 +426,10 @@ fn apply_set_override(
 
 fn apply_unset_override(
     mut profile: Profile,
-    sub_profile: &str,
+    sub_profile: usize,
     key: &str,
 ) -> Result<Profile, EditError> {
-    let sp_idx = sub_profile_index(&profile, sub_profile)?;
+    let sp_idx = sub_profile_at(&profile, sub_profile)?;
     let target_key = PreferenceSpec::for_id(key).map(|s| PreferenceKey::Known(s.key));
     let target = &mut profile.sub_profiles[sp_idx];
     target.rows.retain(|r| match r {
@@ -532,10 +517,11 @@ mod tests {
     }
 
     #[test]
-    fn add_sub_profile_rejects_duplicate() {
+    fn add_sub_profile_allows_duplicate_name() {
+        // Names are not unique in real profiles, so name-collision is no longer rejected.
         let mut p = empty_profile();
         p.sub_profiles.push(empty_sp("Main"));
-        let err = apply(
+        let out = apply(
             p,
             &[EditOp::AddSubProfile {
                 name: "Main".into(),
@@ -544,13 +530,9 @@ mod tests {
                 channel: Channel::Usb,
             }],
         )
-        .unwrap_err();
-        assert_eq!(
-            err.error,
-            EditError::SubProfileExists {
-                name: "Main".into()
-            }
-        );
+        .unwrap();
+        assert_eq!(out.sub_profiles.len(), 2);
+        assert_eq!(out.sub_profiles[1].header.profile_name, "Main");
     }
 
     #[test]
@@ -558,26 +540,19 @@ mod tests {
         let mut p = empty_profile();
         p.sub_profiles.push(empty_sp("Main"));
         p.sub_profiles.push(empty_sp("Alt"));
-        let out = apply(p, &[EditOp::DeleteSubProfile { name: "Alt".into() }]).unwrap();
+        let out = apply(p, &[EditOp::DeleteSubProfile { index: 1 }]).unwrap();
         assert_eq!(out.sub_profiles.len(), 1);
         assert_eq!(out.sub_profiles[0].header.profile_name, "Main");
     }
 
     #[test]
-    fn delete_sub_profile_rejects_missing() {
-        let p = empty_profile();
-        let err = apply(
-            p,
-            &[EditOp::DeleteSubProfile {
-                name: "Ghost".into(),
-            }],
-        )
-        .unwrap_err();
+    fn delete_sub_profile_rejects_out_of_range() {
+        let mut p = empty_profile();
+        p.sub_profiles.push(empty_sp("Main"));
+        let err = apply(p, &[EditOp::DeleteSubProfile { index: 5 }]).unwrap_err();
         assert_eq!(
             err.error,
-            EditError::SubProfileNotFound {
-                name: "Ghost".into()
-            }
+            EditError::SubProfileIndexOutOfRange { index: 5, len: 1 }
         );
     }
 
@@ -585,13 +560,7 @@ mod tests {
     fn delete_sub_profile_refuses_last_remaining() {
         let mut p = empty_profile();
         p.sub_profiles.push(empty_sp("OnlyOne"));
-        let err = apply(
-            p,
-            &[EditOp::DeleteSubProfile {
-                name: "OnlyOne".into(),
-            }],
-        )
-        .unwrap_err();
+        let err = apply(p, &[EditOp::DeleteSubProfile { index: 0 }]).unwrap_err();
         assert_eq!(err.error, EditError::LastSubProfileDeletion);
     }
 
@@ -602,7 +571,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::RenameSubProfile {
-                from: "Main".into(),
+                index: 0,
                 to: "Cougar".into(),
             }],
         )
@@ -611,21 +580,38 @@ mod tests {
     }
 
     #[test]
-    fn rename_sub_profile_rejects_target_collision() {
+    fn rename_sub_profile_allows_name_collision() {
+        // Names need not be unique, so renaming to a name another layer already uses succeeds.
         let mut p = empty_profile();
         p.sub_profiles.push(empty_sp("Main"));
         p.sub_profiles.push(empty_sp("Alt"));
+        let out = apply(
+            p,
+            &[EditOp::RenameSubProfile {
+                index: 0,
+                to: "Alt".into(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(out.sub_profiles[0].header.profile_name, "Alt");
+        assert_eq!(out.sub_profiles[1].header.profile_name, "Alt");
+    }
+
+    #[test]
+    fn rename_sub_profile_rejects_out_of_range() {
+        let mut p = empty_profile();
+        p.sub_profiles.push(empty_sp("Main"));
         let err = apply(
             p,
             &[EditOp::RenameSubProfile {
-                from: "Main".into(),
-                to: "Alt".into(),
+                index: 3,
+                to: "Cougar".into(),
             }],
         )
         .unwrap_err();
         assert_eq!(
             err.error,
-            EditError::SubProfileExists { name: "Alt".into() }
+            EditError::SubProfileIndexOutOfRange { index: 3, len: 1 }
         );
     }
 
@@ -636,7 +622,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::CloneSubProfile {
-                from: "Main".into(),
+                index: 0,
                 to: "MainCopy".into(),
             }],
         )
@@ -658,7 +644,7 @@ mod tests {
                     channel: Channel::Usb,
                 },
                 EditOp::RenameSubProfile {
-                    from: "A".into(),
+                    index: 0,
                     to: "B".into(),
                 },
             ],
@@ -674,9 +660,7 @@ mod tests {
             p,
             &[
                 EditOp::SetTitle { title: "Ok".into() },
-                EditOp::DeleteSubProfile {
-                    name: "Ghost".into(),
-                },
+                EditOp::DeleteSubProfile { index: 0 },
             ],
         )
         .unwrap_err();
@@ -708,7 +692,7 @@ mod tests {
         let out = apply(
             main_with(vec![]),
             &[EditOp::AddBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
                 modifier: Some("toggle".into()),
@@ -727,7 +711,7 @@ mod tests {
         let out = apply(
             main_with(vec![]),
             &[EditOp::AddBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
                 modifier: None,
@@ -748,7 +732,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::AddBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
                 modifier: Some("toggle".into()),
@@ -769,7 +753,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::AddBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
                 modifier: Some("toggle".into()),
@@ -790,7 +774,7 @@ mod tests {
         let err = apply(
             p,
             &[EditOp::AddBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_b".into(),
                 modifier: Some("toggle".into()),
@@ -817,7 +801,7 @@ mod tests {
         let err = apply(
             main_with(vec![]),
             &[EditOp::AddBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_sof".into(),
                 output: "kb_a".into(),
                 modifier: None,
@@ -841,7 +825,7 @@ mod tests {
         let err = apply(
             main_with(vec![]),
             &[EditOp::AddBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_eter".into(),
                 modifier: None,
@@ -868,7 +852,7 @@ mod tests {
         let err = apply(
             main_with(vec![]),
             &[EditOp::AddBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
                 modifier: Some("togle".into()),
@@ -897,7 +881,7 @@ mod tests {
         let err = apply(
             main_with(vec![]),
             &[EditOp::AddBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
                 modifier: Some("delay_on abc".into()),
@@ -914,11 +898,11 @@ mod tests {
     }
 
     #[test]
-    fn add_binding_rejects_missing_sub_profile() {
+    fn add_binding_rejects_out_of_range_sub_profile() {
         let err = apply(
             empty_profile(),
             &[EditOp::AddBinding {
-                sub_profile: "Ghost".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_enter".into(),
                 modifier: None,
@@ -927,9 +911,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.error,
-            EditError::SubProfileNotFound {
-                name: "Ghost".into()
-            }
+            EditError::SubProfileIndexOutOfRange { index: 0, len: 0 }
         );
     }
 
@@ -946,7 +928,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::UpdateBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_b".into(),
                 modifier: "toggle".into(),
@@ -972,7 +954,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::UpdateBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
                 modifier: "delay_on 250".into(),
@@ -997,7 +979,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::UpdateBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
                 modifier: "toggle".into(),
@@ -1012,7 +994,7 @@ mod tests {
         let err = apply(
             main_with(vec![]),
             &[EditOp::UpdateBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
                 modifier: "toggle".into(),
@@ -1022,7 +1004,7 @@ mod tests {
         assert_eq!(
             err.error,
             EditError::BindingNotFound {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
             }
         );
@@ -1039,7 +1021,7 @@ mod tests {
         let err = apply(
             p,
             &[EditOp::UpdateBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_b".into(),
                 modifier: "toggle".into(),
@@ -1049,7 +1031,7 @@ mod tests {
         assert_eq!(
             err.error,
             EditError::BindingNotFound {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
             }
         );
@@ -1073,7 +1055,7 @@ mod tests {
         let err = apply(
             p,
             &[EditOp::UpdateBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
                 modifier: "delay_on 250".into(),
@@ -1083,7 +1065,7 @@ mod tests {
         assert_eq!(
             err.error,
             EditError::AmbiguousBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_a".into(),
             }
@@ -1108,7 +1090,7 @@ mod tests {
         let err = apply(
             p,
             &[EditOp::UpdateBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_b".into(),
                 modifier: "toggle".into(),
@@ -1118,7 +1100,7 @@ mod tests {
         assert_eq!(
             err.error,
             EditError::AmbiguousBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 output: "kb_b".into(),
             }
@@ -1149,7 +1131,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::ClearBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 modifier: None,
             }],
@@ -1177,7 +1159,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::ClearBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 modifier: Some("toggle".into()),
             }],
@@ -1194,7 +1176,7 @@ mod tests {
         let err = apply(
             main_with(vec![]),
             &[EditOp::ClearBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 modifier: None,
             }],
@@ -1203,7 +1185,7 @@ mod tests {
         assert_eq!(
             err.error,
             EditError::BindingNotFound {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
             }
         );
@@ -1219,7 +1201,7 @@ mod tests {
         let err = apply(
             p,
             &[EditOp::ClearBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
                 modifier: Some("toggle".into()),
             }],
@@ -1228,7 +1210,7 @@ mod tests {
         assert_eq!(
             err.error,
             EditError::BindingNotFound {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_soft".into(),
             }
         );
@@ -1239,7 +1221,7 @@ mod tests {
         let err = apply(
             main_with(vec![]),
             &[EditOp::ClearBinding {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 input: "lip_sof".into(),
                 modifier: None,
             }],
@@ -1375,7 +1357,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::SetOverride {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 key: "volume".into(),
                 value: PreferenceValue::Number(70),
             }],
@@ -1399,7 +1381,7 @@ mod tests {
         let out = apply(
             p,
             &[EditOp::UnsetOverride {
-                sub_profile: "Main".into(),
+                sub_profile: 0,
                 key: "volume".into(),
             }],
         )
@@ -1418,9 +1400,7 @@ mod tests {
                 EditOp::SetTitle {
                     title: "New".into(),
                 },
-                EditOp::DeleteSubProfile {
-                    name: "Ghost".into(),
-                },
+                EditOp::DeleteSubProfile { index: 5 },
             ],
         )
         .unwrap_err();

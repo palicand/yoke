@@ -14,7 +14,7 @@ proptest! {
             .map(|_| EditOp::SetTitle { title: "A".into() })
             .collect();
         ops.push(EditOp::AddBinding {
-            sub_profile: "DoesNotExist".into(),
+            sub_profile: 99,
             input: "lip".into(),
             output: "touch".into(),
             modifier: None,

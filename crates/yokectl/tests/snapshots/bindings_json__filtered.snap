@@ -15,7 +15,8 @@ expression: stdout
       "channel": "usb",
       "mode": "Mouse",
       "name": "Main",
-      "sub_mode": "Normal"
+      "sub_mode": "Normal",
+      "sub_profile_index": 0
     }
   ]
 }

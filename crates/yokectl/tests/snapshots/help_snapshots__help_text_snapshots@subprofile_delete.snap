@@ -4,11 +4,11 @@ expression: stdout
 ---
 Delete a sub-profile (errors on the last remaining one)
 
-Usage: yokectl subprofile delete [OPTIONS] <TARGET> <NAME>
+Usage: yokectl subprofile delete [OPTIONS] <TARGET> <INDEX>
 
 Arguments:
   <TARGET>  Profile name, file path, or '-' for stdin
-  <NAME>    Sub-profile name
+  <INDEX>   Sub-profile index (0-based)
 
 Options:
       --fake-volume <FAKE_VOLUME>  Use a directory as a fake volume backend instead of the platform device

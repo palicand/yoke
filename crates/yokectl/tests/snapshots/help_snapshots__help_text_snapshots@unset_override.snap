@@ -8,7 +8,7 @@ Usage: yokectl unset-override [OPTIONS] <TARGET> <SUB_PROFILE> <KEY>
 
 Arguments:
   <TARGET>       Profile name, file path, or '-' for stdin
-  <SUB_PROFILE>  Sub-profile name
+  <SUB_PROFILE>  Sub-profile index (0-based; see `yokectl bindings`)
   <KEY>          Preference key
 
 Options:

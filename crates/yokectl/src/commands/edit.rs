@@ -118,7 +118,7 @@ pub fn run_set_override(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    sp: &str,
+    sp: usize,
     key: &str,
     value: &str,
 ) -> Result<()> {
@@ -127,12 +127,12 @@ pub fn run_set_override(
         out,
         target,
         EditOp::SetOverride {
-            sub_profile: sp.to_string(),
+            sub_profile: sp,
             key: key.to_string(),
             value: parse_pref_value(value),
         },
         &serde_json::json!({"action": "set-override", "sub_profile": sp, "key": key}),
-        |w| writeln!(w, "override {sp}.{key} = {value}"),
+        |w| writeln!(w, "override [#{sp}].{key} = {value}"),
     )
 }
 
@@ -140,7 +140,7 @@ pub fn run_unset_override(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    sp: &str,
+    sp: usize,
     key: &str,
 ) -> Result<()> {
     apply_single(
@@ -148,11 +148,11 @@ pub fn run_unset_override(
         out,
         target,
         EditOp::UnsetOverride {
-            sub_profile: sp.to_string(),
+            sub_profile: sp,
             key: key.to_string(),
         },
         &serde_json::json!({"action": "unset-override", "sub_profile": sp, "key": key}),
-        |w| writeln!(w, "override {sp}.{key} cleared"),
+        |w| writeln!(w, "override [#{sp}].{key} cleared"),
     )
 }
 
@@ -160,7 +160,7 @@ pub fn run_add_binding(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    sp: &str,
+    sp: usize,
     input: &str,
     output_s: &str,
     modifier: Option<&str>,
@@ -170,7 +170,7 @@ pub fn run_add_binding(
         out,
         target,
         EditOp::AddBinding {
-            sub_profile: sp.to_string(),
+            sub_profile: sp,
             input: input.to_string(),
             output: output_s.to_string(),
             modifier: modifier.map(str::to_string),
@@ -184,7 +184,7 @@ pub fn run_update_binding(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    sp: &str,
+    sp: usize,
     input: &str,
     output_s: &str,
     modifier: &str,
@@ -194,7 +194,7 @@ pub fn run_update_binding(
         out,
         target,
         EditOp::UpdateBinding {
-            sub_profile: sp.to_string(),
+            sub_profile: sp,
             input: input.to_string(),
             output: output_s.to_string(),
             modifier: modifier.to_string(),
@@ -208,7 +208,7 @@ pub fn run_clear_binding(
     provider: &Arc<dyn VolumeProvider>,
     out: &Output,
     target: &str,
-    sp: &str,
+    sp: usize,
     input: &str,
     modifier: Option<&str>,
 ) -> Result<()> {
@@ -217,7 +217,7 @@ pub fn run_clear_binding(
         out,
         target,
         EditOp::ClearBinding {
-            sub_profile: sp.to_string(),
+            sub_profile: sp,
             input: input.to_string(),
             modifier: modifier.map(str::to_string),
         },

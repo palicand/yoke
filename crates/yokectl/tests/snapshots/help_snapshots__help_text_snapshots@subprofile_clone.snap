@@ -4,11 +4,11 @@ expression: stdout
 ---
 Duplicate a sub-profile under a new name
 
-Usage: yokectl subprofile clone [OPTIONS] <TARGET> <FROM> <TO>
+Usage: yokectl subprofile clone [OPTIONS] <TARGET> <INDEX> <TO>
 
 Arguments:
   <TARGET>  Profile name, file path, or '-' for stdin
-  <FROM>    Source sub-profile name
+  <INDEX>   Sub-profile index (0-based)
   <TO>      Destination sub-profile name
 
 Options:

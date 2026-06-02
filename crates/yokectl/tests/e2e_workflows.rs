@@ -39,16 +39,11 @@ fn subprofile_lifecycle_add_clone_rename_delete() {
             "subprofile",
             "clone",
             "default",
-            "Alt",
+            "1",
             "Alt2",
         ])
         .assert()
         .success();
-    // NOTE: rename intentionally runs in isolation here rather than chained
-    // with a follow-up delete. The template-fidelity writer preserves the
-    // existing sub-profile header rows verbatim, so the renamed name does not
-    // round-trip through the file yet (pre-existing bug to be tracked
-    // separately). The command should still exit successfully.
     yokectl()
         .args([
             "--fake-volume",
@@ -56,20 +51,24 @@ fn subprofile_lifecycle_add_clone_rename_delete() {
             "subprofile",
             "rename",
             "default",
-            "Alt2",
+            "2",
             "Renamed",
         ])
         .assert()
         .success();
+    // The rename keeps the section count, so it stays on the template-fidelity writer;
+    // confirm the new name actually persisted to the file rather than being dropped.
+    let bindings = yokectl()
+        .args(["--json", "--fake-volume", vol, "bindings", "default"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let v: serde_json::Value = serde_json::from_slice(&bindings).unwrap();
+    assert_eq!(v["sub_profiles"][2]["name"], "Renamed");
     yokectl()
-        .args([
-            "--fake-volume",
-            vol,
-            "subprofile",
-            "delete",
-            "default",
-            "Alt",
-        ])
+        .args(["--fake-volume", vol, "subprofile", "delete", "default", "1"])
         .assert()
         .success();
 }

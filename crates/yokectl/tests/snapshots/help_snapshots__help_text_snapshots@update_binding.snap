@@ -8,7 +8,7 @@ Usage: yokectl update-binding [OPTIONS] --modifier <MODIFIER> <TARGET> <SUB_PROF
 
 Arguments:
   <TARGET>       Profile name, file path, or '-' for stdin
-  <SUB_PROFILE>  Sub-profile name
+  <SUB_PROFILE>  Sub-profile index (0-based; see `yokectl bindings`)
   <INPUT>        Input phrase (validated against catalog::inputs)
   <OUTPUT>       Output name (validated against catalog::outputs)
 
