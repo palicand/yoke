@@ -12,6 +12,66 @@ use {yoke_index::IndexEntry, yoke_volume::ProfileName};
 #[cfg(target_arch = "wasm32")]
 type ProfileName = String;
 
+/// What the open picker edits. Captured at open time, including the
+/// sub-profile index, so a row is always addressed by the state the user saw.
+#[derive(Debug, Clone)]
+pub enum PickerTarget {
+    AddBinding {
+        input: String,
+    },
+    EditOutput {
+        input: String,
+        modifier: String,
+    },
+    EditModifier {
+        input: String,
+        output: String,
+        modifier: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct PickerState {
+    pub sub: usize,
+    pub target: PickerTarget,
+    pub search: String,
+    pub category: Option<&'static str>,
+    pub capture_armed: bool,
+    pub capture_error: Option<String>,
+    pub keyword: String,
+    pub args: Vec<String>,
+}
+
+impl PickerState {
+    fn new(sub: usize, target: PickerTarget) -> Self {
+        let (keyword, args) = match &target {
+            PickerTarget::EditModifier { modifier, .. } => seed_modifier_fields(modifier),
+            _ => ("normal".to_owned(), Vec::new()),
+        };
+        Self {
+            sub,
+            target,
+            search: String::new(),
+            category: None,
+            capture_armed: false,
+            capture_error: None,
+            keyword,
+            args,
+        }
+    }
+}
+
+/// Split an existing modifier csv (`"delay_on 1000"`) into keyword + padded
+/// argument fields so the editor opens pre-filled.
+fn seed_modifier_fields(modifier: &str) -> (String, Vec<String>) {
+    let mut tokens = modifier.split_whitespace();
+    let keyword = tokens.next().unwrap_or("normal").to_owned();
+    let labels = crate::edit::modifier_arg_labels(&keyword);
+    let mut args: Vec<String> = tokens.map(ToOwned::to_owned).collect();
+    args.resize(labels.len(), String::new());
+    (keyword, args)
+}
+
 /// In-flight profile open. `req` is the monotonic id stamped when the open was
 /// dispatched; events carry it back so a stale result (a slower open finishing
 /// after a newer one, or after the user backed out) can be dropped.
@@ -79,6 +139,9 @@ pub struct YokeApp {
     selected_station: Option<&'static str>,
     selected_subprofile: usize,
     toast: Option<(String, f64)>,
+    // Task 5 renders this; the field exists now so dispatch can store state.
+    #[allow(dead_code)]
+    picker: Option<PickerState>,
     /// The profile open currently in flight (read/download + parse on the
     /// worker); drives the loading overlay. Cleared on the matching
     /// `ProfileOpened`/`FileDialogCancelled`/failure, or when the user backs out.
@@ -113,6 +176,7 @@ impl YokeApp {
             selected_station: None,
             selected_subprofile: 0,
             toast: None,
+            picker: None,
             opening: None,
             next_req: 0,
             community_available,
@@ -136,6 +200,7 @@ impl YokeApp {
             selected_station: None,
             selected_subprofile: 0,
             toast: None,
+            picker: None,
             opening: None,
             next_req: 0,
             community_available,
@@ -227,7 +292,7 @@ impl YokeApp {
         }
     }
 
-    fn set_toast(&mut self, message: String) {
+    pub(crate) fn set_toast(&mut self, message: String) {
         // f64::MAX as "unset" sentinel; expiry is written on first paint in show_toast.
         self.toast = Some((message, f64::MAX));
     }
@@ -485,6 +550,21 @@ impl YokeApp {
     }
     pub(crate) fn send(&self, cmd: AppCommand) {
         self.worker.send(cmd);
+    }
+
+    pub(crate) fn open_picker(&mut self, target: PickerTarget) {
+        self.picker = Some(PickerState::new(self.selected_subprofile, target));
+    }
+
+    pub(crate) fn edit_session_mut(&mut self) -> Option<&mut crate::edit::EditSession> {
+        self.open_profile.as_mut().map(|o| &mut o.session)
+    }
+
+    /// Engine refusals surface as toasts; state was left untouched by `EditSession`.
+    pub(crate) fn report_edit(&mut self, result: Result<(), yoke_edit::EditError>) {
+        if let Err(e) = result {
+            self.set_toast(e.to_string());
+        }
     }
 }
 

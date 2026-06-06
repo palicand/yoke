@@ -116,6 +116,14 @@ pub const fn input_belongs_to(input: &Input) -> Option<&'static str> {
     }
 }
 
+/// Physical inputs belonging to a station, in catalog order.
+#[must_use]
+pub fn station_inputs(station: &str) -> Vec<String> {
+    Input::all_csv_names()
+        .filter(|name| input_belongs_to(&Input::from_csv(name)) == Some(station))
+        .collect()
+}
+
 /// Count bindings per station id for one sub-profile.
 #[must_use]
 pub fn binding_counts(sub: &SubProfile) -> std::collections::HashMap<&'static str, usize> {
@@ -135,6 +143,23 @@ mod tests {
     use super::*;
     use yoke_config::catalog::inputs::SideKind;
     use yoke_config::catalog::{JoyAxis, SipPuff};
+
+    #[test]
+    fn station_inputs_enumerates_lip_inputs() {
+        let inputs = station_inputs("lip");
+        assert!(inputs.contains(&"lip".to_string()));
+        assert!(inputs.contains(&"lip_soft".to_string()));
+        assert!(
+            inputs
+                .iter()
+                .all(|i| { input_belongs_to(&Input::from_csv(i)) == Some("lip") })
+        );
+    }
+
+    #[test]
+    fn station_inputs_unknown_station_is_empty() {
+        assert!(station_inputs("nonexistent").is_empty());
+    }
 
     #[test]
     fn fps_has_eight_stations_including_side() {
