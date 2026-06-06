@@ -14,7 +14,12 @@ const REGIONS: &[(StationKind, &str, f32)] = &[
 pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     let counts = app
         .open_profile()
-        .and_then(|op| op.profile.sub_profiles.get(app.selected_subprofile()))
+        .and_then(|op| {
+            op.session
+                .current()
+                .sub_profiles
+                .get(app.selected_subprofile())
+        })
         .map(binding_counts)
         .unwrap_or_default();
 

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use yoke_config::model::Profile;
+use crate::edit::EditSession;
 
 #[cfg(not(target_arch = "wasm32"))]
 use {url::Url, yoke_index::IndexEntry, yoke_volume::ProfileName};
@@ -24,7 +24,7 @@ pub enum ProfileSource {
 #[derive(Debug, Clone)]
 pub struct OpenProfile {
     pub source: ProfileSource,
-    pub profile: Profile,
+    pub session: EditSession,
 }
 
 #[derive(Debug, Clone)]

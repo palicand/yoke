@@ -8,7 +8,12 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     let Some(open) = app.open_profile() else {
         return;
     };
-    let Some(sub) = open.profile.sub_profiles.get(app.selected_subprofile()) else {
+    let Some(sub) = open
+        .session
+        .current()
+        .sub_profiles
+        .get(app.selected_subprofile())
+    else {
         return;
     };
     let palette = *app.palette();

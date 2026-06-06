@@ -1,5 +1,3 @@
-use yoke_config::model::Profile;
-
 use crate::data::DataError;
 
 const FIXTURE_CSV: &[u8] = include_bytes!("../../fixtures/default.csv");
@@ -26,10 +24,8 @@ impl MockDataSource {
         Self
     }
 
-    fn parse_fixture() -> Result<Profile, DataError> {
-        yoke_config::parse(FIXTURE_CSV)
-            .map(|r| r.model)
-            .map_err(|e| DataError::Parse(e.to_string()))
+    fn parse_fixture() -> Result<yoke_config::ParseResult, DataError> {
+        yoke_config::parse(FIXTURE_CSV).map_err(|e| DataError::Parse(e.to_string()))
     }
 }
 
@@ -48,9 +44,9 @@ mod tests {
 
     #[test]
     fn fixture_parses_into_a_profile_with_subprofiles() {
-        let profile = MockDataSource::parse_fixture().expect("fixture must parse");
+        let result = MockDataSource::parse_fixture().expect("fixture must parse");
         assert!(
-            !profile.sub_profiles.is_empty(),
+            !result.model.sub_profiles.is_empty(),
             "fixture has at least one sub-profile"
         );
     }
@@ -72,8 +68,8 @@ mod tests {
     #[test]
     fn reads_file_profile_ignoring_path() {
         let data = MockDataSource::new();
-        let p = data.read_file_profile(Path::new("ignored.csv")).unwrap();
-        assert!(!p.sub_profiles.is_empty());
+        let result = data.read_file_profile(Path::new("ignored.csv")).unwrap();
+        assert!(!result.model.sub_profiles.is_empty());
     }
 }
 
@@ -112,14 +108,11 @@ mod imp {
         fn read_device_profile(
             &self,
             _name: &ProfileName,
-        ) -> Result<yoke_config::model::Profile, DataError> {
+        ) -> Result<yoke_config::ParseResult, DataError> {
             Self::parse_fixture()
         }
 
-        fn read_file_profile(
-            &self,
-            _path: &Path,
-        ) -> Result<yoke_config::model::Profile, DataError> {
+        fn read_file_profile(&self, _path: &Path) -> Result<yoke_config::ParseResult, DataError> {
             Self::parse_fixture()
         }
 
@@ -134,7 +127,7 @@ mod imp {
         fn fetch_community(
             &self,
             _entry: &IndexEntry,
-        ) -> Result<yoke_config::model::Profile, DataError> {
+        ) -> Result<yoke_config::ParseResult, DataError> {
             Self::parse_fixture()
         }
     }
@@ -162,14 +155,11 @@ mod imp {
         fn read_device_profile(
             &self,
             _name: &String,
-        ) -> Result<yoke_config::model::Profile, DataError> {
+        ) -> Result<yoke_config::ParseResult, DataError> {
             Self::parse_fixture()
         }
 
-        fn read_file_profile(
-            &self,
-            _path: &Path,
-        ) -> Result<yoke_config::model::Profile, DataError> {
+        fn read_file_profile(&self, _path: &Path) -> Result<yoke_config::ParseResult, DataError> {
             Self::parse_fixture()
         }
 
@@ -183,7 +173,7 @@ mod imp {
         fn fetch_community(
             &self,
             _entry: &MockCommunityEntry,
-        ) -> Result<yoke_config::model::Profile, DataError> {
+        ) -> Result<yoke_config::ParseResult, DataError> {
             Self::parse_fixture()
         }
     }

@@ -130,10 +130,10 @@ mod native_worker {
             return DataEvent::FileDialogCancelled { req };
         };
         match data.read_file_profile(&path) {
-            Ok(profile) => DataEvent::ProfileOpened {
+            Ok(profile_result) => DataEvent::ProfileOpened {
                 req,
                 source: ProfileSource::File(path),
-                profile: Box::new(profile),
+                parsed: Box::new(profile_result),
             },
             Err(e) => DataEvent::Failed {
                 req: Some(req),

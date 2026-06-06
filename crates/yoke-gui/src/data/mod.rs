@@ -4,7 +4,7 @@ pub mod native;
 
 use std::path::Path;
 
-use yoke_config::model::Profile;
+use yoke_config::ParseResult;
 
 use crate::state::ProfileSource;
 
@@ -35,10 +35,10 @@ pub enum DataError {
 pub trait DataSource: Send + Sync + 'static {
     fn volume_state(&self) -> MountState;
     fn list_device_profiles(&self) -> Result<Vec<ProfileEntryView>, DataError>;
-    fn read_device_profile(&self, name: &ProfileName) -> Result<Profile, DataError>;
-    fn read_file_profile(&self, path: &Path) -> Result<Profile, DataError>;
+    fn read_device_profile(&self, name: &ProfileName) -> Result<ParseResult, DataError>;
+    fn read_file_profile(&self, path: &Path) -> Result<ParseResult, DataError>;
     fn list_community(&self) -> Result<Vec<IndexEntry>, DataError>;
-    fn fetch_community(&self, entry: &IndexEntry) -> Result<Profile, DataError>;
+    fn fetch_community(&self, entry: &IndexEntry) -> Result<ParseResult, DataError>;
     /// Whether the community index is usable. When false the UI skips
     /// `ListCommunity` and renders a disabled (non-retryable) pane instead of a
     /// failure that re-fails identically on every retry.
@@ -73,7 +73,7 @@ pub enum DataEvent {
     ProfileOpened {
         req: u64,
         source: ProfileSource,
-        profile: Box<Profile>,
+        parsed: Box<ParseResult>,
     },
     CommunityListed(Vec<IndexEntry>),
     VolumeChanged(MountState),
@@ -117,10 +117,10 @@ pub fn handle_command(data: &dyn DataSource, cmd: AppCommand) -> DataEvent {
             },
         },
         AppCommand::OpenDeviceProfile { req, name } => match data.read_device_profile(&name) {
-            Ok(profile) => DataEvent::ProfileOpened {
+            Ok(result) => DataEvent::ProfileOpened {
                 req,
                 source: ProfileSource::Device(name),
-                profile: Box::new(profile),
+                parsed: Box::new(result),
             },
             Err(e) => DataEvent::Failed {
                 req: Some(req),
@@ -139,10 +139,10 @@ pub fn handle_command(data: &dyn DataSource, cmd: AppCommand) -> DataEvent {
         AppCommand::OpenCommunity { req, entry } => {
             let source = community_source(&entry);
             match data.fetch_community(&entry) {
-                Ok(profile) => DataEvent::ProfileOpened {
+                Ok(result) => DataEvent::ProfileOpened {
                     req,
                     source,
-                    profile: Box::new(profile),
+                    parsed: Box::new(result),
                 },
                 Err(e) => DataEvent::Failed {
                     req: Some(req),

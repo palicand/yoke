@@ -19,7 +19,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
         let open = app
             .open_profile()
             .expect("editor shown with an open profile");
-        let subs = &open.profile.sub_profiles;
+        let subs = &open.session.current().sub_profiles;
         let total: usize = subs.iter().map(|s| s.bindings().count()).sum();
         let tabs: Vec<Tab> = subs
             .iter()
@@ -28,7 +28,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
             .collect();
         (
             open.source.breadcrumb(),
-            open.profile.top_line.title.clone(),
+            open.session.current().top_line.title.clone(),
             subs.len(),
             total,
             tabs,

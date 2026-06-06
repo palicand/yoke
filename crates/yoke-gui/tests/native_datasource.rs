@@ -47,7 +47,7 @@ fn reads_a_device_profile_from_a_temp_volume() {
     let profile = data
         .read_device_profile(&ProfileName::new("default").unwrap())
         .unwrap();
-    assert!(!profile.sub_profiles.is_empty());
+    assert!(!profile.model.sub_profiles.is_empty());
 }
 
 #[test]
@@ -58,5 +58,5 @@ fn reads_a_local_file_profile() {
     let backend = Arc::new(FsBackend::new(dir.path().to_path_buf()));
     let data = NativeDataSource::for_test(backend);
     let profile = data.read_file_profile(&path).unwrap();
-    assert!(!profile.sub_profiles.is_empty());
+    assert!(!profile.model.sub_profiles.is_empty());
 }

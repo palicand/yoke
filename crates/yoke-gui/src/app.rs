@@ -170,7 +170,7 @@ impl YokeApp {
             DataEvent::ProfileOpened {
                 req,
                 source,
-                profile,
+                parsed,
             } => {
                 // Drop a stale open: a newer open superseded this request, or the
                 // user backed out. Without this, a slow open finishing after a
@@ -183,7 +183,7 @@ impl YokeApp {
                 self.selected_subprofile = 0;
                 self.open_profile = Some(OpenProfile {
                     source,
-                    profile: *profile,
+                    session: crate::edit::EditSession::new(*parsed),
                 });
             }
             DataEvent::FileDialogCancelled { req } => {
@@ -498,14 +498,14 @@ mod tests {
         YokeApp::new(crate::worker::WorkerHandle::for_test(), events, None, true)
     }
 
-    fn a_profile() -> Box<yoke_config::model::Profile> {
+    fn a_profile() -> Box<yoke_config::ParseResult> {
         let csv = b"QuadStick Configuration,Version 1.4,,T\r\n\
 Profile Name,,Mouse,\r\n\
 ,,Normal,\r\n\
 Output or Function,Function,usb,\r\n\
 mouse_left,normal,left,\r\n\
 \r\n";
-        Box::new(yoke_config::parse(csv).expect("fixture parses").model)
+        Box::new(yoke_config::parse(csv).expect("fixture parses"))
     }
 
     #[test]
@@ -525,7 +525,7 @@ mouse_left,normal,left,\r\n\
         app.apply_event(DataEvent::ProfileOpened {
             req: 1,
             source: ProfileSource::File("/b.csv".into()),
-            profile: a_profile(),
+            parsed: a_profile(),
         });
         assert!(matches!(
             app.open_profile.as_ref().map(|o| &o.source),
@@ -535,7 +535,7 @@ mouse_left,normal,left,\r\n\
         app.apply_event(DataEvent::ProfileOpened {
             req: 0,
             source: ProfileSource::File("/a.csv".into()),
-            profile: a_profile(),
+            parsed: a_profile(),
         });
         assert!(
             matches!(
