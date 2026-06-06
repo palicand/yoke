@@ -139,8 +139,6 @@ pub struct YokeApp {
     selected_station: Option<&'static str>,
     selected_subprofile: usize,
     toast: Option<(String, f64)>,
-    // Task 5 renders this; the field exists now so dispatch can store state.
-    #[allow(dead_code)]
     picker: Option<PickerState>,
     /// The profile open currently in flight (read/download + parse on the
     /// worker); drives the loading overlay. Cleared on the matching
@@ -366,11 +364,23 @@ impl eframe::App for YokeApp {
         self.show_loading_overlay(&ctx);
         self.show_toast(&ctx, ui);
 
+        // Read capture-armed before rendering: while capture is armed, an Escape
+        // press is the user's chosen key and is consumed by the picker, so the
+        // Escape chain below must not also act on it.
+        let capture_was_armed = self.picker.as_ref().is_some_and(|p| p.capture_armed);
+        self.show_picker(&ctx);
+
         // Escape steps back: station selection, then the open profile, then a
         // pending open (dismiss the loading overlay if the user backs out before
-        // the worker returns).
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            if self.selected_station.is_some() {
+        // the worker returns). Skip the whole chain on a capture-armed frame:
+        // that Escape was the captured key, not a back-out, and acting on it here
+        // would deselect the station underneath the picker.
+        if !capture_was_armed && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if self.picker.is_some() {
+                // Picker is open but modal did NOT consume Escape (e.g. a popup was
+                // open inside the modal). Close the picker without falling through.
+                self.picker = None;
+            } else if self.selected_station.is_some() {
                 self.selected_station = None;
             } else if self.open_profile.is_some() {
                 self.close_profile();
@@ -544,6 +554,8 @@ impl YokeApp {
     pub(crate) fn close_profile(&mut self) {
         self.open_profile = None;
         self.selected_station = None;
+        // A picker is always over the open profile; drop it together.
+        self.picker = None;
         // Backing out also cancels a pending open so its loading overlay stops
         // painting over the Library; the in-flight result is dropped on arrival.
         self.opening = None;
@@ -554,6 +566,78 @@ impl YokeApp {
 
     pub(crate) fn open_picker(&mut self, target: PickerTarget) {
         self.picker = Some(PickerState::new(self.selected_subprofile, target));
+    }
+
+    fn show_picker(&mut self, ctx: &egui::Context) {
+        let Some(mut picker) = self.picker.take() else {
+            return;
+        };
+        let palette = self.palette;
+        let outcome = {
+            let session = &self
+                .open_profile
+                .as_ref()
+                .expect("picker over open profile")
+                .session;
+            let sub = picker.sub;
+            let input = match &picker.target {
+                PickerTarget::AddBinding { input }
+                | PickerTarget::EditOutput { input, .. }
+                | PickerTarget::EditModifier { input, .. } => input.clone(),
+            };
+            let has = |m: &str| session.has_binding(sub, &input, m);
+            crate::views::picker::show(ctx, &mut picker, &palette, &has)
+        };
+        match outcome {
+            crate::views::picker::PickerOutcome::Open => self.picker = Some(picker),
+            crate::views::picker::PickerOutcome::Close => {}
+            crate::views::picker::PickerOutcome::CommitOutput(output) => {
+                self.commit_output(&picker, &output);
+            }
+            crate::views::picker::PickerOutcome::CommitModifier(modifier) => {
+                self.commit_modifier(&picker, &modifier);
+            }
+        }
+    }
+
+    fn commit_output(&mut self, picker: &PickerState, output: &str) {
+        let sub = picker.sub;
+        let result = match &picker.target {
+            PickerTarget::AddBinding { input } => {
+                let modifier = crate::edit::compose_modifier(&picker.keyword, &picker.args)
+                    .expect("commit gated on valid modifier");
+                let m = (modifier != "normal").then_some(modifier);
+                self.open_profile
+                    .as_mut()
+                    .expect("open")
+                    .session
+                    .add_binding(sub, input, output, m.as_deref())
+            }
+            PickerTarget::EditOutput { input, modifier } => self
+                .open_profile
+                .as_mut()
+                .expect("open")
+                .session
+                .update_binding(sub, input, output, modifier),
+            PickerTarget::EditModifier { .. } => {
+                unreachable!("modifier target commits a modifier")
+            }
+        };
+        self.report_edit(result);
+    }
+
+    fn commit_modifier(&mut self, picker: &PickerState, modifier: &str) {
+        let sub = picker.sub;
+        let PickerTarget::EditModifier { input, output, .. } = &picker.target else {
+            unreachable!("output targets commit an output");
+        };
+        let result = self
+            .open_profile
+            .as_mut()
+            .expect("open")
+            .session
+            .update_binding(sub, input, output, modifier);
+        self.report_edit(result);
     }
 
     pub(crate) fn edit_session_mut(&mut self) -> Option<&mut crate::edit::EditSession> {
