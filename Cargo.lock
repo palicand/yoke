@@ -5324,6 +5324,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "yoke-config",
+ "yoke-edit",
  "yoke-index",
  "yoke-volume",
  "yoke-volume-macos",
