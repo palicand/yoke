@@ -168,6 +168,10 @@ pub struct YokeApp {
     /// Whether the community index is usable; gates the initial `ListCommunity`.
     community_available: bool,
     requested_initial: bool,
+    /// Whether the confirm-discard modal is showing. Set when the user requests
+    /// a close on a dirty session; the modal forces an explicit choice before
+    /// any data is discarded. Silently discarding edits is a critical bug class.
+    pub(crate) confirm_discard: bool,
 }
 
 impl YokeApp {
@@ -199,6 +203,7 @@ impl YokeApp {
             next_req: 0,
             community_available,
             requested_initial: false,
+            confirm_discard: false,
         }
     }
 
@@ -224,6 +229,7 @@ impl YokeApp {
             next_req: 0,
             community_available,
             requested_initial: false,
+            confirm_discard: false,
         }
     }
 
@@ -266,6 +272,8 @@ impl YokeApp {
                 self.selected_station = None;
                 self.selected_subprofile = 0;
                 self.subprofile_ui = SubProfileUi::Closed;
+                // A stale discard prompt must not appear over a newly opened profile.
+                self.confirm_discard = false;
                 self.open_profile = Some(OpenProfile {
                     source,
                     session: crate::edit::EditSession::new(*parsed),
@@ -361,7 +369,7 @@ impl eframe::App for YokeApp {
             .show_inside(ui, |ui| {
                 let on_library = self.open_profile.is_none();
                 if ui.selectable_label(on_library, "Profiles").clicked() {
-                    self.close_profile();
+                    self.request_close_profile();
                 }
                 ui.add_space(10.0);
                 ui.label(
@@ -392,11 +400,14 @@ impl eframe::App for YokeApp {
         let capture_was_armed = self.picker.as_ref().is_some_and(|p| p.capture_armed);
         self.show_picker(&ctx);
 
-        // Escape steps back: an open sub-profile form, then station selection,
-        // then the open profile, then a pending open (dismiss the loading
-        // overlay if the user backs out before the worker returns). The
-        // sub-profile-form step comes before close_profile so an Escape mid-
-        // rename/add cancels the form instead of discarding the open profile.
+        self.show_confirm_discard(&ctx);
+        self.handle_undo_redo_shortcuts(&ctx);
+
+        // Escape steps back: picker -> confirm_discard prompt -> sub-profile form
+        // -> station selection -> open profile (via request_close_profile, which
+        // may raise the confirm prompt again for dirty sessions) -> pending open.
+        // The sub-profile-form step comes before close so an Escape mid-rename/add
+        // cancels the form instead of discarding the open profile.
         // Skip the whole chain on a capture-armed frame: that Escape was the
         // captured key, not a back-out, and acting on it here would deselect
         // the station underneath the picker.
@@ -405,12 +416,15 @@ impl eframe::App for YokeApp {
                 // Picker is open but modal did NOT consume Escape (e.g. a popup was
                 // open inside the modal). Close the picker without falling through.
                 self.picker = None;
+            } else if self.confirm_discard {
+                // Dismiss the confirm prompt; the profile remains open.
+                self.confirm_discard = false;
             } else if !matches!(self.subprofile_ui, SubProfileUi::Closed) {
                 self.subprofile_ui = SubProfileUi::Closed;
             } else if self.selected_station.is_some() {
                 self.selected_station = None;
             } else if self.open_profile.is_some() {
-                self.close_profile();
+                self.request_close_profile();
             } else {
                 self.opening = None;
             }
@@ -516,6 +530,77 @@ impl YokeApp {
             });
     }
 
+    /// Show the confirm-discard modal when `confirm_discard` is set. Forces an
+    /// explicit choice before any edit is thrown away; silently discarding edits
+    /// is a critical bug class for a device where the profile is the sole input path.
+    ///
+    /// Dismissal (Keep editing) is the safe default, so backdrop-click and
+    /// Escape — surfaced together by `ModalResponse::should_close` — only ever
+    /// keep the profile open, never discard. Escape is also handled by the global
+    /// chain in `ui`; both paths just clear `confirm_discard`, so the duplicate is
+    /// idempotent. `should_close` additionally covers the backdrop-click case the
+    /// global chain does not see.
+    fn show_confirm_discard(&mut self, ctx: &egui::Context) {
+        if self.confirm_discard {
+            let response = egui::Modal::new(egui::Id::new("yoke_discard")).show(ctx, |ui| {
+                ui.heading("Discard unsaved changes?");
+                ui.horizontal(|ui| {
+                    if ui.button("Keep editing").clicked() {
+                        self.confirm_discard = false;
+                    }
+                    if ui.button("Discard").clicked() {
+                        self.confirm_discard = false;
+                        self.close_profile();
+                    }
+                });
+            });
+            if response.should_close() {
+                self.confirm_discard = false;
+            }
+        }
+    }
+
+    /// Handle Cmd+Z / Cmd+Shift+Z for profile-level undo/redo.
+    ///
+    /// Gated so the shortcut only fires when the profile editor owns the
+    /// keyboard:
+    /// - `picker.is_none()`: the picker is a modal handling its own input.
+    /// - `!confirm_discard`: `egui::Modal` blocks pointers but NOT the keyboard,
+    ///   so without this an undo behind the "Discard?" prompt would mutate the
+    ///   session and make the prompt's premise stale (undone to clean while the
+    ///   user reads the warning).
+    /// - `subprofile_ui == Closed`: when a rename/add `TextEdit` is focused it
+    ///   runs its own Cmd+Z undo (egui 0.34 `TextEdit` owns an undoer and reads
+    ///   key events via the non-consuming `filtered_events`), so one press would
+    ///   double-act — undoing the field AND a profile op. For a config that is
+    ///   the user's sole input path, that silent extra mutation is unacceptable,
+    ///   so Cmd+Z is ceded to the focused field.
+    fn handle_undo_redo_shortcuts(&mut self, ctx: &egui::Context) {
+        if !self.undo_redo_shortcuts_enabled() {
+            return;
+        }
+        let (undo, redo) = ctx.input(|i| {
+            let cmd = i.modifiers.command;
+            (
+                cmd && !i.modifiers.shift && i.key_pressed(egui::Key::Z),
+                cmd && i.modifiers.shift && i.key_pressed(egui::Key::Z),
+            )
+        });
+        if undo && let Some(s) = self.edit_session_mut() {
+            s.undo();
+        } else if redo && let Some(s) = self.edit_session_mut() {
+            s.redo();
+        }
+    }
+
+    /// The keyboard-ownership gate for the undo/redo shortcut; see
+    /// [`Self::handle_undo_redo_shortcuts`] for why each condition is required.
+    const fn undo_redo_shortcuts_enabled(&self) -> bool {
+        self.picker.is_none()
+            && !self.confirm_discard
+            && matches!(self.subprofile_ui, SubProfileUi::Closed)
+    }
+
     const fn alloc_req(&mut self) -> u64 {
         let req = self.next_req;
         self.next_req = self.next_req.wrapping_add(1);
@@ -587,6 +672,22 @@ impl YokeApp {
         // Backing out also cancels a pending open so its loading overlay stops
         // painting over the Library; the in-flight result is dropped on arrival.
         self.opening = None;
+        self.confirm_discard = false;
+    }
+
+    /// Close the profile, but if the session is dirty, show the confirm-discard
+    /// modal instead. Every user-intent close path must go through this; only
+    /// the Discard button itself calls `close_profile` directly.
+    pub(crate) fn request_close_profile(&mut self) {
+        if self
+            .open_profile
+            .as_ref()
+            .is_some_and(|o| o.session.is_dirty())
+        {
+            self.confirm_discard = true;
+        } else {
+            self.close_profile();
+        }
     }
     pub(crate) fn send(&self, cmd: AppCommand) {
         self.worker.send(cmd);
@@ -771,7 +872,7 @@ kb_a,normal,left,\r\n\
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use super::test_support::{a_profile, test_app};
+    use super::test_support::{a_profile, open_app_with, test_app};
     use super::*;
     use crate::state::ProfileSource;
 
@@ -842,5 +943,51 @@ mod tests {
             message: "no QuadStick volume mounted".into(),
         });
         assert!(app.toast.is_none(), "cold-start device-less must not toast");
+    }
+
+    #[test]
+    fn close_profile_with_dirty_session_prompts() {
+        let mut app = open_app_with(a_profile());
+        // lip is unbound in the a_profile fixture (only mouse_left is bound),
+        // so add_binding succeeds and makes the session dirty.
+        app.open_profile
+            .as_mut()
+            .unwrap()
+            .session
+            .add_binding(0, "lip", "kb_b", None)
+            .unwrap();
+        app.request_close_profile();
+        assert!(app.open_profile.is_some(), "dirty close must not discard");
+        assert!(app.confirm_discard);
+    }
+
+    #[test]
+    fn close_profile_clean_session_closes() {
+        let mut app = open_app_with(a_profile());
+        app.request_close_profile();
+        assert!(app.open_profile.is_none());
+        assert!(!app.confirm_discard);
+    }
+
+    #[test]
+    fn undo_redo_shortcuts_gated_to_editor_keyboard_ownership() {
+        let mut app = open_app_with(a_profile());
+        assert!(app.undo_redo_shortcuts_enabled(), "plain editor owns Cmd+Z");
+
+        // egui::Modal does not block the keyboard, so a Cmd+Z behind the discard
+        // prompt must not mutate the session and stale the prompt's premise.
+        app.confirm_discard = true;
+        assert!(!app.undo_redo_shortcuts_enabled());
+        app.confirm_discard = false;
+
+        // A focused rename/add TextEdit runs its own Cmd+Z undo; ceding the
+        // shortcut avoids a silent double-act on the profile.
+        app.set_subprofile_ui(SubProfileUi::Renaming {
+            index: 0,
+            value: String::new(),
+        });
+        assert!(!app.undo_redo_shortcuts_enabled());
+        app.set_subprofile_ui(SubProfileUi::Closed);
+        assert!(app.undo_redo_shortcuts_enabled());
     }
 }

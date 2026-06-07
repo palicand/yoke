@@ -37,7 +37,7 @@ enum StripAction {
 pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     // Pre-read owned values while the immutable borrow of `app` is live so
     // the borrow ends before any `&mut app` call below.
-    let (breadcrumb, title, sub_count, total_bindings, tabs) = {
+    let (breadcrumb, title, sub_count, total_bindings, tabs, dirty, can_undo, can_redo) = {
         let open = app
             .open_profile()
             .expect("editor shown with an open profile");
@@ -54,21 +54,49 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
             subs.len(),
             total,
             tabs,
+            open.session.is_dirty(),
+            open.session.can_undo(),
+            open.session.can_redo(),
         )
     };
     let palette = *app.palette();
 
     let mut go_back = false;
+    let mut do_undo = false;
+    let mut do_redo = false;
     ui.horizontal(|ui| {
         if ui.button("< Back").clicked() {
             go_back = true;
         }
         ui.add_space(2.0);
         ui.label(egui::RichText::new(breadcrumb).small().color(palette.ink_3));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if dirty {
+                ui.colored_label(palette.mouse, "modified");
+            }
+            if ui
+                .add_enabled(can_redo, egui::Button::new("Redo"))
+                .clicked()
+            {
+                do_redo = true;
+            }
+            if ui
+                .add_enabled(can_undo, egui::Button::new("Undo"))
+                .clicked()
+            {
+                do_undo = true;
+            }
+        });
     });
     if go_back {
-        app.close_profile();
+        app.request_close_profile();
         return;
+    }
+    if do_undo && let Some(s) = app.edit_session_mut() {
+        s.undo();
+    }
+    if do_redo && let Some(s) = app.edit_session_mut() {
+        s.redo();
     }
 
     ui.heading(title);
