@@ -12,6 +12,24 @@ use {yoke_index::IndexEntry, yoke_volume::ProfileName};
 #[cfg(target_arch = "wasm32")]
 type ProfileName = String;
 
+/// State of the sub-profile management UI in the chip strip.
+#[derive(Debug, Clone)]
+pub enum SubProfileUi {
+    Closed,
+    Renaming {
+        index: usize,
+        value: String,
+    },
+    Adding {
+        name: String,
+        /// Index into `SubProfileMode::KNOWN`.
+        mode: usize,
+        sub_mode: String,
+        /// Index into `Channel::ALL`.
+        channel: usize,
+    },
+}
+
 /// What the open picker edits. Captured at open time, including the
 /// sub-profile index, so a row is always addressed by the state the user saw.
 #[derive(Debug, Clone)]
@@ -138,6 +156,7 @@ pub struct YokeApp {
     open_profile: Option<OpenProfile>,
     selected_station: Option<&'static str>,
     selected_subprofile: usize,
+    subprofile_ui: SubProfileUi,
     toast: Option<(String, f64)>,
     picker: Option<PickerState>,
     /// The profile open currently in flight (read/download + parse on the
@@ -173,6 +192,7 @@ impl YokeApp {
             open_profile: None,
             selected_station: None,
             selected_subprofile: 0,
+            subprofile_ui: SubProfileUi::Closed,
             toast: None,
             picker: None,
             opening: None,
@@ -197,6 +217,7 @@ impl YokeApp {
             open_profile: None,
             selected_station: None,
             selected_subprofile: 0,
+            subprofile_ui: SubProfileUi::Closed,
             toast: None,
             picker: None,
             opening: None,
@@ -244,6 +265,7 @@ impl YokeApp {
                 self.opening = None;
                 self.selected_station = None;
                 self.selected_subprofile = 0;
+                self.subprofile_ui = SubProfileUi::Closed;
                 self.open_profile = Some(OpenProfile {
                     source,
                     session: crate::edit::EditSession::new(*parsed),
@@ -370,16 +392,21 @@ impl eframe::App for YokeApp {
         let capture_was_armed = self.picker.as_ref().is_some_and(|p| p.capture_armed);
         self.show_picker(&ctx);
 
-        // Escape steps back: station selection, then the open profile, then a
-        // pending open (dismiss the loading overlay if the user backs out before
-        // the worker returns). Skip the whole chain on a capture-armed frame:
-        // that Escape was the captured key, not a back-out, and acting on it here
-        // would deselect the station underneath the picker.
+        // Escape steps back: an open sub-profile form, then station selection,
+        // then the open profile, then a pending open (dismiss the loading
+        // overlay if the user backs out before the worker returns). The
+        // sub-profile-form step comes before close_profile so an Escape mid-
+        // rename/add cancels the form instead of discarding the open profile.
+        // Skip the whole chain on a capture-armed frame: that Escape was the
+        // captured key, not a back-out, and acting on it here would deselect
+        // the station underneath the picker.
         if !capture_was_armed && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             if self.picker.is_some() {
                 // Picker is open but modal did NOT consume Escape (e.g. a popup was
                 // open inside the modal). Close the picker without falling through.
                 self.picker = None;
+            } else if !matches!(self.subprofile_ui, SubProfileUi::Closed) {
+                self.subprofile_ui = SubProfileUi::Closed;
             } else if self.selected_station.is_some() {
                 self.selected_station = None;
             } else if self.open_profile.is_some() {
@@ -556,6 +583,7 @@ impl YokeApp {
         self.selected_station = None;
         // A picker is always over the open profile; drop it together.
         self.picker = None;
+        self.subprofile_ui = SubProfileUi::Closed;
         // Backing out also cancels a pending open so its loading overlay stops
         // painting over the Library; the in-flight result is dropped on arrival.
         self.opening = None;
@@ -658,6 +686,19 @@ impl YokeApp {
             .update_binding(sub, input, output, modifier)
     }
 
+    pub(crate) const fn subprofile_ui(&self) -> &SubProfileUi {
+        &self.subprofile_ui
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) const fn has_toast(&self) -> bool {
+        self.toast.is_some()
+    }
+
+    pub(crate) fn set_subprofile_ui(&mut self, ui: SubProfileUi) {
+        self.subprofile_ui = ui;
+    }
+
     pub(crate) fn edit_session_mut(&mut self) -> Option<&mut crate::edit::EditSession> {
         self.open_profile.as_mut().map(|o| &mut o.session)
     }
@@ -670,17 +711,22 @@ impl YokeApp {
     }
 }
 
+/// Shared builders for tests in sibling modules (e.g. `views::editor`) that
+/// need a `YokeApp` with an open profile; they touch private fields so they
+/// must live here.
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
-    use super::*;
+pub(crate) mod test_support {
+    use super::{DataEvent, OpenInFlight, YokeApp};
     use crate::state::ProfileSource;
 
-    fn test_app() -> YokeApp {
+    #[must_use]
+    pub fn test_app() -> YokeApp {
         let (_tx, events) = std::sync::mpsc::channel();
         YokeApp::new(crate::worker::WorkerHandle::for_test(), events, None, true)
     }
 
-    fn a_profile() -> Box<yoke_config::ParseResult> {
+    #[must_use]
+    pub fn a_profile() -> Box<yoke_config::ParseResult> {
         let csv = b"QuadStick Configuration,Version 1.4,,T\r\n\
 Profile Name,,Mouse,\r\n\
 ,,Normal,\r\n\
@@ -689,6 +735,45 @@ mouse_left,normal,left,\r\n\
 \r\n";
         Box::new(yoke_config::parse(csv).expect("fixture parses"))
     }
+
+    #[must_use]
+    pub fn two_sub_profile() -> Box<yoke_config::ParseResult> {
+        let csv = b"QuadStick Configuration,Version 1.4,,T\r\n\
+Profile Name,,Mouse,\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_left,normal,left,\r\n\
+\r\n\
+Profile Name,,Left Analog,\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+kb_a,normal,left,\r\n\
+\r\n";
+        Box::new(yoke_config::parse(csv).expect("fixture parses"))
+    }
+
+    #[must_use]
+    pub fn open_app_with(parsed: Box<yoke_config::ParseResult>) -> YokeApp {
+        let mut app = test_app();
+        let req = app.alloc_req();
+        app.opening = Some(OpenInFlight {
+            req,
+            label: "test".into(),
+        });
+        app.apply_event(DataEvent::ProfileOpened {
+            req,
+            source: ProfileSource::File("/test.csv".into()),
+            parsed,
+        });
+        app
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::test_support::{a_profile, test_app};
+    use super::*;
+    use crate::state::ProfileSource;
 
     #[test]
     fn stale_profile_opened_is_dropped() {
