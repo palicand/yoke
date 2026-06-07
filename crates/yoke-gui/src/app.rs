@@ -1,5 +1,5 @@
 use crate::data::{AppCommand, DataEvent, FailureContext};
-use crate::state::{CommunityLoad, OpenProfile};
+use crate::state::{CommunityLoad, OpenProfile, ProfileSource};
 use crate::theme::Palette;
 
 #[cfg(target_arch = "wasm32")]
@@ -172,6 +172,12 @@ pub struct YokeApp {
     /// a close on a dirty session; the modal forces an explicit choice before
     /// any data is discarded. Silently discarding edits is a critical bug class.
     pub(crate) confirm_discard: bool,
+    /// A save that has been dispatched but not yet confirmed: `(req_id, snapshot_at_dispatch)`.
+    /// The snapshot is the profile state serialized at dispatch time — edits made while
+    /// the save is in-flight must stay dirty after the save completes.
+    pending_save: Option<(u64, yoke_config::model::Profile)>,
+    /// CSV text for the preview modal. `Some` while the modal is open.
+    preview_csv: Option<String>,
 }
 
 impl YokeApp {
@@ -204,6 +210,8 @@ impl YokeApp {
             community_available,
             requested_initial: false,
             confirm_discard: false,
+            pending_save: None,
+            preview_csv: None,
         }
     }
 
@@ -230,6 +238,8 @@ impl YokeApp {
             community_available,
             requested_initial: false,
             confirm_discard: false,
+            pending_save: None,
+            preview_csv: None,
         }
     }
 
@@ -283,10 +293,23 @@ impl YokeApp {
                 if self.opening.as_ref().map(|o| o.req) == Some(req) {
                     self.opening = None;
                 }
+                // Save As cancelled: drop the pending save so a later Saved
+                // event (from a different dialog run) can't ghostly mark it clean.
+                if self.pending_save.as_ref().map(|(r, _)| *r) == Some(req) {
+                    self.pending_save = None;
+                }
             }
-            // Task 10 wires save state into the UI; handled here so the event
-            // loop compiles in this slice.
-            DataEvent::Saved { .. } => {}
+            DataEvent::Saved { req, label } => {
+                // Edits made while the save was in flight stay dirty: mark_saved
+                // gets the snapshot serialized at dispatch time, not current().
+                if self.pending_save.as_ref().map(|(r, _)| *r) == Some(req) {
+                    let (_, snapshot) = self.pending_save.take().expect("matched above");
+                    if let Some(open) = &mut self.open_profile {
+                        open.session.mark_saved(snapshot);
+                    }
+                    self.set_toast(format!("Saved to {label}"));
+                }
+            }
             DataEvent::Failed {
                 req,
                 context,
@@ -296,6 +319,22 @@ impl YokeApp {
     }
 
     fn handle_failure(&mut self, req: Option<u64>, context: FailureContext, message: String) {
+        // Save failures reconcile against pending_save: a stale failure (from a
+        // superseded save, or a None req that can never match) is dropped silently.
+        // A None req must never match a pending save — only Some(r) == Some(r) matches.
+        if matches!(
+            context,
+            FailureContext::SaveFile | FailureContext::SaveDevice
+        ) {
+            let pending = self.pending_save.as_ref().map(|(r, _)| *r);
+            if pending.is_none() || pending != req {
+                return;
+            }
+            self.pending_save = None;
+            self.set_toast(message);
+            return;
+        }
+
         // Open-style failures reconcile against the in-flight request: a stale
         // failure (superseded by a newer open, or arriving after the user backed
         // out) is dropped so it can't clear a newer open's spinner or toast.
@@ -306,9 +345,10 @@ impl YokeApp {
             self.opening = None;
         }
         match context {
-            // The empty Library + "Disconnected" pill already convey "no device";
-            // a red toast on every device-less cold start is noise.
-            FailureContext::ListDevice => {}
+            // ListDevice: the empty Library + "Disconnected" pill already convey
+            // "no device"; a red toast on every device-less cold start is noise.
+            // SaveFile/SaveDevice: handled in the save branch above; unreachable here.
+            FailureContext::ListDevice | FailureContext::SaveFile | FailureContext::SaveDevice => {}
             FailureContext::ListCommunity => self.community = CommunityLoad::Failed(message),
             // A single failed entry-open must not wipe the list the user is
             // browsing; the list-wide Failed state is reachable only from
@@ -319,12 +359,7 @@ impl YokeApp {
                 }
                 self.set_toast(message);
             }
-            // Save failures surface as toasts now; Task 10 may add a richer
-            // indicator, but a write failure must never be silently swallowed.
-            FailureContext::OpenDevice
-            | FailureContext::OpenFile
-            | FailureContext::SaveFile
-            | FailureContext::SaveDevice => self.set_toast(message),
+            FailureContext::OpenDevice | FailureContext::OpenFile => self.set_toast(message),
         }
     }
 
@@ -401,6 +436,7 @@ impl eframe::App for YokeApp {
 
         self.show_loading_overlay(&ctx);
         self.show_toast(&ctx, ui);
+        self.show_preview(&ctx);
 
         // Read capture-armed before rendering: while capture is armed, an Escape
         // press is the user's chosen key and is consumed by the picker, so the
@@ -424,6 +460,10 @@ impl eframe::App for YokeApp {
                 // Picker is open but modal did NOT consume Escape (e.g. a popup was
                 // open inside the modal). Close the picker without falling through.
                 self.picker = None;
+            } else if self.preview_csv.is_some() {
+                // The preview modal usually consumes Escape itself; this step is
+                // the fallback so Escape can never fall through to deeper steps.
+                self.preview_csv = None;
             } else if self.confirm_discard {
                 // Dismiss the confirm prompt; the profile remains open.
                 self.confirm_discard = false;
@@ -568,6 +608,44 @@ impl YokeApp {
         }
     }
 
+    /// CSV preview modal: the exact bytes a save would write, so the user can
+    /// inspect before committing. Save delegates to `save_in_place`.
+    fn show_preview(&mut self, ctx: &egui::Context) {
+        let Some(preview) = self.preview_csv.clone() else {
+            return;
+        };
+        let can_save = self
+            .open_profile
+            .as_ref()
+            .is_some_and(|o| !matches!(o.source, ProfileSource::Community { .. }))
+            && self.pending_save.is_none();
+        let mut close = false;
+        let modal = egui::Modal::new(egui::Id::new("yoke_preview")).show(ctx, |ui| {
+            ui.set_width(560.0);
+            ui.heading("CSV preview");
+            egui::ScrollArea::vertical()
+                .max_height(400.0)
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new(&preview).monospace().size(11.0));
+                });
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(can_save, egui::Button::new("Save"))
+                    .clicked()
+                {
+                    close = true;
+                    self.save_in_place();
+                }
+                if ui.button("Close").clicked() {
+                    close = true;
+                }
+            });
+        });
+        if close || modal.should_close() {
+            self.preview_csv = None;
+        }
+    }
+
     /// Handle Cmd+Z / Cmd+Shift+Z for profile-level undo/redo.
     ///
     /// Gated so the shortcut only fires when the profile editor owns the
@@ -603,9 +681,12 @@ impl YokeApp {
 
     /// The keyboard-ownership gate for the undo/redo shortcut; see
     /// [`Self::handle_undo_redo_shortcuts`] for why each condition is required.
+    /// `preview_csv` is included because an undo behind the preview modal would
+    /// silently mutate the session while the preview text stays stale.
     const fn undo_redo_shortcuts_enabled(&self) -> bool {
         self.picker.is_none()
             && !self.confirm_discard
+            && self.preview_csv.is_none()
             && matches!(self.subprofile_ui, SubProfileUi::Closed)
     }
 
@@ -659,6 +740,24 @@ impl YokeApp {
     pub(crate) const fn open_profile(&self) -> Option<&OpenProfile> {
         self.open_profile.as_ref()
     }
+    /// Whether a dispatched save has not yet been confirmed; gates the save
+    /// affordances so concurrent writes to one target cannot race.
+    pub(crate) const fn save_in_flight(&self) -> bool {
+        self.pending_save.is_some()
+    }
+
+    /// Whether the `QuadStick` FAT volume is mounted and writable, gating the
+    /// "Save to `QuadStick`" affordance.
+    pub(crate) const fn volume_present(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            matches!(self.volume, Some(MountState::Present { .. }))
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            matches!(self.volume, Some(MountState::Present))
+        }
+    }
     pub(crate) const fn selected_station(&self) -> Option<&'static str> {
         self.selected_station
     }
@@ -681,6 +780,10 @@ impl YokeApp {
         // painting over the Library; the in-flight result is dropped on arrival.
         self.opening = None;
         self.confirm_discard = false;
+        // A Saved event arriving after the profile is closed must not toast
+        // "Saved to …" or call mark_saved on a gone session; drop the pending save.
+        self.pending_save = None;
+        self.preview_csv = None;
     }
 
     /// Close the profile, but if the session is dirty, show the confirm-discard
@@ -699,6 +802,89 @@ impl YokeApp {
     }
     pub(crate) fn send(&self, cmd: AppCommand) {
         self.worker.send(cmd);
+    }
+
+    /// Serialize the current session, stamp a pending-save slot, and dispatch
+    /// `cmd_for(req, bytes)` to the worker. Snapshot semantics: in-flight edits
+    /// stay dirty after the save because `mark_saved` receives the profile as it
+    /// was at dispatch time, not at completion time.
+    fn dispatch_save(&mut self, cmd_for: impl FnOnce(u64, Vec<u8>) -> AppCommand) {
+        // One save at a time: worker threads do not serialize writes per target,
+        // so two in-flight saves to the same path could land out of order and
+        // leave stale bytes on disk while the UI reads clean.
+        if self.pending_save.is_some() {
+            self.set_toast("A save is already in progress".to_owned());
+            return;
+        }
+        let Some(open) = &self.open_profile else {
+            return;
+        };
+        let bytes = match open.session.serialize() {
+            Ok(b) => b,
+            Err(e) => {
+                self.set_toast(e.to_string());
+                return;
+            }
+        };
+        let snapshot = open.session.current().clone();
+        let req = self.alloc_req();
+        self.pending_save = Some((req, snapshot));
+        let cmd = cmd_for(req, bytes);
+        self.worker.send(cmd);
+    }
+
+    pub(crate) fn save_in_place(&mut self) {
+        let Some(open) = &self.open_profile else {
+            return;
+        };
+        match open.source.clone() {
+            ProfileSource::File(path) => {
+                self.dispatch_save(|req, bytes| AppCommand::SaveFile { req, path, bytes });
+            }
+            ProfileSource::Device(name) => {
+                self.dispatch_save(|req, bytes| AppCommand::SaveDevice { req, name, bytes });
+            }
+            // No in-place save target for a community source; button is disabled.
+            ProfileSource::Community { .. } => {}
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn save_as(&mut self) {
+        self.dispatch_save(|req, bytes| AppCommand::SaveAsDialog { req, bytes });
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn save_to_device(&mut self) {
+        let Some(open) = &self.open_profile else {
+            return;
+        };
+        let raw = match &open.source {
+            ProfileSource::Device(name) => name.as_filename().to_owned(),
+            ProfileSource::File(path) => path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            ProfileSource::Community { name, .. } => name.clone(),
+        };
+        match yoke_volume::ProfileName::new(&raw) {
+            Ok(name) => {
+                self.dispatch_save(|req, bytes| AppCommand::SaveDevice { req, name, bytes });
+            }
+            Err(e) => self.set_toast(e.to_string()),
+        }
+    }
+
+    pub(crate) fn open_preview(&mut self) {
+        let Some(open) = &self.open_profile else {
+            return;
+        };
+        match open.session.serialize() {
+            Ok(bytes) => {
+                self.preview_csv = Some(String::from_utf8_lossy(&bytes).into_owned());
+            }
+            Err(e) => self.set_toast(e.to_string()),
+        }
     }
 
     pub(crate) fn open_picker(&mut self, target: PickerTarget) {
@@ -997,5 +1183,81 @@ mod tests {
         assert!(!app.undo_redo_shortcuts_enabled());
         app.set_subprofile_ui(SubProfileUi::Closed);
         assert!(app.undo_redo_shortcuts_enabled());
+
+        // An undo behind the preview modal would silently mutate the session
+        // while the preview text stays stale.
+        app.preview_csv = Some(String::new());
+        assert!(!app.undo_redo_shortcuts_enabled());
+        app.preview_csv = None;
+        assert!(app.undo_redo_shortcuts_enabled());
+    }
+
+    #[test]
+    fn saved_event_clears_dirty_and_toasts() {
+        let mut app = open_app_with(a_profile());
+        app.open_profile
+            .as_mut()
+            .unwrap()
+            .session
+            .add_binding(0, "lip", "kb_b", None)
+            .unwrap();
+        let snapshot = app.open_profile.as_ref().unwrap().session.current().clone();
+        app.pending_save = Some((3, snapshot));
+        app.apply_event(DataEvent::Saved {
+            req: 3,
+            label: "x.csv".into(),
+        });
+        assert!(!app.open_profile.as_ref().unwrap().session.is_dirty());
+        assert!(app.toast.is_some());
+    }
+
+    #[test]
+    fn stale_saved_event_is_dropped() {
+        let mut app = open_app_with(a_profile());
+        app.open_profile
+            .as_mut()
+            .unwrap()
+            .session
+            .add_binding(0, "lip", "kb_b", None)
+            .unwrap();
+        app.apply_event(DataEvent::Saved {
+            req: 99,
+            label: "x.csv".into(),
+        });
+        assert!(app.open_profile.as_ref().unwrap().session.is_dirty());
+    }
+
+    #[test]
+    fn second_save_while_in_flight_is_refused() {
+        let mut app = open_app_with(a_profile());
+        let snapshot = app.open_profile.as_ref().unwrap().session.current().clone();
+        app.pending_save = Some((1, snapshot));
+        app.save_in_place();
+        // The first save's slot must survive: a second concurrent write to the
+        // same target could land out of order and leave stale bytes on disk.
+        assert_eq!(app.pending_save.as_ref().map(|(r, _)| *r), Some(1));
+        assert!(app.toast.is_some());
+    }
+
+    #[test]
+    fn save_failure_clears_pending_and_stays_dirty() {
+        let mut app = open_app_with(a_profile());
+        app.open_profile
+            .as_mut()
+            .unwrap()
+            .session
+            .add_binding(0, "lip", "kb_b", None)
+            .unwrap();
+        let snapshot = app.open_profile.as_ref().unwrap().session.current().clone();
+        app.pending_save = Some((5, snapshot));
+        app.apply_event(DataEvent::Failed {
+            req: Some(5),
+            context: FailureContext::SaveFile,
+            message: "disk full".into(),
+        });
+        assert!(app.pending_save.is_none());
+        assert!(app.toast.is_some());
+        // The write never landed; the session must still read as dirty.
+        assert!(app.open_profile.as_ref().unwrap().session.is_dirty());
     }
 }

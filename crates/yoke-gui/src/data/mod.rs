@@ -24,7 +24,7 @@ pub enum DataError {
     Volume(String),
     #[error("no QuadStick volume mounted")]
     NotPresent,
-    #[error("file read failed: {0}")]
+    #[error("file error: {0}")]
     File(String),
     #[error("community index error: {0}")]
     Community(String),

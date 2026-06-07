@@ -30,6 +30,37 @@ enum StripAction {
     },
 }
 
+// Snapshot of session/source state the header toolbar renders from, pre-read
+// so the immutable borrow of `app` ends before dispatch.
+// The bools are independent affordance gates, not a disguised state machine.
+#[allow(clippy::struct_excessive_bools)]
+struct HeaderState {
+    breadcrumb: String,
+    dirty: bool,
+    can_undo: bool,
+    can_redo: bool,
+    is_community: bool,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    volume_present: bool,
+    save_in_flight: bool,
+}
+
+// Deferred toolbar actions; dispatched after the render closure ends.
+// Multiple flags can be set in one frame, so this is not an enum.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Default)]
+struct ToolbarActions {
+    go_back: bool,
+    undo: bool,
+    redo: bool,
+    preview: bool,
+    save: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    save_as: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    save_to_qs: bool,
+}
+
 /// # Panics
 ///
 /// Panics if called without an open profile — the caller must only route here
@@ -37,7 +68,7 @@ enum StripAction {
 pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     // Pre-read owned values while the immutable borrow of `app` is live so
     // the borrow ends before any `&mut app` call below.
-    let (breadcrumb, title, sub_count, total_bindings, tabs, dirty, can_undo, can_redo) = {
+    let (header, title, sub_count, total_bindings, tabs) = {
         let open = app
             .open_profile()
             .expect("editor shown with an open profile");
@@ -48,56 +79,31 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
             .enumerate()
             .map(|(i, s)| (sub_label(s, i), s.bindings().count()))
             .collect();
+        let header = HeaderState {
+            breadcrumb: open.source.breadcrumb(),
+            dirty: open.session.is_dirty(),
+            can_undo: open.session.can_undo(),
+            can_redo: open.session.can_redo(),
+            is_community: matches!(open.source, crate::state::ProfileSource::Community { .. }),
+            volume_present: app.volume_present(),
+            save_in_flight: app.save_in_flight(),
+        };
         (
-            open.source.breadcrumb(),
+            header,
             open.session.current().top_line.title.clone(),
             subs.len(),
             total,
             tabs,
-            open.session.is_dirty(),
-            open.session.can_undo(),
-            open.session.can_redo(),
         )
     };
     let palette = *app.palette();
 
-    let mut go_back = false;
-    let mut do_undo = false;
-    let mut do_redo = false;
-    ui.horizontal(|ui| {
-        if ui.button("< Back").clicked() {
-            go_back = true;
-        }
-        ui.add_space(2.0);
-        ui.label(egui::RichText::new(breadcrumb).small().color(palette.ink_3));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if dirty {
-                ui.colored_label(palette.mouse, "modified");
-            }
-            if ui
-                .add_enabled(can_redo, egui::Button::new("Redo"))
-                .clicked()
-            {
-                do_redo = true;
-            }
-            if ui
-                .add_enabled(can_undo, egui::Button::new("Undo"))
-                .clicked()
-            {
-                do_undo = true;
-            }
-        });
-    });
-    if go_back {
+    let actions = show_header(ui, &palette, &header);
+    if actions.go_back {
         app.request_close_profile();
         return;
     }
-    if do_undo && let Some(s) = app.edit_session_mut() {
-        s.undo();
-    }
-    if do_redo && let Some(s) = app.edit_session_mut() {
-        s.redo();
-    }
+    dispatch_toolbar(app, &actions);
 
     ui.heading(title);
     ui.horizontal(|ui| {
@@ -117,6 +123,103 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
         card_frame().show(&mut cols[0], |ui| crate::views::map::show(app, ui));
         card_frame().show(&mut cols[1], |ui| crate::views::bindings::show(app, ui));
     });
+}
+
+/// Render the back button, breadcrumb, and the right-aligned toolbar
+/// (undo/redo, preview, save actions, dirty marker).
+fn show_header(ui: &mut egui::Ui, palette: &Palette, header: &HeaderState) -> ToolbarActions {
+    let mut actions = ToolbarActions::default();
+    ui.horizontal(|ui| {
+        if ui.button("< Back").clicked() {
+            actions.go_back = true;
+        }
+        ui.add_space(2.0);
+        ui.label(
+            egui::RichText::new(&header.breadcrumb)
+                .small()
+                .color(palette.ink_3),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if header.dirty {
+                ui.colored_label(palette.mouse, "modified");
+            }
+            // No in-place target for a community source; in-flight saves gate
+            // all save affordances so concurrent writes cannot race one target.
+            let idle = !header.save_in_flight;
+            let can_save_in_place = !header.is_community;
+            if ui
+                .add_enabled(
+                    can_save_in_place && header.dirty && idle,
+                    egui::Button::new("Save"),
+                )
+                .clicked()
+            {
+                actions.save = true;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                if ui
+                    .add_enabled(
+                        header.volume_present && idle,
+                        egui::Button::new("Save to QuadStick"),
+                    )
+                    .clicked()
+                {
+                    actions.save_to_qs = true;
+                }
+                if ui
+                    .add_enabled(idle, egui::Button::new("Save As..."))
+                    .clicked()
+                {
+                    actions.save_as = true;
+                }
+            }
+            if ui.button("Preview CSV").clicked() {
+                actions.preview = true;
+            }
+            if ui
+                .add_enabled(header.can_redo, egui::Button::new("Redo"))
+                .clicked()
+            {
+                actions.redo = true;
+            }
+            if ui
+                .add_enabled(header.can_undo, egui::Button::new("Undo"))
+                .clicked()
+            {
+                actions.undo = true;
+            }
+        });
+    });
+    actions
+}
+
+fn dispatch_toolbar(app: &mut YokeApp, actions: &ToolbarActions) {
+    if actions.undo
+        && let Some(s) = app.edit_session_mut()
+    {
+        s.undo();
+    }
+    if actions.redo
+        && let Some(s) = app.edit_session_mut()
+    {
+        s.redo();
+    }
+    if actions.preview {
+        app.open_preview();
+    }
+    if actions.save {
+        app.save_in_place();
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if actions.save_as {
+            app.save_as();
+        }
+        if actions.save_to_qs {
+            app.save_to_device();
+        }
+    }
 }
 
 /// Render the sub-profile chip strip and any inline management form.
