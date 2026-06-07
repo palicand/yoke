@@ -195,15 +195,11 @@ fn show_header(ui: &mut egui::Ui, palette: &Palette, header: &HeaderState) -> To
 }
 
 fn dispatch_toolbar(app: &mut YokeApp, actions: &ToolbarActions) {
-    if actions.undo
-        && let Some(s) = app.edit_session_mut()
-    {
-        s.undo();
+    if actions.undo {
+        app.undo_edit();
     }
-    if actions.redo
-        && let Some(s) = app.edit_session_mut()
-    {
-        s.redo();
+    if actions.redo {
+        app.redo_edit();
     }
     if actions.preview {
         app.open_preview();
@@ -508,15 +504,29 @@ fn dispatch_strip_action(app: &mut YokeApp, action: Option<StripAction>) {
                     .len()
                     - 1;
                 app.set_selected_subprofile(last);
+                // A refused op keeps the form (and the typed fields) open so
+                // the user can correct it instead of retyping.
+                app.set_subprofile_ui(SubProfileUi::Closed);
             }
             app.report_edit(r);
-            app.set_subprofile_ui(SubProfileUi::Closed);
         }
         Some(StripAction::Clone { index, to }) => {
             let r = app
                 .edit_session_mut()
                 .expect("open")
                 .clone_sub_profile(index, &to);
+            if r.is_ok() {
+                // Like Add: the clone lands at the tail; focus what was created.
+                let last = app
+                    .open_profile()
+                    .expect("open")
+                    .session
+                    .current()
+                    .sub_profiles
+                    .len()
+                    - 1;
+                app.set_selected_subprofile(last);
+            }
             app.report_edit(r);
         }
         Some(StripAction::Rename { index, to }) => {
@@ -524,8 +534,10 @@ fn dispatch_strip_action(app: &mut YokeApp, action: Option<StripAction>) {
                 .edit_session_mut()
                 .expect("open")
                 .rename_sub_profile(index, &to);
+            if r.is_ok() {
+                app.set_subprofile_ui(SubProfileUi::Closed);
+            }
             app.report_edit(r);
-            app.set_subprofile_ui(SubProfileUi::Closed);
         }
         Some(StripAction::Delete { index }) => {
             let r = app
@@ -533,16 +545,8 @@ fn dispatch_strip_action(app: &mut YokeApp, action: Option<StripAction>) {
                 .expect("open")
                 .delete_sub_profile(index);
             if r.is_ok() {
-                let len = app
-                    .open_profile()
-                    .expect("open")
-                    .session
-                    .current()
-                    .sub_profiles
-                    .len();
                 // Selection must never point past the shrunken strip.
-                let clamped = app.selected_subprofile().min(len - 1);
-                app.set_selected_subprofile(clamped);
+                app.clamp_selected_subprofile();
             }
             // LastSubProfileDeletion surfaces as a toast; state is untouched.
             app.report_edit(r);

@@ -88,10 +88,12 @@ pub enum AppCommand {
         bytes: Vec<u8>,
     },
     /// Native worker shows the rfd save dialog; wasm falls through to a
-    /// benign cancellation like `OpenFileDialog`.
+    /// benign cancellation like `OpenFileDialog`. `file_name` seeds the
+    /// dialog so the default does not point at an unrelated filename.
     SaveAsDialog {
         req: u64,
         bytes: Vec<u8>,
+        file_name: String,
     },
 }
 

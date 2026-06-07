@@ -672,10 +672,10 @@ impl YokeApp {
                 cmd && i.modifiers.shift && i.key_pressed(egui::Key::Z),
             )
         });
-        if undo && let Some(s) = self.edit_session_mut() {
-            s.undo();
-        } else if redo && let Some(s) = self.edit_session_mut() {
-            s.redo();
+        if undo {
+            self.undo_edit();
+        } else if redo {
+            self.redo_edit();
         }
     }
 
@@ -851,7 +851,29 @@ impl YokeApp {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn save_as(&mut self) {
-        self.dispatch_save(|req, bytes| AppCommand::SaveAsDialog { req, bytes });
+        let Some(open) = &self.open_profile else {
+            return;
+        };
+        // Seed the dialog with the source's name so accepting the default
+        // does not scatter copies named "profile.csv".
+        let file_name = match &open.source {
+            ProfileSource::Device(name) => name.as_filename().to_owned(),
+            ProfileSource::File(path) => path.file_name().map_or_else(
+                || "profile.csv".to_owned(),
+                |s| s.to_string_lossy().into_owned(),
+            ),
+            ProfileSource::Community { name, .. } => {
+                format!(
+                    "{}.csv",
+                    yoke_volume::profile::sanitize_for_profile_name(name)
+                )
+            }
+        };
+        self.dispatch_save(|req, bytes| AppCommand::SaveAsDialog {
+            req,
+            bytes,
+            file_name,
+        });
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -865,7 +887,11 @@ impl YokeApp {
                 .file_stem()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default(),
-            ProfileSource::Community { name, .. } => name.clone(),
+            // Community titles are free-form ("Half-Life: Alyx"); coerce them
+            // to a FAT-safe stem instead of bouncing the save with a toast.
+            ProfileSource::Community { name, .. } => {
+                yoke_volume::profile::sanitize_for_profile_name(name)
+            }
         };
         match yoke_volume::ProfileName::new(&raw) {
             Ok(name) => {
@@ -996,6 +1022,30 @@ impl YokeApp {
 
     pub(crate) fn edit_session_mut(&mut self) -> Option<&mut crate::edit::EditSession> {
         self.open_profile.as_mut().map(|o| &mut o.session)
+    }
+
+    /// Undo/redo route through these wrappers so the chip selection is
+    /// re-clamped: undoing an add/clone shrinks the sub-profile list, and a
+    /// selection past the end renders a blank editor with no chip highlighted.
+    pub(crate) fn undo_edit(&mut self) {
+        if let Some(s) = self.edit_session_mut() {
+            s.undo();
+            self.clamp_selected_subprofile();
+        }
+    }
+
+    pub(crate) fn redo_edit(&mut self) {
+        if let Some(s) = self.edit_session_mut() {
+            s.redo();
+            self.clamp_selected_subprofile();
+        }
+    }
+
+    pub(crate) fn clamp_selected_subprofile(&mut self) {
+        if let Some(open) = &self.open_profile {
+            let len = open.session.current().sub_profiles.len();
+            self.selected_subprofile = self.selected_subprofile.min(len.saturating_sub(1));
+        }
     }
 
     /// Engine refusals surface as toasts; state was left untouched by `EditSession`.

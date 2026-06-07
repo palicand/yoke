@@ -82,17 +82,8 @@ fn output_body(
                     // half-filled or duplicate modifier bypass the pre-check,
                     // which would then panic commit_output's .expect or
                     // silently double-key the input.
-                    if matches!(state.target, PickerTarget::AddBinding { .. }) {
-                        match crate::edit::compose_modifier(&state.keyword, &state.args) {
-                            Ok(m) if has_modifier(&m) => {
-                                state.capture_error =
-                                    Some(format!("{m} already bound on this input"));
-                            }
-                            Ok(_) => return PickerOutcome::CommitOutput(id.to_owned()),
-                            Err(e) => state.capture_error = Some(e),
-                        }
-                    } else {
-                        return PickerOutcome::CommitOutput(id.to_owned());
+                    if let Some(outcome) = gated_commit(state, has_modifier, id.to_owned()) {
+                        return outcome;
                     }
                 }
                 None => state.capture_error = Some(format!("No output for {k:?}")),
@@ -140,22 +131,37 @@ fn output_body(
             }
         });
 
-    if let Some(id) = picked {
-        // Add-mode duplicate pre-check: the composed modifier must not
-        // already key a row on this input (BindingExists pre-empted).
-        if matches!(state.target, PickerTarget::AddBinding { .. }) {
-            match crate::edit::compose_modifier(&state.keyword, &state.args) {
-                Ok(m) if has_modifier(&m) => {
-                    state.capture_error = Some(format!("{m} already bound on this input"));
-                }
-                Ok(_) => return PickerOutcome::CommitOutput(id),
-                Err(e) => state.capture_error = Some(e),
-            }
-        } else {
-            return PickerOutcome::CommitOutput(id);
-        }
+    if let Some(id) = picked
+        && let Some(outcome) = gated_commit(state, has_modifier, id)
+    {
+        return outcome;
     }
     PickerOutcome::Open
+}
+
+/// Add-mode duplicate pre-check shared by the key-capture and list-pick
+/// commit paths: the composed modifier must not already key a row on this
+/// input (`BindingExists` pre-empted). Returns `None` after storing the
+/// error so the picker stays open.
+fn gated_commit(
+    state: &mut PickerState,
+    has_modifier: &dyn Fn(&str) -> bool,
+    id: String,
+) -> Option<PickerOutcome> {
+    if !matches!(state.target, PickerTarget::AddBinding { .. }) {
+        return Some(PickerOutcome::CommitOutput(id));
+    }
+    match crate::edit::compose_modifier(&state.keyword, &state.args) {
+        Ok(m) if has_modifier(&m) => {
+            state.capture_error = Some(format!("{m} already bound on this input"));
+            None
+        }
+        Ok(_) => Some(PickerOutcome::CommitOutput(id)),
+        Err(e) => {
+            state.capture_error = Some(e);
+            None
+        }
+    }
 }
 
 /// Shared modifier field editor: keyword selector + positional arg inputs.

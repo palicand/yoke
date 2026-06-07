@@ -62,25 +62,15 @@ fn show_station(
         let Some(sub) = open.session.current().sub_profiles.get(sub_idx) else {
             return;
         };
-        let inputs = station_inputs(station);
-        let total: usize = inputs
-            .iter()
-            .map(|name| {
-                let inp = yoke_config::catalog::Input::from_csv(name);
-                sub.bindings()
-                    .filter(|b| b.input.as_ref() == Some(&inp))
-                    .count()
-            })
-            .sum();
         let (ey, ti) = station_by_id(station).map_or_else(
             || ("STATION", station.to_string()),
             |st| (kind_eyebrow(st.kind), st.label.to_string()),
         );
-        let roster: Vec<RosterEntry> = inputs
-            .into_iter()
+        let roster: Vec<RosterEntry> = station_inputs(station)
+            .iter()
             .map(|name| {
-                let inp = yoke_config::catalog::Input::from_csv(&name);
-                let rows = sub
+                let inp = yoke_config::catalog::Input::from_csv(name);
+                let rows: Vec<_> = sub
                     .bindings()
                     .filter(|b| b.input.as_ref() == Some(&inp))
                     .map(|b| {
@@ -91,9 +81,10 @@ fn show_station(
                         )
                     })
                     .collect();
-                (name, rows)
+                (name.clone(), rows)
             })
             .collect();
+        let total: usize = roster.iter().map(|(_, rows)| rows.len()).sum();
         (total, ey, ti, roster)
     };
     // Immutable borrow on `app` ends here.

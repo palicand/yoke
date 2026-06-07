@@ -116,12 +116,29 @@ pub const fn input_belongs_to(input: &Input) -> Option<&'static str> {
     }
 }
 
+// The roster view asks for this every repaint; the catalog walk (an
+// allocation plus a from_csv re-parse per input) is static per station,
+// so compute the table once.
+static STATION_INPUTS: std::sync::LazyLock<Vec<(&'static str, Vec<String>)>> =
+    std::sync::LazyLock::new(|| {
+        FPS_STATIONS
+            .iter()
+            .map(|s| {
+                let inputs = Input::all_csv_names()
+                    .filter(|name| input_belongs_to(&Input::from_csv(name)) == Some(s.id))
+                    .collect();
+                (s.id, inputs)
+            })
+            .collect()
+    });
+
 /// Physical inputs belonging to a station, in catalog order.
 #[must_use]
-pub fn station_inputs(station: &str) -> Vec<String> {
-    Input::all_csv_names()
-        .filter(|name| input_belongs_to(&Input::from_csv(name)) == Some(station))
-        .collect()
+pub fn station_inputs(station: &str) -> &'static [String] {
+    STATION_INPUTS
+        .iter()
+        .find(|(id, _)| *id == station)
+        .map_or(&[], |(_, inputs)| inputs.as_slice())
 }
 
 /// Count bindings per station id for one sub-profile.

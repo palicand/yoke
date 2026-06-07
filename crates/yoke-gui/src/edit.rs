@@ -204,10 +204,24 @@ impl EditSession {
             .any(|b| b.input.as_ref() == Some(&input) && b.modifier == m)
     }
 
-    /// Template-fidelity write; structural sub-profile edits (add/clone/
-    /// delete) change the section count the template was laid out for, so
-    /// fall back to canonical layout. Mirrors `yokectl`'s `load_apply_save`.
+    /// Template-fidelity write; any structural sub-profile edit (add/clone/
+    /// delete) in the op log forces canonical layout instead.
+    ///
+    /// The count-mismatch fallback alone is not enough: the template writer
+    /// maps sections by index, so a count-preserving reorder (clone then
+    /// delete) would pass the invariant check and silently weld the old
+    /// mode/sub-mode/channel header cells onto the wrong sub-profiles.
     pub fn serialize(&self) -> Result<Vec<u8>, WriteError> {
+        if self.ops.iter().any(|op| {
+            matches!(
+                op,
+                EditOp::AddSubProfile { .. }
+                    | EditOp::CloneSubProfile { .. }
+                    | EditOp::DeleteSubProfile { .. }
+            )
+        }) {
+            return yoke_config::write(&self.current, None);
+        }
         match yoke_config::write(&self.current, Some(&self.template)) {
             Ok(bytes) => Ok(bytes),
             Err(WriteError::InvariantViolation(_)) => {
@@ -436,6 +450,19 @@ kb_a,normal,left,\r\n\
         let bytes = s.serialize().expect("canonical fallback");
         let reparsed = yoke_config::parse(&bytes).expect("fallback output parses");
         assert_eq!(reparsed.model.sub_profiles.len(), 3);
+    }
+
+    #[test]
+    fn serialize_after_count_preserving_reorder_keeps_headers_welded() {
+        let mut s = session();
+        // Clone sub 0 then delete it: the section count nets back to the
+        // template's, but the surviving sub-profiles are reordered. A
+        // template-fidelity write would map headers by index and swap modes.
+        s.clone_sub_profile(0, "Copy").unwrap();
+        s.delete_sub_profile(0).unwrap();
+        let bytes = s.serialize().expect("canonical write");
+        let reparsed = yoke_config::parse(&bytes).expect("output parses");
+        assert_eq!(reparsed.model, *s.current());
     }
 
     #[test]
