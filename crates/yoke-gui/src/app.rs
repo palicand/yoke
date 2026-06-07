@@ -588,21 +588,38 @@ impl YokeApp {
             let has = |m: &str| session.has_binding(sub, &input, m);
             crate::views::picker::show(ctx, &mut picker, &palette, &has)
         };
-        match outcome {
-            crate::views::picker::PickerOutcome::Open => self.picker = Some(picker),
-            crate::views::picker::PickerOutcome::Close => {}
+        // A commit that the engine refuses must not silently drop the picker:
+        // the modal closed only on Open before, so a raced BindingExists or
+        // ambiguous update would vanish behind a toast. Re-store the picker
+        // with the error in capture_error on Err; close it on Ok (close-on-commit).
+        let result = match outcome {
+            crate::views::picker::PickerOutcome::Open => {
+                self.picker = Some(picker);
+                return;
+            }
+            crate::views::picker::PickerOutcome::Close => return,
             crate::views::picker::PickerOutcome::CommitOutput(output) => {
-                self.commit_output(&picker, &output);
+                self.commit_output(&picker, &output)
             }
             crate::views::picker::PickerOutcome::CommitModifier(modifier) => {
-                self.commit_modifier(&picker, &modifier);
+                self.commit_modifier(&picker, &modifier)
             }
+        };
+        if let Err(e) = result {
+            let message = e.to_string();
+            picker.capture_error = Some(message.clone());
+            self.picker = Some(picker);
+            self.set_toast(message);
         }
     }
 
-    fn commit_output(&mut self, picker: &PickerState, output: &str) {
+    fn commit_output(
+        &mut self,
+        picker: &PickerState,
+        output: &str,
+    ) -> Result<(), yoke_edit::EditError> {
         let sub = picker.sub;
-        let result = match &picker.target {
+        match &picker.target {
             PickerTarget::AddBinding { input } => {
                 let modifier = crate::edit::compose_modifier(&picker.keyword, &picker.args)
                     .expect("commit gated on valid modifier");
@@ -622,22 +639,23 @@ impl YokeApp {
             PickerTarget::EditModifier { .. } => {
                 unreachable!("modifier target commits a modifier")
             }
-        };
-        self.report_edit(result);
+        }
     }
 
-    fn commit_modifier(&mut self, picker: &PickerState, modifier: &str) {
+    fn commit_modifier(
+        &mut self,
+        picker: &PickerState,
+        modifier: &str,
+    ) -> Result<(), yoke_edit::EditError> {
         let sub = picker.sub;
         let PickerTarget::EditModifier { input, output, .. } = &picker.target else {
             unreachable!("output targets commit an output");
         };
-        let result = self
-            .open_profile
+        self.open_profile
             .as_mut()
             .expect("open")
             .session
-            .update_binding(sub, input, output, modifier);
-        self.report_edit(result);
+            .update_binding(sub, input, output, modifier)
     }
 
     pub(crate) fn edit_session_mut(&mut self) -> Option<&mut crate::edit::EditSession> {

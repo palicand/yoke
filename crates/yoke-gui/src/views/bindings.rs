@@ -166,7 +166,7 @@ fn show_all(app: &YokeApp, ui: &mut egui::Ui, palette: &crate::theme::Palette, s
             if rows.is_empty() {
                 ui.add_space(24.0);
                 ui.vertical_centered(|ui| {
-                    ui.colored_label(palette.ink_3, "No bindings for this station.");
+                    ui.colored_label(palette.ink_3, "No bindings in this sub-profile.");
                 });
             }
             for (input_label, output_label, color, modifier_label) in &rows {

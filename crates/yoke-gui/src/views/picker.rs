@@ -76,7 +76,25 @@ fn output_body(
         if let Some(k) = key {
             state.capture_armed = false;
             match key_to_output_id(k) {
-                Some(id) => return PickerOutcome::CommitOutput(id.to_owned()),
+                Some(id) => {
+                    // Capture path for AddBinding: must pass the same modifier
+                    // gate as the list-pick path. Skipping it would let a
+                    // half-filled or duplicate modifier bypass the pre-check,
+                    // which would then panic commit_output's .expect or
+                    // silently double-key the input.
+                    if matches!(state.target, PickerTarget::AddBinding { .. }) {
+                        match crate::edit::compose_modifier(&state.keyword, &state.args) {
+                            Ok(m) if has_modifier(&m) => {
+                                state.capture_error =
+                                    Some(format!("{m} already bound on this input"));
+                            }
+                            Ok(_) => return PickerOutcome::CommitOutput(id.to_owned()),
+                            Err(e) => state.capture_error = Some(e),
+                        }
+                    } else {
+                        return PickerOutcome::CommitOutput(id.to_owned());
+                    }
+                }
                 None => state.capture_error = Some(format!("No output for {k:?}")),
             }
         }
@@ -140,16 +158,127 @@ fn output_body(
     PickerOutcome::Open
 }
 
-// Task 6 will replace this stub with the real modifier sub-control.
-#[allow(clippy::missing_const_for_fn)]
-fn modifier_subcontrol(_: &mut egui::Ui, _: &mut PickerState, _: &Palette) {}
+/// Shared modifier field editor: keyword selector + positional arg inputs.
+/// Returns the composed modifier csv on success, or an error string.
+fn modifier_fields(
+    ui: &mut egui::Ui,
+    state: &mut PickerState,
+    palette: &Palette,
+) -> Result<String, String> {
+    ui.horizontal_wrapped(|ui| {
+        for kw in yoke_config::catalog::Modifier::KEYWORDS {
+            let selected = state.keyword == *kw;
+            if ui.selectable_label(selected, *kw).clicked() && !selected {
+                (*kw).clone_into(&mut state.keyword);
+                state.args = vec![String::new(); crate::edit::modifier_arg_labels(kw).len()];
+            }
+        }
+    });
+    let labels = crate::edit::modifier_arg_labels(&state.keyword);
+    state.args.resize(labels.len(), String::new());
+    ui.horizontal(|ui| {
+        for (i, label) in labels.iter().enumerate() {
+            ui.label(*label);
+            ui.add(egui::TextEdit::singleline(&mut state.args[i]).desired_width(64.0));
+        }
+    });
+    let composed = crate::edit::compose_modifier(&state.keyword, &state.args);
+    if let Err(e) = &composed {
+        ui.colored_label(palette.system, e);
+    }
+    composed
+}
+
+fn modifier_subcontrol(ui: &mut egui::Ui, state: &mut PickerState, palette: &Palette) {
+    ui.label(egui::RichText::new("MODIFIER").small().color(palette.ink_3));
+    let _ = modifier_fields(ui, state, palette);
+    ui.separator();
+}
+
 fn modifier_body(
-    _: &mut egui::Ui,
-    _: &mut PickerState,
-    _: &Palette,
-    _: &dyn Fn(&str) -> bool,
+    ui: &mut egui::Ui,
+    state: &mut PickerState,
+    palette: &Palette,
+    has_modifier: &dyn Fn(&str) -> bool,
 ) -> PickerOutcome {
-    PickerOutcome::Close
+    let PickerTarget::EditModifier {
+        input,
+        output,
+        modifier: original,
+    } = state.target.clone()
+    else {
+        unreachable!("routed by target");
+    };
+    ui.heading(format!("Change modifier for {input} -> {output}"));
+
+    // Guard: if the modifier came from a hand-edited CSV with an unknown
+    // keyword or more tokens than the catalog schema expects, editing would
+    // silently truncate those extra tokens on Apply. Refuse editing and show
+    // the original read-only so the user must choose Cancel; the output and
+    // clear affordances in the roster remain available for such rows.
+    if is_unrecognized_modifier(&original) {
+        ui.add_space(4.0);
+        ui.colored_label(
+            palette.system,
+            "Unrecognized modifier — edit refused to avoid data loss.",
+        );
+        ui.add_space(2.0);
+        ui.label(
+            egui::RichText::new(&original)
+                .monospace()
+                .color(palette.ink_2),
+        );
+        ui.add_space(6.0);
+        if ui.button("Cancel").clicked() {
+            return PickerOutcome::Close;
+        }
+        return PickerOutcome::Open;
+    }
+
+    let composed = modifier_fields(ui, state, palette);
+    let commit = match &composed {
+        // Engine's modifier path does not guard (input, new_modifier)
+        // uniqueness; a duplicate here would silently double-key the input.
+        Ok(m) if *m != original && has_modifier(m) => {
+            ui.colored_label(palette.system, format!("{m} already keys another row"));
+            false
+        }
+        Ok(_) => true,
+        Err(_) => false,
+    };
+    // A refused engine commit re-stores the picker with the error; without
+    // this label the refusal would only flash as a corner toast.
+    if let Some(err) = &state.capture_error {
+        ui.colored_label(palette.system, err);
+    }
+    ui.add_space(6.0);
+    let mut outcome = PickerOutcome::Open;
+    ui.horizontal(|ui| {
+        if ui.add_enabled(commit, egui::Button::new("Apply")).clicked() {
+            outcome = PickerOutcome::CommitModifier(composed.expect("gated on Ok"));
+        }
+        if ui.button("Cancel").clicked() {
+            outcome = PickerOutcome::Close;
+        }
+    });
+    outcome
+}
+
+/// Returns `true` when a modifier string cannot round-trip the catalog editor.
+///
+/// Unknown keyword, or more argument tokens than the schema allows (extra
+/// tokens would be silently truncated on Apply). Used by `modifier_body` to
+/// refuse editing rather than cause data loss.
+#[must_use]
+pub fn is_unrecognized_modifier(modifier: &str) -> bool {
+    let mut tokens = modifier.split_whitespace();
+    let keyword = tokens.next().unwrap_or("");
+    if !yoke_config::catalog::Modifier::KEYWORDS.contains(&keyword) {
+        return true;
+    }
+    let expected_args = crate::edit::modifier_arg_labels(keyword).len();
+    let actual_args = tokens.count();
+    actual_args > expected_args
 }
 
 /// Map an egui `Key` to the `QuadStick` catalog output id.
@@ -316,13 +445,47 @@ mod tests {
             Some("kb_left_arrow")
         );
         assert_eq!(key_to_output_id(egui::Key::Space), Some("kb_space"));
-        // Backtick is NOT mapped (kb_tilde is not in the catalog); this test
-        // from the spec has been updated accordingly — see removed arms in report.
+        // Backtick is not mapped because kb_tilde is not in the catalog.
         assert_eq!(key_to_output_id(egui::Key::Slash), Some("kb_slash"));
     }
 
     #[test]
     fn unmappable_keys_return_none() {
         assert_eq!(key_to_output_id(egui::Key::Copy), None);
+    }
+
+    #[test]
+    fn known_modifiers_are_not_unrecognized() {
+        // Every catalog modifier with its canonical arg count must pass through
+        // the editor without triggering the truncation guard.
+        assert!(!is_unrecognized_modifier("normal"));
+        assert!(!is_unrecognized_modifier("toggle"));
+        assert!(!is_unrecognized_modifier("delay_on 250"));
+        assert!(!is_unrecognized_modifier("repeat 10 100"));
+        assert!(!is_unrecognized_modifier("greater_than 50 80"));
+    }
+
+    #[test]
+    fn unknown_keyword_is_unrecognized() {
+        assert!(is_unrecognized_modifier("xyzzy"));
+        assert!(is_unrecognized_modifier(""));
+    }
+
+    #[test]
+    fn extra_tokens_are_unrecognized() {
+        // delay_on expects 1 arg; 2 args would be silently truncated on Apply.
+        assert!(is_unrecognized_modifier("delay_on 1000 extra"));
+        // normal expects 0 args.
+        assert!(is_unrecognized_modifier("normal spurious"));
+        // repeat expects 2 args; 3 is too many.
+        assert!(is_unrecognized_modifier("repeat 10 100 200"));
+    }
+
+    #[test]
+    fn fewer_tokens_than_schema_are_ok() {
+        // Optional trailing args: repeat with only hz filled is valid.
+        assert!(!is_unrecognized_modifier("repeat 10"));
+        // delay_on with no arg is valid (arg is optional).
+        assert!(!is_unrecognized_modifier("delay_on"));
     }
 }
