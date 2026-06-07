@@ -284,6 +284,9 @@ impl YokeApp {
                     self.opening = None;
                 }
             }
+            // Task 10 wires save state into the UI; handled here so the event
+            // loop compiles in this slice.
+            DataEvent::Saved { .. } => {}
             DataEvent::Failed {
                 req,
                 context,
@@ -316,7 +319,12 @@ impl YokeApp {
                 }
                 self.set_toast(message);
             }
-            FailureContext::OpenDevice | FailureContext::OpenFile => self.set_toast(message),
+            // Save failures surface as toasts now; Task 10 may add a richer
+            // indicator, but a write failure must never be silently swallowed.
+            FailureContext::OpenDevice
+            | FailureContext::OpenFile
+            | FailureContext::SaveFile
+            | FailureContext::SaveDevice => self.set_toast(message),
         }
     }
 

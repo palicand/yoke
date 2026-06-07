@@ -116,6 +116,18 @@ mod imp {
             Self::parse_fixture()
         }
 
+        fn write_file_profile(&self, _path: &Path, _bytes: &[u8]) -> Result<(), DataError> {
+            Ok(())
+        }
+
+        fn write_device_profile(
+            &self,
+            _name: &ProfileName,
+            _bytes: &[u8],
+        ) -> Result<(), DataError> {
+            Ok(())
+        }
+
         fn list_community(&self) -> Result<Vec<IndexEntry>, DataError> {
             Ok(vec![IndexEntry {
                 name: "Destiny 2 (sample)".into(),
@@ -161,6 +173,14 @@ mod imp {
 
         fn read_file_profile(&self, _path: &Path) -> Result<yoke_config::ParseResult, DataError> {
             Self::parse_fixture()
+        }
+
+        fn write_file_profile(&self, _path: &Path, _bytes: &[u8]) -> Result<(), DataError> {
+            Ok(())
+        }
+
+        fn write_device_profile(&self, _name: &String, _bytes: &[u8]) -> Result<(), DataError> {
+            Ok(())
         }
 
         fn list_community(&self) -> Result<Vec<MockCommunityEntry>, DataError> {

@@ -93,6 +93,16 @@ impl DataSource for NativeDataSource {
         parse_bytes(&bytes)
     }
 
+    fn write_file_profile(&self, path: &Path, bytes: &[u8]) -> Result<(), DataError> {
+        std::fs::write(path, bytes).map_err(|e| DataError::File(e.to_string()))
+    }
+
+    fn write_device_profile(&self, name: &ProfileName, bytes: &[u8]) -> Result<(), DataError> {
+        self.volume
+            .write_profile(name, bytes)
+            .map_err(map_volume_err)
+    }
+
     fn list_community(&self) -> Result<Vec<IndexEntry>, DataError> {
         let client = self.index.as_ref().ok_or_else(|| {
             DataError::Community("community index unavailable (no cache directory)".into())

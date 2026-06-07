@@ -2,7 +2,7 @@ pub mod mock;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use yoke_config::ParseResult;
 
@@ -37,6 +37,8 @@ pub trait DataSource: Send + Sync + 'static {
     fn list_device_profiles(&self) -> Result<Vec<ProfileEntryView>, DataError>;
     fn read_device_profile(&self, name: &ProfileName) -> Result<ParseResult, DataError>;
     fn read_file_profile(&self, path: &Path) -> Result<ParseResult, DataError>;
+    fn write_file_profile(&self, path: &Path, bytes: &[u8]) -> Result<(), DataError>;
+    fn write_device_profile(&self, name: &ProfileName, bytes: &[u8]) -> Result<(), DataError>;
     fn list_community(&self) -> Result<Vec<IndexEntry>, DataError>;
     fn fetch_community(&self, entry: &IndexEntry) -> Result<ParseResult, DataError>;
     /// Whether the community index is usable. When false the UI skips
@@ -61,10 +63,36 @@ pub struct ProfileEntryView {
 #[derive(Debug, Clone)]
 pub enum AppCommand {
     ListDeviceProfiles,
-    OpenDeviceProfile { req: u64, name: ProfileName },
-    OpenFileDialog { req: u64 },
+    OpenDeviceProfile {
+        req: u64,
+        name: ProfileName,
+    },
+    OpenFileDialog {
+        req: u64,
+    },
     ListCommunity,
-    OpenCommunity { req: u64, entry: IndexEntry },
+    OpenCommunity {
+        req: u64,
+        entry: IndexEntry,
+    },
+    /// Bytes are pre-serialized by the UI (pure and cheap); only the I/O
+    /// belongs on the worker.
+    SaveFile {
+        req: u64,
+        path: PathBuf,
+        bytes: Vec<u8>,
+    },
+    SaveDevice {
+        req: u64,
+        name: ProfileName,
+        bytes: Vec<u8>,
+    },
+    /// Native worker shows the rfd save dialog; wasm falls through to a
+    /// benign cancellation like `OpenFileDialog`.
+    SaveAsDialog {
+        req: u64,
+        bytes: Vec<u8>,
+    },
 }
 
 /// Events sent from the worker back to the UI.
@@ -84,6 +112,10 @@ pub enum DataEvent {
     FileDialogCancelled {
         req: u64,
     },
+    Saved {
+        req: u64,
+        label: String,
+    },
     Failed {
         /// `Some` for open-style failures (reconciled against the latest open);
         /// `None` for list failures, which always apply.
@@ -100,6 +132,8 @@ pub enum FailureContext {
     OpenFile,
     ListCommunity,
     OpenCommunity,
+    SaveFile,
+    SaveDevice,
 }
 
 /// Synchronous command dispatch shared by both targets. The async/dialog-only
@@ -151,12 +185,47 @@ pub fn handle_command(data: &dyn DataSource, cmd: AppCommand) -> DataEvent {
                 },
             }
         }
-        // The browser build has no native dialog (the button is gated off wasm),
-        // but routed inline here it must not surface a developer-facing string as
-        // a toast; treat it as a benign cancellation. Native intercepts this in
-        // `worker` before it reaches here.
-        AppCommand::OpenFileDialog { req } => DataEvent::FileDialogCancelled { req },
+        // Both dialogs are handled before reaching here (native intercepts in
+        // `worker`); on wasm they produce a benign cancellation so no
+        // developer-facing string surfaces as a toast.
+        AppCommand::OpenFileDialog { req } | AppCommand::SaveAsDialog { req, .. } => {
+            DataEvent::FileDialogCancelled { req }
+        }
+        AppCommand::SaveFile { req, path, bytes } => match data.write_file_profile(&path, &bytes) {
+            Ok(()) => DataEvent::Saved {
+                req,
+                label: path.display().to_string(),
+            },
+            Err(e) => DataEvent::Failed {
+                req: Some(req),
+                context: FailureContext::SaveFile,
+                message: e.to_string(),
+            },
+        },
+        AppCommand::SaveDevice { req, name, bytes } => {
+            match data.write_device_profile(&name, &bytes) {
+                Ok(()) => DataEvent::Saved {
+                    req,
+                    label: device_label(&name),
+                },
+                Err(e) => DataEvent::Failed {
+                    req: Some(req),
+                    context: FailureContext::SaveDevice,
+                    message: e.to_string(),
+                },
+            }
+        }
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn device_label(name: &ProfileName) -> String {
+    format!("QuadStick / {}", name.as_filename())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn device_label(name: &ProfileName) -> String {
+    format!("QuadStick / {name}")
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -197,6 +266,23 @@ mod tests {
         match event {
             DataEvent::CommunityListed(list) => assert!(!list.is_empty()),
             _ => panic!("expected CommunityListed"),
+        }
+    }
+
+    #[test]
+    fn save_device_round_trips_saved_event() {
+        let data = MockDataSource::new();
+        let event = handle_command(
+            &data,
+            AppCommand::SaveDevice {
+                req: 7,
+                name: ProfileName::new("default").unwrap(),
+                bytes: b"x".to_vec(),
+            },
+        );
+        match event {
+            DataEvent::Saved { req, .. } => assert_eq!(req, 7),
+            _ => panic!("expected Saved"),
         }
     }
 }
