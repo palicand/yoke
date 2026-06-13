@@ -1,5 +1,6 @@
 pub mod app;
 pub mod data;
+pub mod edit;
 pub mod state;
 pub mod stations;
 pub mod theme;

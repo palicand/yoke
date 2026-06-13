@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tokio::runtime::Runtime;
 use tokio::sync::watch;
-use yoke_config::model::Profile;
+use yoke_config::ParseResult;
 use yoke_index::{IndexClient, IndexEntry, ProfileSource as IndexSource};
 use yoke_volume::state::MountState;
 use yoke_volume::{ProfileName, VolumeProvider};
@@ -83,14 +83,24 @@ impl DataSource for NativeDataSource {
             .collect())
     }
 
-    fn read_device_profile(&self, name: &ProfileName) -> Result<Profile, DataError> {
+    fn read_device_profile(&self, name: &ProfileName) -> Result<ParseResult, DataError> {
         let bytes = self.volume.read_profile(name).map_err(map_volume_err)?;
         parse_bytes(&bytes)
     }
 
-    fn read_file_profile(&self, path: &Path) -> Result<Profile, DataError> {
+    fn read_file_profile(&self, path: &Path) -> Result<ParseResult, DataError> {
         let bytes = std::fs::read(path).map_err(|e| DataError::File(e.to_string()))?;
         parse_bytes(&bytes)
+    }
+
+    fn write_file_profile(&self, path: &Path, bytes: &[u8]) -> Result<(), DataError> {
+        std::fs::write(path, bytes).map_err(|e| DataError::File(e.to_string()))
+    }
+
+    fn write_device_profile(&self, name: &ProfileName, bytes: &[u8]) -> Result<(), DataError> {
+        self.volume
+            .write_profile(name, bytes)
+            .map_err(map_volume_err)
     }
 
     fn list_community(&self) -> Result<Vec<IndexEntry>, DataError> {
@@ -104,7 +114,7 @@ impl DataSource for NativeDataSource {
         Ok(listing.entries)
     }
 
-    fn fetch_community(&self, entry: &IndexEntry) -> Result<Profile, DataError> {
+    fn fetch_community(&self, entry: &IndexEntry) -> Result<ParseResult, DataError> {
         let client = self
             .index
             .as_ref()
@@ -118,10 +128,8 @@ impl DataSource for NativeDataSource {
     }
 }
 
-fn parse_bytes(bytes: &[u8]) -> Result<Profile, DataError> {
-    yoke_config::parse(bytes)
-        .map(|r| r.model)
-        .map_err(|e| DataError::Parse(e.to_string()))
+fn parse_bytes(bytes: &[u8]) -> Result<ParseResult, DataError> {
+    yoke_config::parse(bytes).map_err(|e| DataError::Parse(e.to_string()))
 }
 
 fn map_volume_err(e: yoke_volume::VolumeError) -> DataError {

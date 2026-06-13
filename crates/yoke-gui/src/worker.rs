@@ -109,6 +109,11 @@ mod native_worker {
                     let Ok(cmd) = cmd else { break };
                     let event = match cmd {
                         AppCommand::OpenFileDialog { req } => open_file_dialog(data.as_ref(), req),
+                        AppCommand::SaveAsDialog {
+                            req,
+                            bytes,
+                            file_name,
+                        } => save_as_dialog(data.as_ref(), req, &bytes, &file_name),
                         other => handle_command(data.as_ref(), other),
                     };
                     let _ = evt_tx.send(event);
@@ -130,14 +135,41 @@ mod native_worker {
             return DataEvent::FileDialogCancelled { req };
         };
         match data.read_file_profile(&path) {
-            Ok(profile) => DataEvent::ProfileOpened {
+            Ok(profile_result) => DataEvent::ProfileOpened {
                 req,
                 source: ProfileSource::File(path),
-                profile: Box::new(profile),
+                parsed: Box::new(profile_result),
             },
             Err(e) => DataEvent::Failed {
                 req: Some(req),
                 context: FailureContext::OpenFile,
+                message: e.to_string(),
+            },
+        }
+    }
+
+    fn save_as_dialog(
+        data: &NativeDataSource,
+        req: u64,
+        bytes: &[u8],
+        file_name: &str,
+    ) -> DataEvent {
+        // rfd's sync dialog blocks this worker thread; safe off-main on macOS.
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("CSV", &["csv"])
+            .set_file_name(file_name)
+            .save_file()
+        else {
+            return DataEvent::FileDialogCancelled { req };
+        };
+        match data.write_file_profile(&path, bytes) {
+            Ok(()) => DataEvent::Saved {
+                req,
+                label: path.display().to_string(),
+            },
+            Err(e) => DataEvent::Failed {
+                req: Some(req),
+                context: FailureContext::SaveFile,
                 message: e.to_string(),
             },
         }

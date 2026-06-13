@@ -2,9 +2,10 @@
 
 **Date:** 2026-05-30
 **Revised:** 2026-05-31 — reconciled to the shipped `(input, modifier)` binding model; the original draft assumed an input-keyed `set_binding`/`set_modifier` surface that was discarded in [`2026-05-30-yoke-edit-binding-ops-design.md`](2026-05-30-yoke-edit-binding-ops-design.md).
+**Revised:** 2026-06-07 — reconciled to index-addressed sub-profile ops and the two-argument `yoke_config::write`.
 **Stage:** F
 **Status:** proposed
-**Predecessors:** [`2026-05-27-yoke-gui-egui-design.md`](2026-05-27-yoke-gui-egui-design.md), [`2026-05-30-yoke-edit-binding-ops-design.md`](2026-05-30-yoke-edit-binding-ops-design.md), [`2026-05-16-yoke-config-design.md`](2026-05-16-yoke-config-design.md), [`2026-05-17-yoke-volume-design.md`](2026-05-17-yoke-volume-design.md), [`2026-05-18-yokectl-design.md`](2026-05-18-yokectl-design.md)
+**Predecessors:** [`2026-05-27-yoke-gui-egui-design.md`](2026-05-27-yoke-gui-egui-design.md), [`2026-05-30-yoke-edit-binding-ops-design.md`](2026-05-30-yoke-edit-binding-ops-design.md), [`2026-05-31-yoke-edit-subprofile-addressing-design.md`](2026-05-31-yoke-edit-subprofile-addressing-design.md), [`2026-05-16-yoke-config-design.md`](2026-05-16-yoke-config-design.md), [`2026-05-17-yoke-volume-design.md`](2026-05-17-yoke-volume-design.md), [`2026-05-18-yokectl-design.md`](2026-05-18-yokectl-design.md)
 
 ## Goal
 
@@ -42,12 +43,13 @@ All editing goes through [`yoke-edit`](../../../crates/yoke-edit): the GUI build
 The [`2026-05-30-yoke-edit-binding-ops-design.md`](2026-05-30-yoke-edit-binding-ops-design.md) slice already shipped the binding-edit vocabulary; this editor is a pure consumer of it. The model the UI must honour:
 
 - A binding row is **`(input, modifier) → output`**. The **`(input, modifier)` pair is the key** and maps to exactly one output. **Input alone is not a key** — one input may legitimately drive several outputs under different modifiers (a chord; corpus proof: `lip` → `kb_left_gui [normal]` *and* `kb_left_shift [delay_on 1000]` in one sub-profile). The "one output per input" mental model is wrong and is precisely the corruption class the engine refuses.
+- All sub-profile-scoped ops carry `sub_profile: usize` — the **0-based chip-strip index**, matching CSV row order. This closes the silent-corruption hole where name-keyed ops resolved to the first-match in profiles whose sub-profiles are all empty-named (every real `default.csv` layer). See [`2026-05-31-yoke-edit-subprofile-addressing-design.md`](2026-05-31-yoke-edit-subprofile-addressing-design.md) for the full rationale. **Sub-profile names are display-only**; empty and duplicate names are legal, so `AddSubProfile`/`CloneSubProfile` append unconditionally and `RenameSubProfile` sets the label without enforcing uniqueness.
 - The consumer ops (all `EditOp` variants, applied via `yoke_edit::apply`):
-  - **`AddBinding { sub_profile, input, output, modifier: Option<String> }`** (POST). `modifier` defaults to `normal`. Errors `BindingExists` if `(input, modifier)` already maps to an output.
-  - **`UpdateBinding { sub_profile, input, output, modifier: String }`** (PUT). The engine **anchors** on whichever of `(input, modifier)` / `(input, output)` already matches a single row and changes the other field: matching `(input, modifier)` → set that row's **output**; matching `(input, output)` → set that row's **modifier**; an exact-triple match is a noop. `BindingNotFound` if neither matches; `AmbiguousBinding` if the `(input, output)` anchor matches more than one row.
-  - **`ClearBinding { sub_profile, input, modifier: Option<String> }`** (DELETE). `None` removes **every** row for the input; `Some(m)` removes only the unique `(input, m)` row. `BindingNotFound` if nothing matched.
-  - Sub-profile: `AddSubProfile { name, mode, sub_mode, channel }`, `CloneSubProfile { from, to }`, `RenameSubProfile { from, to }`, `DeleteSubProfile { name }` (unchanged from the prior draft).
-- Engine errors the GUI must reckon with: `BindingExists`, `BindingNotFound`, `AmbiguousBinding`, `UnknownModifier { suggestions }`, `InvalidModifierArguments { keyword, modifier }`, plus the existing `UnknownInput` / `UnknownOutput` / `SubProfileExists` / `LastSubProfileDeletion`. See [Error handling](#error-handling).
+  - **`AddBinding { sub_profile: usize, input, output, modifier: Option<String> }`** (POST). `modifier` defaults to `normal`. Errors `BindingExists` if `(input, modifier)` already maps to an output.
+  - **`UpdateBinding { sub_profile: usize, input, output, modifier: String }`** (PUT). The engine **anchors** on whichever of `(input, modifier)` / `(input, output)` already matches a single row and changes the other field: matching `(input, modifier)` → set that row's **output**; matching `(input, output)` → set that row's **modifier**; an exact-triple match is a noop. `BindingNotFound` if neither matches; `AmbiguousBinding` if the `(input, output)` anchor matches more than one row.
+  - **`ClearBinding { sub_profile: usize, input, modifier: Option<String> }`** (DELETE). `None` removes **every** row for the input; `Some(m)` removes only the unique `(input, m)` row. `BindingNotFound` if nothing matched.
+  - Sub-profile management: `AddSubProfile { name, mode, sub_mode, channel }` (appends at end; `name` may be empty or duplicate), `CloneSubProfile { index: usize, to: String }`, `RenameSubProfile { index: usize, to: String }`, `DeleteSubProfile { index: usize }`.
+- Engine errors the GUI must reckon with: `BindingExists`, `BindingNotFound`, `AmbiguousBinding`, `UnknownModifier { suggestions }`, `InvalidModifierArguments { keyword, modifier }`, plus the existing `UnknownInput` / `UnknownOutput` / `SubProfileIndexOutOfRange` / `LastSubProfileDeletion`. See [Error handling](#error-handling).
 
 **Criticality.** A profile is frequently the user's only input path; a silent mis-target is a critical bug, not a cosmetic one. The engine's discipline is "never silently wrong; refuse when ambiguous." The GUI inherits that: it addresses a concrete row by its current `(input, modifier)` (always unique), constructs ops that target exactly that row, and **pre-checks `current()` before issuing an op that the engine cannot itself guard** (see modifier-edit below). When the engine still refuses (`AmbiguousBinding`), the GUI surfaces the refusal as a toast rather than working around it.
 
@@ -57,15 +59,16 @@ A new **egui-free** module `crates/yoke-gui/src/edit.rs` holds the editing state
 
 Authoritative shape lives in the source; the contract:
 
-- `EditSession { base: Profile, ops: Vec<EditOp>, redo: Vec<EditOp>, current: Profile }`.
+- `EditSession { base: Profile, template: RawCsv, ops: Vec<EditOp>, redo: Vec<EditOp>, current: Profile, saved: Profile }`. `ParseResult.raw` (the template) threads from `DataSource` through `EditSession::new(parsed: ParseResult)` so template-fidelity writes work without re-reading the file.
 - `current()` returns `&Profile` — views read this exactly as they read `OpenProfile.profile` today.
-- Each edit intent builds the `EditOp`, computes `apply(base, ops + new)`, and on success swaps `current`, pushes the op, and clears `redo`; on `EditError` it returns the error unchanged for the UI to toast and leaves state untouched. The intents mirror the engine ops one-to-one:
-  - `add_binding(sub, input, output, modifier: Option<String>)` → `AddBinding`.
-  - `update_binding(sub, input, output, modifier: String)` → `UpdateBinding`.
-  - `clear_binding(sub, input, modifier: Option<String>)` → `ClearBinding`.
-  - `add_sub_profile` / `clone_sub_profile` / `rename_sub_profile` / `delete_sub_profile`.
+- Each edit intent builds the `EditOp`, applies it with `apply(current, &[op])`, and on success swaps `current`, pushes the op, and clears `redo`; on `EditError` it returns the error unchanged for the UI to toast and leaves state untouched. The intents mirror the engine ops one-to-one:
+  - `add_binding(sub: usize, input, output, modifier: Option<&str>)` → `AddBinding`.
+  - `update_binding(sub: usize, input, output, modifier: &str)` → `UpdateBinding`.
+  - `clear_binding(sub: usize, input, modifier: Option<&str>)` → `ClearBinding`.
+  - `add_sub_profile` / `clone_sub_profile(index, to)` / `rename_sub_profile(index, to)` / `delete_sub_profile(index)`.
 - `undo()` pops the last op into `redo` and re-derives `current = apply(base, &ops)`; `redo()` replays.
-- `is_dirty() = !ops.is_empty()`.
+- `is_dirty()` is a **state comparison** (`current != saved`), not `!ops.is_empty()`. This means undoing back to the last-saved shape reads as clean and undoing past a save point reads as dirty — an op-count approach would misreport both.
+- `mark_saved(snapshot: Profile)` sets `saved = snapshot`. The snapshot is the profile state captured at **dispatch time** (see save flow), so edits made while a save is in-flight remain dirty after it completes.
 
 `OpenProfile.profile: Profile` (in [`state.rs`](../../../crates/yoke-gui/src/state.rs)) becomes `OpenProfile.session: EditSession`. `yoke-gui` gains an **always** workspace dependency on `yoke-edit` (it is pure — `serde` + `strsim` + `thiserror` + `yoke-config` — so it compiles for `wasm32`).
 
@@ -116,7 +119,7 @@ A single variant: `egui::Modal` (egui 0.34 native). Picker-variant switching (po
   - Search box filters by csv id / derived label; category chips filter by variant.
   - On add, the picker also exposes the modifier sub-control (below), defaulting to `normal`.
   - Selecting an entry commits `add_binding` (add / chord) or `update_binding` anchored by the row's current modifier (edit-output).
-  - **Key-capture banner** (output mode only): arm it, map the next `egui::Event::Key` to a `kb_*` output (a native port of the handoff's `eventToOutputId` in [`picker.jsx`](../../../../design_handoff_quadstick_config/src/picker.jsx)), and commit directly. Unmappable keys show an inline message.
+  - **Key-capture banner** (output mode only): arm it, map the next `egui::Event::Key` to a `kb_*` output (a native port of the handoff's `eventToOutputId` in [`picker.jsx`](../../../../design_handoff_quadstick_config/src/picker.jsx)), and commit directly. Unmappable keys show an inline message. **Coverage notes:** (1) egui's `Key` enum has no modifier-key variants (Shift, Ctrl, Alt, GUI live in `Modifiers`, not `Key`), so all sided `kb_left_*` / `kb_right_*` modifier outputs remain list-only — they cannot be capture-mapped. (2) Several `kb_*` outputs whose ids were present in the plan-era handoff are absent from the `Output` catalog and therefore also cannot be capture-mapped: `kb_home`, `kb_end`, `kb_page_up`, `kb_page_down`, `kb_insert`, and most punctuation keys (only `kb_slash` is catalog-present and capture-mapped). For unmapped egui keys or catalog-absent ids, the banner shows an inline message and falls back to the searchable list.
 - **Modifier mode** (used by edit-modifier): see below.
 
 ### Modifier editing — type + arguments (modifier mode)
@@ -125,12 +128,16 @@ Modifier mode lists the modifier keywords from [`Modifier::KEYWORDS`](../../../c
 
 Argument validation happens **inline before commit**: a field that would yield `InvalidModifierArguments` (bad/extra/missing argument for a recognised keyword) blocks the commit button with an inline message, so the engine error is normally pre-empted. The keyword set is closed (driven by `KEYWORDS`), so `UnknownModifier` is unreachable from the GUI.
 
+**Unrecognized-modifier refusal.** When a binding row's existing modifier came from a hand-edited CSV with an unknown keyword or more argument tokens than the catalog schema allows, editing would silently truncate the extra tokens on Apply. Rather than corrupt the profile, modifier mode detects this condition via `is_unrecognized_modifier` (unknown keyword, or `actual_args > expected_args`) and **refuses to open the modifier editor**, showing the raw modifier value read-only with a "Unrecognized modifier — edit refused to avoid data loss" message and only a Cancel button. The output-edit and clear affordances on that row remain available. The picker stays open until the user explicitly cancels (no backdrop-dismiss-to-commit path).
+
 ### Sub-profile management (`views/editor.rs` strip)
 
-The existing chip strip gains affordances mapping to `yoke-edit`'s sub-profile operations (unchanged by the binding-ops slice):
+The existing chip strip gains affordances mapping to `yoke-edit`'s sub-profile operations:
 
-- **Add** — small inline form: name + [`SubProfileMode`](../../../crates/yoke-config/src/catalog/subprofile_modes.rs) + sub-mode + [`Channel`](../../../crates/yoke-config/src/catalog/channels.rs).
-- **Clone**; **Rename** (inline edit); **Delete** (the engine refuses deleting the last remaining sub-profile via `LastSubProfileDeletion` and rejects name collisions via `SubProfileExists` — surface those as toasts).
+- **Add** — small inline form: name (may be empty or duplicate) + [`SubProfileMode`](../../../crates/yoke-config/src/catalog/subprofile_modes.rs) + sub-mode + [`Channel`](../../../crates/yoke-config/src/catalog/channels.rs). Appends at the end; `AddSubProfile` never rejects an empty or duplicate name.
+- **Clone** (`CloneSubProfile { index, to }`) — clones the chip-strip–selected layer.
+- **Rename** (`RenameSubProfile { index, to }`) — inline edit; name-uniqueness is **not** enforced (display-only label).
+- **Delete** (`DeleteSubProfile { index }`) — the engine refuses deleting the last remaining sub-profile via `LastSubProfileDeletion`; surface that as a toast. There is no `SubProfileExists` error (name collisions are legal).
 
 ### Save flow (`views/editor.rs` header + worker)
 
@@ -139,20 +146,25 @@ Header toolbar gains a dirty marker and three actions, plus a preview:
 - **Save** — write in place to the open source. `File` → overwrite the file; `Device` → write to the mounted volume; `Community` (remote) → disabled (no in-place target), fall through to Save As / Save to QuadStick.
 - **Save As…** — native file picker (`rfd`), write a new CSV. **Native only.**
 - **Save to QuadStick** — write to the mounted volume regardless of source. **Native only.**
-- **Preview CSV** — modal showing `String::from_utf8_lossy(&yoke_config::write(current()))` in a monospace scroll area, with a save action.
+- **Preview CSV** — modal showing `String::from_utf8_lossy(&session.serialize()?)` in a monospace scroll area (uses the same `serialize` path as actual saves, including template-fidelity and canonical fallback), with a Save action that delegates to `save_in_place`. The Save button is disabled for `Community` sources and when a save is in-flight.
 
-Serialization is [`yoke_config::write`](../../../crates/yoke-config/src/csv/write.rs) (pure, template-fidelity). Writes go through new `DataSource` methods and the worker, never on the UI thread:
+Serialization is `EditSession::serialize()`, which calls `yoke_config::write(&profile, Some(&template))` for template-fidelity (preserves row order and whitespace of the original CSV). When a structural sub-profile edit (add/clone/delete) changes the section count the template was laid out for, `write` returns `WriteError::InvariantViolation`; `serialize` catches this and falls back to `yoke_config::write(&profile, None)` (canonical layout), logging a warning. This mirrors `yokectl`'s `load_apply_save` fallback.
+
+Writes go through new `DataSource` methods and the worker, never on the UI thread:
 
 - `DataSource::write_file_profile(&Path, &[u8])` and `write_device_profile(&ProfileName, &[u8])` (the latter delegates to [`VolumeProvider::write_profile`](../../../crates/yoke-volume/src/provider.rs)).
-- New commands `AppCommand::{SaveInPlace, SaveAs, SaveToDevice}` carry `Box<Profile>` (and, for SaveAs, are routed through the worker's native file-dialog site like `OpenFileDialog`). The worker serializes via `yoke_config::write` and writes.
-- New `DataEvent::Saved { req, target }` clears the dirty state and toasts success; `FailureContext::{SaveFile, SaveDevice}` carry write failures to a toast. Save uses the same monotonic `req` staleness reconciliation as opens.
+- Commands `AppCommand::{SaveFile { req, path, bytes }, SaveDevice { req, name, bytes }, SaveAsDialog { req, bytes }}` carry **pre-serialized bytes** (serialization is pure and cheap, done on the UI thread before dispatch). `SaveAsDialog` is routed through the worker's native file-dialog site like `OpenFileDialog`; on wasm it falls through to a benign cancellation.
+- `DataEvent::Saved { req, label }` clears the dirty state and toasts success; `FailureContext::{SaveFile, SaveDevice}` carry write failures to a toast. Save uses the same monotonic `req` staleness reconciliation as opens.
+- **One save in flight at a time.** `dispatch_save` refuses a second dispatch when `pending_save` is already set (toasts "A save is already in progress" and returns early). This prevents two concurrent writes to the same target from landing out of order and leaving stale bytes on disk while the UI reads clean.
+- **Snapshot semantics.** `dispatch_save` captures `session.current().clone()` at dispatch time and stores it in `pending_save: Option<(u64, Profile)>`. When `DataEvent::Saved` arrives, `mark_saved` receives this dispatch-time snapshot — not the current state — so edits made while the save was in-flight remain dirty.
+- **Save-to-QuadStick name derivation.** `save_to_device` derives the `ProfileName` from: the device profile's filename (`name.as_filename()`) when the source is a `Device`; the file stem when the source is a `File`; the community entry's display name when the source is `Community`. The raw string is validated by `ProfileName::new`; invalid names surface as a toast without dispatching.
 
 `MockDataSource` implements the save methods as an in-memory/no-op success so the wasm dev build and host tests exercise the full flow.
 
 ### State, threading, wasm
 
 - `app.rs` holds picker state (open / mode / target — an existing row's `(input, modifier, output)` for update, or an input for add), and a confirm-on-discard guard: Back / Escape / opening another profile while `session.is_dirty()` prompts before discarding. Escape's existing back-stepping (station → profile → pending open) gains the dirty prompt at the profile-close step.
-- Editing, undo/redo, the picker, and the CSV preview run on **both** targets. Only the three native save paths (`SaveAs`, `SaveToDevice`, and the on-disk `SaveInPlace` for `File`/`Device`) are `cfg`-gated off wasm, mirroring how the file-open button is already gated.
+- Editing, undo/redo, the picker, and the CSV preview run on **both** targets. Only the three native save paths (`SaveAsDialog`, `save_to_device`, and the on-disk `SaveFile`/`SaveDevice` for `File`/`Device` sources) are `cfg`-gated off wasm, mirroring how the file-open button is already gated.
 - Egui-free-core rule preserved: `edit.rs`, `data/`, `state.rs`, `stations.rs`, and the command/event protocol import zero egui; only `app.rs` and `views/` touch egui.
 
 ### Error handling
@@ -164,7 +176,8 @@ Engine `EditError`s surface as toasts. The picker offers only valid catalog entr
 | `BindingExists` | `add` / add-chord whose `(input, modifier)` already exists | toast; the add picker pre-checks `current()` and disables the colliding modifier where feasible |
 | `AmbiguousBinding` | edit-modifier when `(input, output)` keys more than one row, or edit-output when the new output already maps from the same input under another modifier | toast (the safe refusal); precise clear+add fallback deferred |
 | `BindingNotFound` | clear / update against a row that vanished (stale UI) | toast; the roster re-reads `current()` after every op so this is rare |
-| `LastSubProfileDeletion`, `SubProfileExists` | delete last sub-profile / name collision | toast |
+| `LastSubProfileDeletion` | delete the only remaining sub-profile | toast |
+| `SubProfileIndexOutOfRange` | sub-profile index >= len; backstop only — the GUI clamps `selected_subprofile` to valid range and stamps it at picker-open time, so this is unreachable in practice | toast |
 
 Save errors surface as toasts and leave the in-memory session dirty (not lost). The Stage E disconnect-mid-session behavior is unchanged: a write that fails because the volume vanished toasts and the editor stays open on the in-memory profile.
 
@@ -175,7 +188,7 @@ crates/yoke-gui/src/
   edit.rs               # NEW: EditSession (egui-free, dual-target); add/update/clear_binding + sub-profile intents
   state.rs              # OpenProfile.profile -> OpenProfile.session: EditSession
   data/
-    mod.rs              # + Save commands/events, SaveTarget, FailureContext::{SaveFile,SaveDevice}, DataSource save methods
+    mod.rs              # + AppCommand::{SaveFile,SaveDevice,SaveAsDialog} (pre-serialized bytes), DataEvent::Saved{req,label}, FailureContext::{SaveFile,SaveDevice}, DataSource save methods
     native.rs           # + write_file_profile / write_device_profile
     mock.rs             # + in-memory save success
   worker.rs             # + route Save commands; SaveAs via the native dialog site
@@ -198,14 +211,15 @@ No new gates. The existing Stage E gates continue to apply and must stay green: 
 
 | Layer | Coverage | Mechanism |
 |---|---|---|
-| `EditSession` | add / update (output-anchored and modifier-anchored) / clear (scoped and all); dirty flag; re-derivation after rename-then-edit; error leaves state untouched | host `cargo test` (egui-free) |
+| `EditSession` | add / update (output-anchored and modifier-anchored) / clear (scoped and all); dirty flag (state comparison, not op count: undo-to-saved reads clean, undo-past-save reads dirty); `mark_saved` clears dirty and undo past the save point restores dirty; re-derivation after rename-then-edit; error leaves state untouched | host `cargo test` (egui-free) |
 | Chord handling | an input with multiple `(input, modifier)` rows enumerates all of them; clear-one vs clear-all; add-chord vs `BindingExists` | host `cargo test` |
-| Modifier-edit safety | edit-modifier pre-check refuses a duplicate `(input, modifier)`; `AmbiguousBinding` surfaces (not silently resolved) when `(input, output)` is non-unique | host `cargo test` |
-| Picker mapping | `egui::Event::Key` → `kb_*` for letters/digits/named/sided-modifier keys; unmappable keys rejected; argument validation blocks `InvalidModifierArguments` | host `cargo test` (egui-free mapping + validation fns) |
+| Index isolation | add/update/clear on sub-profile 1 leaves sub-profile 0 byte-identical (the corruption class the index slice fixed) | host `cargo test` |
+| Modifier-edit safety | edit-modifier pre-check refuses a duplicate `(input, modifier)`; `AmbiguousBinding` surfaces (not silently resolved) when `(input, output)` is non-unique; `is_unrecognized_modifier` refuses unknown keywords and extra-token modifiers | host `cargo test` |
+| Picker mapping | `egui::Event::Key` → `kb_*` for letters/digits/named keys; sided modifier keys (`kb_left_shift` etc.) are not reachable via egui Key (list-only); catalog-absent keys (`kb_home` etc.) return `None`; unmappable keys rejected; every mapped id exists in the catalog | host `cargo test` (egui-free mapping + validation fns) |
 | Roster | per-station input enumeration via `input_belongs_to`; unbound inputs rendered as `(unbound)` | host `cargo test` |
-| Save | mock save round-trip; `Saved`/`Failed` event reconciliation by `req` | host `cargo test` against `MockDataSource` |
+| Save | mock save round-trip; `Saved`/`Failed` event reconciliation by `req`; second dispatch refused while `pending_save` is set; stale `Saved` event dropped | host `cargo test` against `MockDataSource` |
 
-`egui_kittest` visual-regression tests remain deferred (consistent with Stage E). Manual acceptance: native run — open a device profile, change an input's output via the picker, change a binding's modifier to `delay_on` with an argument, add a parallel chord to the same input, add and rename a sub-profile, undo back to clean, preview the CSV, save to the volume; `trunk serve` — the same edit/undo/redo/picker flow against the mock (save is the in-memory no-op).
+`egui_kittest` visual-regression tests remain deferred (consistent with Stage E). Manual acceptance: native run — open a device profile, change an input's output via the picker, change a binding's modifier to `delay_on` with an argument, add a parallel chord to the same input, add and rename a sub-profile (empty name accepted), undo back to clean, preview the CSV, save to the volume; `trunk serve` — the same edit/undo/redo/picker flow against the mock (save is the in-memory no-op).
 
 ## Risks and open questions
 
@@ -219,6 +233,7 @@ No new gates. The existing Stage E gates continue to apply and must stay green: 
 
 - Stage E read-only viewer spec: [`2026-05-27-yoke-gui-egui-design.md`](2026-05-27-yoke-gui-egui-design.md).
 - Binding-edit ops + CLI parity this editor consumes: [`2026-05-30-yoke-edit-binding-ops-design.md`](2026-05-30-yoke-edit-binding-ops-design.md) — the `(input, modifier)` model, `AddBinding`/`UpdateBinding`/`ClearBinding`, and the `BindingExists`/`BindingNotFound`/`AmbiguousBinding`/`UnknownModifier`/`InvalidModifierArguments` error set.
+- Index-addressed sub-profile ops (supersedes name-keyed model): [`2026-05-31-yoke-edit-subprofile-addressing-design.md`](2026-05-31-yoke-edit-subprofile-addressing-design.md).
 - Action-picker UX (visual reference; not a port target): `../../../../design_handoff_quadstick_config/src/picker.jsx` (modal/popover/palette variants, `eventToOutputId` key mapping) and `data.js` (representative output/category/modifier tables).
 - Edit engine consumed by the GUI: [`yoke-edit`](../../../crates/yoke-edit) — `EditOp`, `apply`, `error.rs`.
 - Serialization: [`yoke_config::write`](../../../crates/yoke-config/src/csv/write.rs). Volume write: [`yoke-volume`](../../../crates/yoke-volume) `VolumeProvider::write_profile`.
