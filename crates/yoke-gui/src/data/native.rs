@@ -6,7 +6,7 @@ use tokio::sync::watch;
 use yoke_config::ParseResult;
 use yoke_index::{IndexClient, IndexEntry, ProfileSource as IndexSource};
 use yoke_volume::state::MountState;
-use yoke_volume::{ProfileName, VolumeProvider};
+use yoke_volume::{ProfileKind, ProfileName, VolumeProvider};
 
 use crate::data::{DataError, DataSource, ProfileEntryView};
 
@@ -76,6 +76,9 @@ impl DataSource for NativeDataSource {
         let entries = self.volume.list_profiles().map_err(map_volume_err)?;
         Ok(entries
             .into_iter()
+            // prefs.csv holds device settings, not a binding profile; it gets its
+            // own editor later and must not appear in the profile library.
+            .filter(|e| e.kind != ProfileKind::Prefs)
             .map(|e| {
                 let label = e.name.as_filename().to_owned();
                 match self.read_device_profile(&e.name) {
@@ -142,5 +145,50 @@ fn map_volume_err(e: yoke_volume::VolumeError) -> DataError {
     match e {
         yoke_volume::VolumeError::NotPresent => DataError::NotPresent,
         other => DataError::Volume(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use yoke_volume::FsBackend;
+
+    // Minimal single-sub-profile CSV the parser accepts; content is irrelevant
+    // to the filter, which runs before any read.
+    const MIN_CSV: &[u8] = b"QuadStick Configuration,Version 1.4,,T\r\n\
+Profile Name,,Mouse,\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_left,normal,left,\r\n\
+\r\n";
+
+    #[test]
+    fn list_device_profiles_excludes_prefs() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("default.csv"), MIN_CSV).unwrap();
+        std::fs::write(dir.path().join("halo.csv"), MIN_CSV).unwrap();
+        std::fs::write(dir.path().join("prefs.csv"), MIN_CSV).unwrap();
+
+        let backend = Arc::new(FsBackend::new(dir.path().to_path_buf()));
+        let data = NativeDataSource::for_test(backend);
+        let labels: Vec<String> = data
+            .list_device_profiles()
+            .unwrap()
+            .into_iter()
+            .map(|e| e.label)
+            .collect();
+
+        assert!(
+            labels.iter().any(|l| l == "default.csv"),
+            "default.csv must be listed: {labels:?}"
+        );
+        assert!(
+            labels.iter().any(|l| l == "halo.csv"),
+            "game profiles must be listed: {labels:?}"
+        );
+        assert!(
+            !labels.iter().any(|l| l.eq_ignore_ascii_case("prefs.csv")),
+            "prefs.csv is device settings, not a profile, and must be filtered: {labels:?}"
+        );
     }
 }
