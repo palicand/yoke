@@ -49,6 +49,18 @@ impl Palette {
     }
 }
 
+/// Map a `StationKind` to its palette color for legend dots and tints.
+#[must_use]
+pub const fn station_kind_color(palette: &Palette, kind: crate::stations::StationKind) -> Color32 {
+    use crate::stations::StationKind;
+    match kind {
+        StationKind::Joystick => palette.joystick,
+        StationKind::Mouthpiece => palette.mouse,
+        StationKind::Lip => palette.keyboard,
+        StationKind::Side => palette.system,
+    }
+}
+
 /// Map an `Output` to its category color for binding rows + map badges.
 #[must_use]
 pub const fn output_color(palette: &Palette, output: &yoke_config::catalog::Output) -> Color32 {
@@ -204,6 +216,86 @@ pub fn row_frame() -> egui::Frame {
         .stroke(egui::Stroke::new(1.0, LINE))
         .corner_radius(egui::CornerRadius::same(8))
         .inner_margin(egui::Margin::symmetric(10, 7))
+}
+
+/// Leading short-code glyph box (design `.evt-short`): a 28px bordered square,
+/// `--bg-3` fill, `--line` border, holding a short mono glyph. Display-only; the
+/// glyph is a label, not a control.
+pub fn glyph_box(ui: &mut egui::Ui, glyph: &str, color: egui::Color32) {
+    egui::Frame::new()
+        .fill(BG_3)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(R_SM))
+        .inner_margin(egui::Margin::symmetric(6, 4))
+        .show(ui, |ui| {
+            // Min square footprint; render the glyph directly. Do NOT justify to
+            // available width: in a horizontal row that expands the box across the
+            // whole pane and pushes the rest of the row off-screen.
+            ui.set_min_size(egui::vec2(20.0, 16.0));
+            ui.add(egui::Label::new(
+                egui::RichText::new(glyph)
+                    .monospace()
+                    .strong()
+                    .size(12.0)
+                    .color(color),
+            ));
+        });
+}
+
+/// Filled, bordered output button (design `.brow-out.set`).
+///
+/// A category-color-tinted fill and border with `--r-sm` corners, containing a
+/// leading output glyph, the output label, and a trailing category tag. Returns
+/// the button's response so the caller can wire it to the existing edit-output
+/// picker. Visual container only — it carries no mutation itself.
+pub fn output_button(
+    ui: &mut egui::Ui,
+    glyph: &str,
+    label: &str,
+    category: &str,
+    color: egui::Color32,
+) -> egui::Response {
+    egui::Frame::new()
+        .fill(color.gamma_multiply(0.14))
+        .stroke(egui::Stroke::new(1.0, color.gamma_multiply(0.55)))
+        .corner_radius(egui::CornerRadius::same(R_SM))
+        .inner_margin(egui::Margin::symmetric(8, 5))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 7.0;
+                ui.add(egui::Label::new(
+                    egui::RichText::new(glyph)
+                        .monospace()
+                        .strong()
+                        .size(12.0)
+                        .color(color),
+                ));
+                ui.add(
+                    egui::Label::new(egui::RichText::new(label).color(color).size(12.5)).truncate(),
+                );
+                category_tag(ui, category, color);
+            });
+        })
+        .response
+        .interact(egui::Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Small uppercase category tag (design output category pill): `--bg-3` fill,
+/// `--ink-3` text, no border.
+pub fn category_tag(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
+    egui::Frame::new()
+        .fill(color.gamma_multiply(0.14))
+        .corner_radius(egui::CornerRadius::same(4))
+        .inner_margin(egui::Margin::symmetric(5, 2))
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(label.to_uppercase())
+                    .monospace()
+                    .size(10.0)
+                    .color(color.gamma_multiply(0.8)),
+            );
+        });
 }
 
 /// Segmented container for the sub-profile tab strip (design `.sub-tabs`):
