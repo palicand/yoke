@@ -407,7 +407,7 @@ impl eframe::App for YokeApp {
 
         egui::Panel::left("yoke_rail")
             .resizable(false)
-            .default_size(180.0)
+            .default_size(220.0)
             .frame(rail_frame)
             .show_inside(ui, |ui| {
                 let on_library = self.open_profile.is_none();
@@ -522,7 +522,8 @@ impl YokeApp {
 
     fn rail_device_status(&self, ui: &mut egui::Ui) {
         let (text, color) = self.status_label();
-        ui.colored_label(color, text);
+        ui.label(egui::RichText::new(text).color(color))
+            .on_hover_text(text);
         if let Some(err) = &self.backend_error {
             ui.label(egui::RichText::new(err).small().color(self.palette.ink_3))
                 .on_hover_text(
