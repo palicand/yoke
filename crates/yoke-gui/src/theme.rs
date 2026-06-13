@@ -333,6 +333,14 @@ pub fn category_tag(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
         });
 }
 
+/// Bottom status bar (design `.status`): `--bg-3` fill, `--line` stroke.
+/// Callers add `inner_margin` to control padding.
+pub fn status_bar_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(BG_3)
+        .stroke(egui::Stroke::new(1.0, LINE))
+}
+
 /// Segmented container for the sub-profile tab strip (design `.sub-tabs`):
 /// `--bg-3` fill, `--line` border, `--r-md` corners.
 pub fn strip_frame() -> egui::Frame {
