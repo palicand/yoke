@@ -76,9 +76,15 @@ impl DataSource for NativeDataSource {
         let entries = self.volume.list_profiles().map_err(map_volume_err)?;
         Ok(entries
             .into_iter()
-            .map(|e| ProfileEntryView {
-                label: e.name.as_filename().to_owned(),
-                name: e.name,
+            .map(|e| {
+                let label = e.name.as_filename().to_owned();
+                match self.read_device_profile(&e.name) {
+                    Ok(parsed) => ProfileEntryView::from_profile(e.name, label, &parsed.model),
+                    Err(err) => {
+                        tracing::warn!(profile = %label, %err, "profile unreadable; listing without metadata");
+                        ProfileEntryView::bare(e.name, label)
+                    }
+                }
             })
             .collect())
     }
