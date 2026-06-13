@@ -407,7 +407,12 @@ impl eframe::App for YokeApp {
 
         egui::Panel::left("yoke_rail")
             .resizable(false)
-            .default_size(220.0)
+            // exact_size, not default_size: a non-resizable Panel persists its
+            // rendered rect by id every frame and reads it back, so default_size
+            // only seeds frame 1 and the rail then collapses to its content
+            // width. exact_size pins the width every frame, wide enough that the
+            // longest status label ("Connected - mass storage off") never wraps.
+            .exact_size(260.0)
             .frame(rail_frame)
             .show_inside(ui, |ui| {
                 let on_library = self.open_profile.is_none();

@@ -45,6 +45,15 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title("Yoke")
             .with_inner_size([1100.0, 720.0]),
+        // AutoVsync (Metal Fifo) makes get_current_texture's nextDrawable() block
+        // on the vsync-paced drawable queue, which freezes the window during
+        // macOS's synchronous live-resize loop. AutoNoVsync maps to Metal
+        // Immediate (displaySyncEnabled = NO) so acquiring a drawable never waits
+        // for vsync. The app is reactive, so there is no idle GPU cost.
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            present_mode: eframe::wgpu::PresentMode::AutoNoVsync,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
