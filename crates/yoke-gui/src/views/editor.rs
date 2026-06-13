@@ -1,13 +1,13 @@
-use egui::text::LayoutJob;
-use egui::{FontFamily, FontId, TextFormat};
 use yoke_config::catalog::{Channel, SubProfileMode};
 use yoke_config::model::SubProfile;
 
 use crate::app::{SubProfileUi, YokeApp};
-use crate::theme::{Palette, card_frame, strip_frame};
+use crate::theme::{self, Palette, card_frame, strip_frame};
 
-// One sub-profile chip: display name (the mode) + binding count.
-type Tab = (String, usize);
+// One sub-profile chip: a primary name line + a dim mode/variant sublabel +
+// the binding count. The two text lines stack vertically inside the chip
+// (design `.sub-tab-name` over `.sub-tab-mode`).
+type Tab = (String, String, usize);
 
 // Deferred action from the strip; dispatched after all immutable borrows end.
 enum StripAction {
@@ -77,7 +77,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
         let tabs: Vec<Tab> = subs
             .iter()
             .enumerate()
-            .map(|(i, s)| (sub_label(s, i), s.bindings().count()))
+            .map(|(i, s)| (sub_base_label(s, i), sub_sublabel(s), s.bindings().count()))
             .collect();
         let header = HeaderState {
             breadcrumb: open.source.breadcrumb(),
@@ -98,18 +98,27 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     };
     let palette = *app.palette();
 
-    let actions = show_header(ui, &palette, &header);
+    let actions = show_header(ui, &header, &title);
     if actions.go_back {
         app.request_close_profile();
         return;
     }
     dispatch_toolbar(app, &actions);
 
-    ui.heading(title);
+    // Stat row: binding/sub-profile counts + amber "unsaved" when dirty.
     ui.horizontal(|ui| {
         stat(ui, &palette, total_bindings, "bindings");
         ui.add_space(8.0);
         stat(ui, &palette, sub_count, "sub-profiles");
+        if header.dirty {
+            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new("unsaved")
+                    .monospace()
+                    .size(11.0)
+                    .color(palette.mouse),
+            );
+        }
     });
     ui.add_space(10.0);
 
@@ -125,43 +134,42 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     });
 }
 
-/// Render the back button, breadcrumb, and the right-aligned toolbar
-/// (undo/redo, preview, save actions, dirty marker).
-fn show_header(ui: &mut egui::Ui, palette: &Palette, header: &HeaderState) -> ToolbarActions {
+/// Render the back button, title block (eyebrow + serif heading), and the
+/// right-aligned toolbar (ghost undo/redo/preview/save, primary save-to-qs).
+fn show_header(ui: &mut egui::Ui, header: &HeaderState, title: &str) -> ToolbarActions {
     let mut actions = ToolbarActions::default();
+
     ui.horizontal(|ui| {
-        if ui.button("< Back").clicked() {
+        // Ghost "< Library" back button.
+        if ui.button("< Library").clicked() {
             actions.go_back = true;
         }
-        ui.add_space(2.0);
-        ui.label(
-            egui::RichText::new(&header.breadcrumb)
-                .small()
-                .color(palette.ink_3),
-        );
+        ui.add_space(4.0);
+
+        // Title block: eyebrow line (breadcrumb + "· EDITING PROFILE") over the
+        // serif heading. The two widgets stack vertically inside a nested layout.
+        ui.vertical(|ui| {
+            let eyebrow_text = format!("{}  ·  EDITING PROFILE", header.breadcrumb);
+            ui.add(egui::Label::new(theme::eyebrow(&eyebrow_text)));
+            ui.add_space(-4.0); // tighten the gap between eyebrow and heading
+            ui.heading(title);
+        });
+
+        // Right-aligned toolbar: ghost buttons first (right-to-left order in
+        // egui), then the primary "Save to QuadStick" at the far right.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if header.dirty {
-                ui.colored_label(palette.mouse, "modified");
-            }
             // No in-place target for a community source; in-flight saves gate
             // all save affordances so concurrent writes cannot race one target.
             let idle = !header.save_in_flight;
             let can_save_in_place = !header.is_community;
-            if ui
-                .add_enabled(
-                    can_save_in_place && header.dirty && idle,
-                    egui::Button::new("Save"),
-                )
-                .clicked()
-            {
-                actions.save = true;
-            }
+
             #[cfg(not(target_arch = "wasm32"))]
             {
+                // Primary action — rendered rightmost (added first in r-t-l).
                 if ui
                     .add_enabled(
                         header.volume_present && idle,
-                        egui::Button::new("Save to QuadStick"),
+                        theme::primary_button("Save to QuadStick"),
                     )
                     .clicked()
                 {
@@ -173,6 +181,15 @@ fn show_header(ui: &mut egui::Ui, palette: &Palette, header: &HeaderState) -> To
                 {
                     actions.save_as = true;
                 }
+            }
+            if ui
+                .add_enabled(
+                    can_save_in_place && header.dirty && idle,
+                    egui::Button::new("Save"),
+                )
+                .clicked()
+            {
+                actions.save = true;
             }
             if ui.button("Preview CSV").clicked() {
                 actions.preview = true;
@@ -235,44 +252,84 @@ fn show_strip(
     let mut new_selection: Option<usize> = None;
 
     strip_frame().show(ui, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            show_chips(
-                app,
+        // Chip row: eyebrow + a horizontal scroll holding every chip on one
+        // line, then the far-right mode-switch reference group. Scrolling (not
+        // wrapping) matches the design's single-row strip and keeps the
+        // "+ Add layer" chip reachable at any layer count.
+        ui.horizontal(|ui| {
+            ui.add(egui::Label::new(theme::eyebrow("SUB-PROFILE")));
+            ui.add_space(4.0);
+            // Reserve the mode-switch group on the right first so the chip
+            // scroll area fills only the space that remains to its left.
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                show_mode_switch_hint(ui, palette);
+                egui::ScrollArea::horizontal()
+                    .id_salt("subprofile_strip")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            show_chips(
+                                ui,
+                                palette,
+                                tabs,
+                                selected,
+                                &ui_state,
+                                &mut new_ui_state,
+                                &mut new_selection,
+                            );
+                        });
+                    });
+            });
+        });
+    });
+
+    // Selected-chip actions: a thin row directly below the strip frame so
+    // rename/clone/delete stay visible regardless of horizontal scroll.
+    if matches!(ui_state, SubProfileUi::Closed) {
+        let selected_label = tabs.get(selected).map_or_else(
+            || format!("Sub-profile {}", selected + 1),
+            |(name, sublabel, _)| {
+                if sublabel.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{name} · {sublabel}")
+                }
+            },
+        );
+        show_chip_buttons(
+            app,
+            ui,
+            selected,
+            &selected_label,
+            palette,
+            &mut action,
+            &mut new_ui_state,
+        );
+    }
+
+    // Inline forms — rendered below the strip/actions.
+    match &ui_state {
+        SubProfileUi::Renaming { index, value } => {
+            show_rename_form(ui, *index, value, &mut action, &mut new_ui_state);
+        }
+        SubProfileUi::Adding {
+            name,
+            mode,
+            sub_mode,
+            channel,
+        } => {
+            show_add_form(
                 ui,
-                palette,
-                tabs,
-                selected,
-                &ui_state,
+                name,
+                *mode,
+                sub_mode,
+                *channel,
                 &mut action,
                 &mut new_ui_state,
-                &mut new_selection,
             );
-        });
-
-        // Inline forms — rendered below the chip row inside the same frame.
-        match &ui_state {
-            SubProfileUi::Renaming { index, value } => {
-                show_rename_form(ui, *index, value, &mut action, &mut new_ui_state);
-            }
-            SubProfileUi::Adding {
-                name,
-                mode,
-                sub_mode,
-                channel,
-            } => {
-                show_add_form(
-                    ui,
-                    name,
-                    *mode,
-                    sub_mode,
-                    *channel,
-                    &mut action,
-                    &mut new_ui_state,
-                );
-            }
-            SubProfileUi::Closed => {}
         }
-    });
+        SubProfileUi::Closed => {}
+    }
 
     // Apply UI state transitions that don't go through dispatch (selection
     // changes, cancel, field edits). Dispatch handles the rest via
@@ -290,88 +347,159 @@ fn show_strip(
     action
 }
 
-/// Render the chip row (tabs + per-selected-chip buttons + "+" chip).
+/// Render the chip row: index-badged chips + "Add layer" dashed chip.
+/// Rename/clone/delete are NOT in this row — they live in `show_chip_buttons`.
 #[allow(clippy::too_many_arguments)]
 fn show_chips(
-    app: &YokeApp,
     ui: &mut egui::Ui,
     palette: &Palette,
     tabs: &[Tab],
     selected: usize,
     ui_state: &SubProfileUi,
-    action: &mut Option<StripAction>,
     new_ui_state: &mut Option<SubProfileUi>,
     new_selection: &mut Option<usize>,
 ) {
-    for (i, (name, count)) in tabs.iter().enumerate() {
+    for (i, (name, sublabel, count)) in tabs.iter().enumerate() {
         let is_selected = selected == i;
-        let job = tab_label(name, *count, palette);
-        if ui.selectable_label(is_selected, job).clicked() && !is_selected {
+        if show_chip(ui, palette, i, name, sublabel, *count, is_selected) && !is_selected {
             *new_selection = Some(i);
             // Closing any open inline form when selecting a different chip is
             // intentional: the form targets the previously selected index and
             // switching chip identity invalidates it.
             *new_ui_state = Some(SubProfileUi::Closed);
         }
-
-        // Per-chip action buttons: shown only for the selected chip when no
-        // inline form is open.
-        if is_selected && matches!(ui_state, SubProfileUi::Closed) {
-            show_chip_buttons(app, ui, i, action, new_ui_state);
-        }
     }
 
-    // "+" chip — switches to the Adding form.
-    if matches!(ui_state, SubProfileUi::Closed)
-        && ui
-            .selectable_label(false, egui::RichText::new("+").strong())
-            .clicked()
-    {
-        *new_ui_state = Some(SubProfileUi::Adding {
-            name: String::new(),
-            mode: 0,
-            sub_mode: "Normal".into(),
-            channel: 0,
-        });
+    // "Add layer" chip — dashed border, ink_3 text; opens the Adding form.
+    if matches!(ui_state, SubProfileUi::Closed) {
+        let add_resp = ui.add(
+            egui::Button::new(
+                egui::RichText::new("+ Add layer")
+                    .monospace()
+                    .size(11.0)
+                    .color(palette.ink_3),
+            )
+            .stroke(egui::Stroke::new(1.0, palette.ink_3)),
+        );
+        if add_resp.clicked() {
+            *new_ui_state = Some(SubProfileUi::Adding {
+                name: String::new(),
+                mode: 0,
+                sub_mode: "Normal".into(),
+                channel: 0,
+            });
+        }
     }
 }
 
-/// Render the rename/clone/delete buttons for a selected chip.
+/// Render one sub-profile chip (design `.sub-tab`): an index badge, a primary
+/// name line over a dim mode/variant sublabel, and the trailing binding count.
+/// Returns `true` when clicked this frame. Selected chips carry a `--bg-2` fill
+/// and `--line` border (design `.sub-tab.on`); resting chips are transparent.
+fn show_chip(
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    index: usize,
+    name: &str,
+    sublabel: &str,
+    count: usize,
+    selected: bool,
+) -> bool {
+    let frame = theme::sub_tab_frame(selected);
+    let resp = frame
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                theme::index_badge(ui, &format!("L{}", index + 1));
+                ui.add_space(2.0);
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    let name_color = if selected {
+                        palette.ink_1
+                    } else {
+                        palette.ink_2
+                    };
+                    ui.add(egui::Label::new(
+                        egui::RichText::new(name)
+                            .size(13.0)
+                            .strong()
+                            .color(name_color),
+                    ));
+                    if !sublabel.is_empty() {
+                        ui.add(egui::Label::new(
+                            egui::RichText::new(sublabel)
+                                .monospace()
+                                .size(10.0)
+                                .color(palette.ink_3),
+                        ));
+                    }
+                });
+                ui.add_space(2.0);
+                ui.label(
+                    egui::RichText::new(count.to_string())
+                        .monospace()
+                        .size(10.5)
+                        .color(palette.ink_3),
+                );
+            });
+        })
+        .response;
+    // The frame's own rect is not clickable; promote it to a click target that
+    // also paints the pointer cursor, matching the design's button chips.
+    ui.interact(resp.rect, resp.id.with(index), egui::Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .clicked()
+}
+
+/// Render the rename/clone/delete buttons for the currently-selected chip on a
+/// thin row below the strip, prefixed with the selected layer's label. Kept out
+/// of the scrollable chip row so the actions stay visible at any layer count.
+/// The `index` is the currently-selected sub-profile.
+#[allow(clippy::too_many_arguments)]
 fn show_chip_buttons(
     app: &YokeApp,
     ui: &mut egui::Ui,
     index: usize,
+    selected_label: &str,
+    palette: &Palette,
     action: &mut Option<StripAction>,
     new_ui_state: &mut Option<SubProfileUi>,
 ) {
-    if ui.small_button("rename").clicked() {
-        *new_ui_state = Some(SubProfileUi::Renaming {
-            index,
-            // Seed with the raw profile_name (not the display label) so
-            // the user edits what the engine stores.
-            value: app
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new(format!("Selected: {selected_label}"))
+                .small()
+                .color(palette.ink_3),
+        );
+        if ui.small_button("rename").clicked() {
+            *new_ui_state = Some(SubProfileUi::Renaming {
+                index,
+                // Seed with the raw profile_name (not the display label) so
+                // the user edits what the engine stores.
+                value: app
+                    .open_profile()
+                    .and_then(|o| o.session.current().sub_profiles.get(index))
+                    .map_or_else(String::new, |s| s.header.profile_name.clone()),
+            });
+        }
+        if ui.small_button("clone").clicked() {
+            // Read the current name at action-build time — the index the user saw
+            // must match the index dispatched.
+            let current_name = app
                 .open_profile()
                 .and_then(|o| o.session.current().sub_profiles.get(index))
-                .map_or_else(String::new, |s| s.header.profile_name.clone()),
-        });
-    }
-    if ui.small_button("clone").clicked() {
-        // Read the current name at action-build time — the index the user saw
-        // must match the index dispatched.
-        let current_name = app
-            .open_profile()
-            .and_then(|o| o.session.current().sub_profiles.get(index))
-            .map_or("", |s| s.header.profile_name.as_str());
-        let to = if current_name.is_empty() {
-            String::new()
-        } else {
-            format!("{current_name} copy")
-        };
-        *action = Some(StripAction::Clone { index, to });
-    }
-    if ui.small_button("delete").clicked() {
-        *action = Some(StripAction::Delete { index });
-    }
+                .map_or("", |s| s.header.profile_name.as_str());
+            let to = if current_name.is_empty() {
+                String::new()
+            } else {
+                format!("{current_name} copy")
+            };
+            *action = Some(StripAction::Clone { index, to });
+        }
+        if ui.small_button("delete").clicked() {
+            *action = Some(StripAction::Delete { index });
+        }
+    });
 }
 
 /// Render the inline rename form. Writes to `action` on commit; writes to
@@ -565,52 +693,78 @@ fn stat(ui: &mut egui::Ui, palette: &Palette, n: usize, label: &str) {
     ui.label(egui::RichText::new(label).color(palette.ink_2));
 }
 
-fn tab_label(name: &str, count: usize, palette: &Palette) -> LayoutJob {
-    let mut job = LayoutJob::default();
-    job.append(
-        name,
-        0.0,
-        TextFormat {
-            font_id: FontId::new(13.0, FontFamily::Proportional),
-            color: palette.ink_1,
-            ..Default::default()
-        },
-    );
-    job.append(
-        &format!("  {count}"),
-        0.0,
-        TextFormat {
-            font_id: FontId::new(11.0, FontFamily::Monospace),
-            color: palette.ink_3,
-            ..Default::default()
-        },
-    );
-    job
+/// Render the far-right mode-switch reference group (design `.shift-hint`):
+/// an amber dot, the `increment_mode` / `decrement_mode` output names in mono
+/// code pills, and a "cycle sub-profiles" caption. Display-only — these mirror
+/// the System outputs a user can bind to a sip/puff to walk the strip; the
+/// strip itself never mutates a profile, so nothing is wired here.
+fn show_mode_switch_hint(ui: &mut egui::Ui, palette: &Palette) {
+    // Right-to-left so the group reads left-to-right after layout reversal:
+    // [dot] increment_mode / decrement_mode  cycle sub-profiles.
+    ui.add(egui::Label::new(
+        egui::RichText::new("cycle sub-profiles")
+            .size(11.0)
+            .color(palette.ink_3),
+    ));
+    ui.add_space(2.0);
+    code_pill(ui, palette, "decrement_mode");
+    ui.label(egui::RichText::new("/").size(11.0).color(palette.ink_3));
+    code_pill(ui, palette, "increment_mode");
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(5.0, 5.0), egui::Sense::hover());
+    ui.painter()
+        .circle_filled(rect.center(), 2.5, palette.mouse);
 }
 
-// The sub-profile's display name: the explicit profile name if present, else
-// the mode (e.g. "Left Analog" / "Mixed joy"), falling back to an index only
-// when neither carries a label. The sub-mode (Normal / Alternate / ...) is
-// appended when present, which is what distinguishes same-mode layers.
-fn sub_label(s: &SubProfile, i: usize) -> String {
-    let base = {
-        let name = s.header.profile_name.trim();
-        if name.is_empty() {
-            let mode = s.header.mode.canonical_csv();
-            if mode.trim().is_empty() {
-                format!("Sub-profile {}", i + 1)
-            } else {
-                mode
-            }
+/// A mono "code" pill (design `.shift-hint code`): `--bg-2` fill, `--line`
+/// border, mono `--ink-2` text. Display-only.
+fn code_pill(ui: &mut egui::Ui, palette: &Palette, text: &str) {
+    theme::pill_frame().show(ui, |ui| {
+        ui.label(
+            egui::RichText::new(text)
+                .monospace()
+                .size(10.5)
+                .color(palette.ink_2),
+        );
+    });
+}
+
+// The chip's dim sublabel line. When the sub-profile carries an explicit
+// `profile_name`, the name line shows it and this returns the mode label
+// (design pairing: name "Mouse" over mode "Mouse Mode"). When `profile_name`
+// is empty — the common case in real CSVs, where the name line already shows
+// the mode — this returns the `sub_mode` variant (e.g. "Alternate") only when
+// it is meaningful, so the mode is never repeated and "Normal" is suppressed.
+fn sub_sublabel(s: &SubProfile) -> String {
+    let mode = s.header.mode.canonical_csv();
+    if s.header.profile_name.trim().is_empty() {
+        let sub_mode = s.header.sub_mode.trim();
+        if sub_mode.is_empty() || sub_mode.eq_ignore_ascii_case("normal") {
+            String::new()
         } else {
-            name.to_owned()
+            sub_mode.to_owned()
         }
-    };
-    let sub = s.header.sub_mode.trim();
-    if sub.is_empty() {
-        base
+    } else if mode.trim().is_empty() {
+        String::new()
     } else {
-        format!("{base} · {sub}")
+        mode
+    }
+}
+
+// The sub-profile's base display name: the explicit profile name if present,
+// else the mode (e.g. "Left Analog" / "Mixed joy"), falling back to an index
+// only when neither carries a label. The sub-mode (Normal / Alternate / ...)
+// is carried separately by the chip so it can render as a dim suffix.
+fn sub_base_label(s: &SubProfile, i: usize) -> String {
+    let name = s.header.profile_name.trim();
+    if name.is_empty() {
+        let mode = s.header.mode.canonical_csv();
+        if mode.trim().is_empty() {
+            format!("Sub-profile {}", i + 1)
+        } else {
+            mode
+        }
+    } else {
+        name.to_owned()
     }
 }
 
