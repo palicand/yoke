@@ -76,6 +76,23 @@ pub const fn output_color(palette: &Palette, output: &yoke_config::catalog::Outp
     }
 }
 
+/// Map a category label (as produced by `output_category`) to its palette hue.
+///
+/// The labels match the design's `OUTPUT_CATEGORIES` ids one-to-one; unknown
+/// labels fall back to `ink_2`, matching `output_color`'s Touch/Unknown case.
+#[must_use]
+pub fn category_color(palette: &Palette, category: &str) -> Color32 {
+    match category {
+        "Keyboard" => palette.keyboard,
+        "Mouse" => palette.mouse,
+        "Gamepad" => palette.gamepad,
+        "Dpad" => palette.dpad,
+        "Joystick" => palette.joystick,
+        "System" => palette.system,
+        _ => palette.ink_2,
+    }
+}
+
 // Console surface tokens (design `[data-theme="console"]`).
 const BG_0: Color32 = rgb(0x0A_0B_0D); // app frame
 const BG_1: Color32 = rgb(0x14_16_1A); // canvas / panels
@@ -279,6 +296,24 @@ pub fn output_button(
         .response
         .interact(egui::Sense::click())
         .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// A small keycap hint (design `kbd`): `--bg-3` fill, `--line` border, mono
+/// `--ink-3` glyph. Display-only label for keyboard affordances like "esc".
+pub fn kbd_hint(ui: &mut egui::Ui, label: &str, palette: &Palette) {
+    egui::Frame::new()
+        .fill(BG_3)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(4))
+        .inner_margin(egui::Margin::symmetric(5, 1))
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(label)
+                    .monospace()
+                    .size(10.0)
+                    .color(palette.ink_3),
+            );
+        });
 }
 
 /// Small uppercase category tag (design output category pill): `--bg-3` fill,
