@@ -13,9 +13,9 @@ editor + picker) but visually bare next to the handoff. This pass restyles every
 screen toward the handoff's Console (dark) theme and fixes a resize stall and a
 rail label that wraps.
 
-The work ships as a **Graphite stack** of small, independently reviewable PRs,
-each of which keeps `clippy -D warnings`, `fmt`, `cargo test`, and the wasm
-`trunk build` green on its own.
+The work ships as a stack of small, independently reviewable PRs, each of which
+keeps `clippy -D warnings`, `fmt`, `cargo test`, and the wasm `trunk build`
+green on its own.
 
 ## Non-goals / constraints
 
@@ -124,7 +124,8 @@ alongside the screen that first uses them.
   grid). The community list is filtered by search and kind first, then display is
   capped at `LIB_COMMUNITY_DISPLAY_CAP` (48) cards per frame; if the filtered
   count exceeds the cap a muted "Showing N of M — refine search to narrow" note
-  is shown. Search reaches every entry; only the unfiltered render is capped.
+  is shown. Search reaches every entry; the cap limits only the rendered slice
+  (filtered or not), never the search itself.
   This keeps per-frame cost bounded and the resize smooth while keeping the
   community section reachable below the device grid.
 - **Empty/loading/failed/disabled** community states keep their current
@@ -206,8 +207,9 @@ Bottom → top. Branch names are `gui/NN-slug`; each row is one PR.
 - View code stays largely untested (egui rendering), as in the egui spec;
   `egui_kittest` snapshot testing remains deferred. Pure helpers (kind
   derivation, label/format functions) are unit-tested.
-- Every PR runs the full gate set in CI (`cargo build`/`test -p yoke-gui`,
-  `trunk build`).
+- Every PR runs the full gate set in CI: `cargo fmt --all --check`,
+  `cargo clippy --workspace --all-targets -- -D warnings`,
+  `cargo build`/`test -p yoke-gui`, and the wasm `trunk build`.
 
 ## References
 
