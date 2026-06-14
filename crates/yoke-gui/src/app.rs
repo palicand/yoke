@@ -143,6 +143,10 @@ const fn is_open_context(c: FailureContext) -> bool {
     )
 }
 
+// Each bool is an independent UI/lifecycle flag (community gating, startup
+// latch, discard prompt, device-list loading); folding them into one state
+// machine would couple unrelated concerns.
+#[allow(clippy::struct_excessive_bools)]
 pub struct YokeApp {
     palette: Palette,
     worker: crate::worker::WorkerHandle,
@@ -152,6 +156,10 @@ pub struct YokeApp {
     volume: Option<MountState>,
     backend_error: Option<String>,
     device_profiles: Vec<crate::data::ProfileEntryView>,
+    /// True from the list dispatch until the matching `ProfilesListed` (or a
+    /// list failure) settles; drives the library spinner so the window stays
+    /// live while the slow FAT/USB volume is read.
+    device_loading: bool,
     community: CommunityLoad,
     open_profile: Option<OpenProfile>,
     selected_station: Option<&'static str>,
@@ -202,6 +210,7 @@ impl YokeApp {
             volume: None,
             backend_error,
             device_profiles: Vec::new(),
+            device_loading: false,
             community: CommunityLoad::Loading,
             open_profile: None,
             selected_station: None,
@@ -232,6 +241,7 @@ impl YokeApp {
             volume: None,
             backend_error: None,
             device_profiles: Vec::new(),
+            device_loading: false,
             community: CommunityLoad::Loading,
             open_profile: None,
             selected_station: None,
@@ -261,9 +271,19 @@ impl YokeApp {
         }
     }
 
+    /// Mark the device list as loading and dispatch a fresh list; drives the
+    /// library spinner so the window stays live while the volume is read.
+    fn dispatch_list_device(&mut self) {
+        self.device_loading = true;
+        self.worker.send(AppCommand::ListDeviceProfiles);
+    }
+
     fn apply_event(&mut self, ev: DataEvent) {
         match ev {
-            DataEvent::ProfilesListed(list) => self.device_profiles = list,
+            DataEvent::ProfilesListed(list) => {
+                self.device_profiles = list;
+                self.device_loading = false;
+            }
             DataEvent::CommunityListed(list) => {
                 self.community = CommunityLoad::Loaded(std::sync::Arc::new(list));
             }
@@ -271,8 +291,11 @@ impl YokeApp {
                 // The volume watcher fires this on mount/unmount, so the device
                 // list tracks the device live.
                 match volume_action(self.volume.as_ref(), &state) {
-                    VolumeAction::Relist => self.worker.send(AppCommand::ListDeviceProfiles),
-                    VolumeAction::Clear => self.device_profiles.clear(),
+                    VolumeAction::Relist => self.dispatch_list_device(),
+                    VolumeAction::Clear => {
+                        self.device_profiles.clear();
+                        self.device_loading = false;
+                    }
                     VolumeAction::Nothing => {}
                 }
                 self.volume = Some(state);
@@ -357,8 +380,10 @@ impl YokeApp {
         match context {
             // ListDevice: the empty Library + "Disconnected" pill already convey
             // "no device"; a red toast on every device-less cold start is noise.
+            // The list never settled, so the spinner must stop.
+            FailureContext::ListDevice => self.device_loading = false,
             // SaveFile/SaveDevice: handled in the save branch above; unreachable here.
-            FailureContext::ListDevice | FailureContext::SaveFile | FailureContext::SaveDevice => {}
+            FailureContext::SaveFile | FailureContext::SaveDevice => {}
             FailureContext::ListCommunity => self.community = CommunityLoad::Failed(message),
             // A single failed entry-open must not wipe the list the user is
             // browsing; the list-wide Failed state is reachable only from
@@ -385,7 +410,7 @@ impl eframe::App for YokeApp {
 
         if !self.requested_initial {
             self.requested_initial = true;
-            self.worker.send(AppCommand::ListDeviceProfiles);
+            self.dispatch_list_device();
             if self.community_available {
                 self.worker.send(AppCommand::ListCommunity);
             } else {
@@ -806,6 +831,9 @@ impl YokeApp {
     }
     pub(crate) fn device_profiles(&self) -> &[crate::data::ProfileEntryView] {
         &self.device_profiles
+    }
+    pub(crate) const fn device_loading(&self) -> bool {
+        self.device_loading
     }
     pub(crate) const fn community(&self) -> &CommunityLoad {
         &self.community
