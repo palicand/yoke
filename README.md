@@ -15,8 +15,8 @@ Alpha. macOS only at this stage. Live device push is not yet implemented — the
 Not packaged yet. To work on Yoke locally:
 
 1. **macOS prerequisites:** install Xcode Command Line Tools. `xcode-select --install`
-2. **Quickest path (Nix):** install Nix with flakes enabled, then in this directory: `direnv allow` and `cargo tauri dev` (once Tauri crate added).
-3. **Non-Nix path:** install rustup, then `cargo install trunk tauri-cli`
+2. **Quickest path (Nix):** install Nix with flakes enabled, then in this directory: `direnv allow`, then `cargo run -p yoke-gui` for the desktop app (or `cargo build -p yokectl` for the CLI).
+3. **Non-Nix path:** install rustup (the toolchain is pinned by `rust-toolchain.toml`), then `cargo run -p yoke-gui`. For the in-browser dev build, `cargo install trunk` and run `trunk serve` inside `crates/yoke-gui/`.
 
 The full contributor flow, repo map, and house rules live in [`AGENTS.md`](./AGENTS.md).
 
