@@ -99,10 +99,13 @@ mod imp {
         }
 
         fn list_device_profiles(&self) -> Result<Vec<ProfileEntryView>, DataError> {
-            Ok(vec![ProfileEntryView {
-                name: ProfileName::new("default").unwrap(),
-                label: "default.csv".into(),
-            }])
+            let name = ProfileName::new("default").unwrap();
+            let label = "default.csv".into();
+            let entry = match Self::parse_fixture() {
+                Ok(parsed) => ProfileEntryView::from_profile(name, label, &parsed.model),
+                Err(_) => ProfileEntryView::bare(name, label),
+            };
+            Ok(vec![entry])
         }
 
         fn read_device_profile(
@@ -158,10 +161,13 @@ mod imp {
         }
 
         fn list_device_profiles(&self) -> Result<Vec<ProfileEntryView>, DataError> {
-            Ok(vec![ProfileEntryView {
-                name: "default".into(),
-                label: "default.csv".into(),
-            }])
+            let name = "default".into();
+            let label = "default.csv".into();
+            let entry = match Self::parse_fixture() {
+                Ok(parsed) => ProfileEntryView::from_profile(name, label, &parsed.model),
+                Err(_) => ProfileEntryView::bare(name, label),
+            };
+            Ok(vec![entry])
         }
 
         fn read_device_profile(

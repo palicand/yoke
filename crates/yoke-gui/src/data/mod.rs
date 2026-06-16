@@ -55,6 +55,102 @@ pub trait DataSource: Send + Sync + 'static {
 pub struct ProfileEntryView {
     pub name: ProfileName,
     pub label: String,
+    pub kind: Option<ProfileKind>,
+    pub bindings: usize,
+    pub sub_profiles: usize,
+    pub modes: Vec<String>,
+}
+
+impl ProfileEntryView {
+    #[must_use]
+    pub fn from_profile(
+        name: ProfileName,
+        label: String,
+        profile: &yoke_config::model::Profile,
+    ) -> Self {
+        let mode_names: Vec<String> = profile
+            .sub_profiles
+            .iter()
+            .map(|s| s.header.mode.canonical_csv())
+            .collect();
+        let bindings = profile
+            .sub_profiles
+            .iter()
+            .map(|s| s.bindings().count())
+            .sum();
+        let kind = kind_from_mode_names(&mode_names);
+        Self {
+            name,
+            label,
+            kind,
+            bindings,
+            sub_profiles: profile.sub_profiles.len(),
+            modes: mode_names,
+        }
+    }
+
+    #[must_use]
+    pub const fn bare(name: ProfileName, label: String) -> Self {
+        Self {
+            name,
+            label,
+            kind: None,
+            bindings: 0,
+            sub_profiles: 0,
+            modes: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileKind {
+    MouseKeys,
+    Gamepad,
+    Mixed,
+}
+
+impl ProfileKind {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::MouseKeys => "Mouse + Keys",
+            Self::Gamepad => "Gamepad",
+            Self::Mixed => "Mixed",
+        }
+    }
+}
+
+/// Classify a profile by the input families its sub-profile modes touch.
+///
+/// Gamepad family = analog sticks / D-Pad / gamepad / joystick; mouse-keys
+/// family = mouse / scroll / keyboard / arrow. Both present is Mixed; neither
+/// recognizable is None.
+#[must_use]
+pub(crate) fn kind_from_mode_names<S: AsRef<str>>(modes: &[S]) -> Option<ProfileKind> {
+    let mut gamepad = false;
+    let mut mousekeys = false;
+    for m in modes {
+        let m = m.as_ref().to_lowercase();
+        // Accumulate both flags independently: a single free-text mode can
+        // name both families (e.g. "Mouse Joystick"), which is Mixed.
+        if m.contains("analog")
+            || m.contains("d-pad")
+            || m.contains("dpad")
+            || m.contains("gamepad")
+            || m.contains("joystick")
+        {
+            gamepad = true;
+        }
+        if m.contains("mouse") || m.contains("scroll") || m.contains("key") || m.contains("arrow") {
+            mousekeys = true;
+        }
+    }
+    match (gamepad, mousekeys) {
+        (true, true) => Some(ProfileKind::Mixed),
+        (true, false) => Some(ProfileKind::Gamepad),
+        (false, true) => Some(ProfileKind::MouseKeys),
+        (false, false) => None,
+    }
 }
 
 /// Commands sent from the UI to the worker. Open-style commands carry a
@@ -250,6 +346,22 @@ fn community_source(entry: &IndexEntry) -> ProfileSource {
 mod tests {
     use super::*;
     use crate::data::mock::MockDataSource;
+
+    #[test]
+    fn kind_from_modes_classifies() {
+        use ProfileKind::*;
+        assert_eq!(
+            kind_from_mode_names(&["Left Analog", "D-Pad"]),
+            Some(Gamepad)
+        );
+        assert_eq!(
+            kind_from_mode_names(&["Mouse", "Mouse Scroll", "Arrow keys"]),
+            Some(MouseKeys)
+        );
+        assert_eq!(kind_from_mode_names(&["Mouse", "Left Analog"]), Some(Mixed));
+        assert_eq!(kind_from_mode_names(&["Mouse Joystick"]), Some(Mixed));
+        assert_eq!(kind_from_mode_names::<&str>(&[]), None);
+    }
 
     #[test]
     fn list_device_profiles_yields_profiles_listed() {
