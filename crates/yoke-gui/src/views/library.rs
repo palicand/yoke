@@ -199,11 +199,11 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
                             // Fixed COLS columns so a partial last row's cards stay
                             // ~1/3 width and left-aligned, matching the device grid.
                             let mut clicked_col: Option<usize> = None;
-                            // Clone one name string per visible card for display — cheap.
-                            let names: Vec<String> =
+                            // Borrow one name per visible card; CardView holds &str, no clone.
+                            let names: Vec<&str> =
                                 chunk.iter().map(|&i| community_name(&entries[i])).collect();
                             ui.columns(COLS, |cols| {
-                                for (col, name) in names.iter().enumerate() {
+                                for (col, name) in names.iter().copied().enumerate() {
                                     if profile_card(
                                         &mut cols[col],
                                         &palette,
@@ -217,7 +217,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
                                 // Clone exactly the clicked entry from the owned snapshot.
                                 let idx = chunk[col];
                                 let entry = entries[idx].clone();
-                                let name = community_name(&entries[idx]);
+                                let name = community_name(&entries[idx]).to_string();
                                 open_community_click = Some((entry, name));
                             }
                             ui.add_space(CARD_ROW_GAP);
@@ -338,10 +338,10 @@ const fn kind_color(palette: &crate::theme::Palette, kind: ProfileKind) -> egui:
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn community_name(entry: &yoke_index::IndexEntry) -> String {
-    entry.name.clone()
+const fn community_name(entry: &yoke_index::IndexEntry) -> &str {
+    entry.name.as_str()
 }
 #[cfg(target_arch = "wasm32")]
-fn community_name(entry: &crate::data::mock::MockCommunityEntry) -> String {
-    entry.name.clone()
+const fn community_name(entry: &crate::data::mock::MockCommunityEntry) -> &str {
+    entry.name.as_str()
 }
