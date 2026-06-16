@@ -290,6 +290,10 @@ fn binding_row_content(
     category: &str,
 ) -> Option<RosterAction> {
     let mut action = None;
+    // An input-less binding renders its WHEN label as "(unbound)"; it has no
+    // (input, modifier) key, so edit/clear ops can't resolve it. Disable those
+    // controls rather than dispatch an op guaranteed to fail with a stray toast.
+    let bound = input_label != "(unbound)";
 
     // Leading short-code glyph box derived from the input id.
     glyph_box(ui, input_glyph, palette.ink_1);
@@ -320,22 +324,26 @@ fn binding_row_content(
 
     // Filled output button: clicking it re-opens the existing edit-output picker
     // for this exact (input, modifier).
-    if output_button(ui, output_glyph, output_label, category, output_color).clicked() {
-        action = Some(RosterAction::EditOutput {
-            input: input_label.to_owned(),
-            modifier: modifier.to_owned(),
-        });
-    }
-
-    // Trailing clear "x": removes this exact (input, modifier) via the existing
-    // clear-binding op. Right-aligned so it pins to the row's end.
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        if clear_button(ui, palette).clicked() {
-            action = Some(RosterAction::ClearOne {
+    ui.add_enabled_ui(bound, |ui| {
+        if output_button(ui, output_glyph, output_label, category, output_color).clicked() {
+            action = Some(RosterAction::EditOutput {
                 input: input_label.to_owned(),
                 modifier: modifier.to_owned(),
             });
         }
+    });
+
+    // Trailing clear "x": removes this exact (input, modifier) via the existing
+    // clear-binding op. Right-aligned so it pins to the row's end.
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.add_enabled_ui(bound, |ui| {
+            if clear_button(ui, palette).clicked() {
+                action = Some(RosterAction::ClearOne {
+                    input: input_label.to_owned(),
+                    modifier: modifier.to_owned(),
+                });
+            }
+        });
     });
 
     action
