@@ -112,6 +112,9 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
         .cloned()
         .collect();
 
+    let device_loading = app.device_loading();
+    let device_total = app.device_profiles().len();
+
     // O(1) Arc refcount bump — no deep clone of the community list.
     let community = app.community().clone();
 
@@ -131,7 +134,17 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
             ui.add_space(4.0);
 
             if device_entries.is_empty() {
-                ui.label(egui::RichText::new("No profiles match.").color(palette.ink_3));
+                if device_loading && device_total == 0 {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(
+                            egui::RichText::new("Loading profiles from QuadStick\u{2026}")
+                                .color(palette.ink_3),
+                        );
+                    });
+                } else {
+                    ui.label(egui::RichText::new("No profiles match.").color(palette.ink_3));
+                }
             } else {
                 for chunk in device_entries.chunks(COLS) {
                     // Build card views and check for clicks before calling open (which
