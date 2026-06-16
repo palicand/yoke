@@ -1,6 +1,6 @@
 use crate::data::{AppCommand, DataEvent, FailureContext};
 use crate::state::{CommunityLoad, OpenProfile, ProfileSource};
-use crate::theme::Palette;
+use crate::theme::{self, Palette};
 
 #[cfg(target_arch = "wasm32")]
 use crate::data::mock::{MockCommunityEntry as IndexEntry, MockMountState as MountState};
@@ -439,6 +439,15 @@ impl eframe::App for YokeApp {
                 self.rail_device_status(ui);
             });
 
+        let status_frame = theme::status_bar_frame().inner_margin(egui::Margin::symmetric(12, 0));
+
+        egui::Panel::bottom("yoke_status")
+            .frame(status_frame)
+            .exact_size(28.0)
+            .show_inside(ui, |ui| {
+                self.status_bar(ui);
+            });
+
         egui::CentralPanel::default()
             .frame(central_frame)
             .show_inside(ui, |ui| {
@@ -499,6 +508,54 @@ impl YokeApp {
     fn status_pill(&self, ui: &mut egui::Ui) {
         let (text, color) = self.status_label();
         ui.colored_label(color, text);
+    }
+
+    fn status_bar(&self, ui: &mut egui::Ui) {
+        ui.horizontal_centered(|ui| {
+            let (status_text, dot_color) = self.status_label();
+
+            // Paint a 6px filled circle as the sync-state indicator.
+            let dot_size = egui::vec2(8.0, 8.0);
+            let (dot_rect, _) = ui.allocate_exact_size(dot_size, egui::Sense::hover());
+            ui.painter()
+                .circle_filled(dot_rect.center(), 3.0, dot_color);
+
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(status_text)
+                    .monospace()
+                    .size(11.0)
+                    .color(self.palette.ink_2),
+            );
+
+            // Native only: show the mount path when the volume is present.
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(MountState::Present { mount_point, .. }) = &self.volume {
+                ui.label(
+                    egui::RichText::new(format!("  \u{00B7}  {}", mount_point.display()))
+                        .monospace()
+                        .size(11.0)
+                        .color(self.palette.ink_3),
+                );
+            }
+
+            let community_count = if let CommunityLoad::Loaded(v) = &self.community {
+                v.len()
+            } else {
+                0
+            };
+            let counts = format!(
+                "  \u{00B7}  {} profiles  \u{00B7}  {} community",
+                self.device_profiles.len(),
+                community_count,
+            );
+            ui.label(
+                egui::RichText::new(counts)
+                    .monospace()
+                    .size(11.0)
+                    .color(self.palette.ink_3),
+            );
+        });
     }
 
     #[cfg(not(target_arch = "wasm32"))]
