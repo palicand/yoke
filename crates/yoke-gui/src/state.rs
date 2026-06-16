@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::edit::EditSession;
 
@@ -30,7 +31,7 @@ pub struct OpenProfile {
 #[derive(Debug, Clone)]
 pub enum CommunityLoad {
     Loading,
-    Loaded(Vec<IndexEntry>),
+    Loaded(Arc<Vec<IndexEntry>>),
     Failed(String),
     /// The community index is unusable (e.g. no cache directory). Rendered as a
     /// non-retryable note rather than a `Failed` state whose Retry re-fails.

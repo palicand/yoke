@@ -172,6 +172,10 @@ pub struct YokeApp {
     /// a close on a dirty session; the modal forces an explicit choice before
     /// any data is discarded. Silently discarding edits is a critical bug class.
     pub(crate) confirm_discard: bool,
+    /// Library search text; filters both device and community card grids.
+    lib_search: String,
+    /// Library kind-filter index: 0 = All, 1 = `MouseKeys`, 2 = Gamepad, 3 = Mixed.
+    lib_kind_filter: usize,
     /// A save that has been dispatched but not yet confirmed: `(req_id, snapshot_at_dispatch)`.
     /// The snapshot is the profile state serialized at dispatch time — edits made while
     /// the save is in-flight must stay dirty after the save completes.
@@ -212,6 +216,8 @@ impl YokeApp {
             confirm_discard: false,
             pending_save: None,
             preview_csv: None,
+            lib_search: String::new(),
+            lib_kind_filter: 0,
         }
     }
 
@@ -240,6 +246,8 @@ impl YokeApp {
             confirm_discard: false,
             pending_save: None,
             preview_csv: None,
+            lib_search: String::new(),
+            lib_kind_filter: 0,
         }
     }
 
@@ -256,7 +264,9 @@ impl YokeApp {
     fn apply_event(&mut self, ev: DataEvent) {
         match ev {
             DataEvent::ProfilesListed(list) => self.device_profiles = list,
-            DataEvent::CommunityListed(list) => self.community = CommunityLoad::Loaded(list),
+            DataEvent::CommunityListed(list) => {
+                self.community = CommunityLoad::Loaded(std::sync::Arc::new(list));
+            }
             DataEvent::VolumeChanged(state) => {
                 // The volume watcher fires this on mount/unmount, so the device
                 // list tracks the device live.
@@ -806,6 +816,22 @@ impl YokeApp {
             self.close_profile();
         }
     }
+    pub(crate) const fn lib_search_mut(&mut self) -> &mut String {
+        &mut self.lib_search
+    }
+    pub(crate) const fn lib_search(&self) -> &String {
+        &self.lib_search
+    }
+    pub(crate) const fn lib_kind_filter(&self) -> usize {
+        self.lib_kind_filter
+    }
+    pub(crate) const fn set_lib_kind_filter(&mut self, i: usize) {
+        self.lib_kind_filter = i;
+    }
+    pub(crate) const fn device_status_text(&self) -> &'static str {
+        self.status_label().0
+    }
+
     pub(crate) fn send(&self, cmd: AppCommand) {
         self.worker.send(cmd);
     }
@@ -1168,7 +1194,7 @@ mod tests {
     #[test]
     fn open_community_failure_keeps_loaded_list() {
         let mut app = test_app();
-        app.community = CommunityLoad::Loaded(Vec::new());
+        app.community = CommunityLoad::Loaded(std::sync::Arc::new(Vec::new()));
         app.opening = Some(OpenInFlight {
             req: 0,
             label: "Destiny 2".into(),

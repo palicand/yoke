@@ -216,6 +216,52 @@ pub fn strip_frame() -> egui::Frame {
         .inner_margin(egui::Margin::same(4))
 }
 
+/// Mono uppercase eyebrow label at 11px in `INK_2`.
+#[must_use]
+pub fn eyebrow(text: &str) -> egui::RichText {
+    egui::RichText::new(text.to_uppercase())
+        .monospace()
+        .size(11.0)
+        .color(INK_2)
+}
+
+/// Filled primary action button: `ACCENT` background, `BG_1` label.
+pub fn primary_button(text: &str) -> egui::Button<'_> {
+    egui::Button::new(egui::RichText::new(text).color(BG_1).strong()).fill(ACCENT)
+}
+
+/// Inline colored kind badge: tinted fill at 18% opacity, 4px corners.
+pub fn kind_badge(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
+    egui::Frame::new()
+        .fill(color.gamma_multiply(0.18))
+        .corner_radius(egui::CornerRadius::same(4))
+        .inner_margin(egui::Margin::symmetric(6, 2))
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(label)
+                    .monospace()
+                    .size(10.5)
+                    .color(color),
+            );
+        });
+}
+
+/// Segmented selector rendered as a strip of `selectable_label`s.
+/// Returns the newly-selected index when the selection changes.
+pub fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize) -> Option<usize> {
+    let mut changed = None;
+    strip_frame().show(ui, |ui| {
+        ui.horizontal(|ui| {
+            for (i, l) in labels.iter().enumerate() {
+                if ui.selectable_label(i == selected, *l).clicked() && i != selected {
+                    changed = Some(i);
+                }
+            }
+        });
+    });
+    changed
+}
+
 /// Embed OFL-licensed fonts and register them with egui. Call once at startup,
 /// before `apply`, so visuals reference the correct families.
 pub fn install_fonts(ctx: &egui::Context) {
