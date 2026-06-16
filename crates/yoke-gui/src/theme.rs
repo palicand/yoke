@@ -230,6 +230,40 @@ pub fn primary_button(text: &str) -> egui::Button<'_> {
     egui::Button::new(egui::RichText::new(text).color(BG_1).strong()).fill(ACCENT)
 }
 
+/// One sub-profile chip container (design `.sub-tab` / `.sub-tab.on`):
+/// transparent when resting, a `--bg-2` fill with a `--line` border when
+/// selected. 6px corners, 6px×10px padding.
+pub fn sub_tab_frame(selected: bool) -> egui::Frame {
+    let (fill, stroke) = if selected {
+        (BG_2, egui::Stroke::new(1.0, LINE))
+    } else {
+        (Color32::TRANSPARENT, egui::Stroke::NONE)
+    };
+    egui::Frame::new()
+        .fill(fill)
+        .stroke(stroke)
+        .corner_radius(egui::CornerRadius::same(R_SM))
+        .inner_margin(egui::Margin::symmetric(10, 6))
+}
+
+/// Sub-profile index badge (design `.sub-tab-i`): bold mono label on the
+/// `--accent-2` fill, `--bg-1` text in the console theme, 3px corners.
+pub fn index_badge(ui: &mut egui::Ui, label: &str) {
+    egui::Frame::new()
+        .fill(ACCENT_2)
+        .corner_radius(egui::CornerRadius::same(3))
+        .inner_margin(egui::Margin::symmetric(5, 2))
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(label)
+                    .monospace()
+                    .size(9.5)
+                    .strong()
+                    .color(BG_1),
+            );
+        });
+}
+
 /// Inline colored kind badge: tinted fill at 18% opacity, 4px corners.
 pub fn kind_badge(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
     egui::Frame::new()

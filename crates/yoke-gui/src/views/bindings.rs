@@ -152,6 +152,7 @@ fn show_all(app: &YokeApp, ui: &mut egui::Ui, palette: &crate::theme::Palette, s
     ui.add_space(4.0);
 
     egui::ScrollArea::vertical()
+        .id_salt("all_bindings")
         .auto_shrink(false)
         .show(ui, |ui| {
             if rows.is_empty() {
@@ -197,6 +198,7 @@ fn show_roster(
 ) -> Option<RosterAction> {
     let mut action: Option<RosterAction> = None;
     egui::ScrollArea::vertical()
+        .id_salt("station_roster")
         .auto_shrink(false)
         .show(ui, |ui| {
             for (input, rows) in roster {
