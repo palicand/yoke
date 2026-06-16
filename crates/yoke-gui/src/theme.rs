@@ -89,6 +89,7 @@ pub fn category_color(palette: &Palette, category: &str) -> Color32 {
         "Dpad" => palette.dpad,
         "Joystick" => palette.joystick,
         "System" => palette.system,
+        "Touch" => palette.accent,
         _ => palette.ink_2,
     }
 }
@@ -106,8 +107,11 @@ const LINE_STRONG: Color32 = rgb(0x3A_40_48);
 const ACCENT: Color32 = rgb(0x6E_D2_74);
 const ACCENT_2: Color32 = rgb(0x1E_3B_1F);
 
-// Corner radius `--r-sm`; widgets read u8.
-const R_SM: u8 = 6;
+// Corner-radius scale; widgets read u8. One source of truth for the values
+// used in more than one place.
+pub const R_SM: u8 = 6; // --r-sm
+pub const R_MD: u8 = 10; // --r-md
+pub const R_FULL: u8 = 99; // fully-rounded pill
 
 /// Console dark `egui::Visuals` from the design `--bg-*` / `--ink-*` tokens.
 ///
@@ -126,7 +130,7 @@ pub fn console_visuals() -> egui::Visuals {
     v.selection.bg_fill = ACCENT_2;
     v.selection.stroke = Stroke::new(1.0, ACCENT);
     v.window_stroke = Stroke::new(1.0, LINE);
-    v.window_corner_radius = CornerRadius::same(10); // --r-md
+    v.window_corner_radius = CornerRadius::same(R_MD);
     v.menu_corner_radius = CornerRadius::same(R_SM);
 
     let radius = CornerRadius::same(R_SM);
@@ -213,7 +217,7 @@ pub fn card_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_2)
         .stroke(egui::Stroke::new(1.0, LINE))
-        .corner_radius(egui::CornerRadius::same(10))
+        .corner_radius(egui::CornerRadius::same(R_MD))
         .inner_margin(egui::Margin::symmetric(16, 14))
 }
 
@@ -235,7 +239,7 @@ pub fn row_frame() -> egui::Frame {
         .inner_margin(egui::Margin::symmetric(10, 7))
 }
 
-/// Leading short-code glyph box (design `.evt-short`): a 28px bordered square,
+/// Leading short-code glyph box (design `.evt-short`): a 20x16px bordered box,
 /// `--bg-3` fill, `--line` border, holding a short mono glyph. Display-only; the
 /// glyph is a label, not a control.
 pub fn glyph_box(ui: &mut egui::Ui, glyph: &str, color: egui::Color32) {
@@ -259,6 +263,21 @@ pub fn glyph_box(ui: &mut egui::Ui, glyph: &str, color: egui::Color32) {
         });
 }
 
+/// Show a frame, then promote its whole rect to a pointer-cursor click target.
+///
+/// `id_salt` disambiguates the interaction id from the frame's own id so
+/// repeated chips in a loop don't collide.
+pub fn clickable_frame<R>(
+    ui: &mut egui::Ui,
+    frame: egui::Frame,
+    id_salt: impl std::hash::Hash,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::Response {
+    let resp = frame.show(ui, add_contents).response;
+    ui.interact(resp.rect, resp.id.with(id_salt), egui::Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 /// Filled, bordered output button (design `.brow-out.set`).
 ///
 /// A category-color-tinted fill and border with `--r-sm` corners, containing a
@@ -272,30 +291,25 @@ pub fn output_button(
     category: &str,
     color: egui::Color32,
 ) -> egui::Response {
-    egui::Frame::new()
+    let frame = egui::Frame::new()
         .fill(color.gamma_multiply(0.14))
         .stroke(egui::Stroke::new(1.0, color.gamma_multiply(0.55)))
         .corner_radius(egui::CornerRadius::same(R_SM))
-        .inner_margin(egui::Margin::symmetric(8, 5))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 7.0;
-                ui.add(egui::Label::new(
-                    egui::RichText::new(glyph)
-                        .monospace()
-                        .strong()
-                        .size(12.0)
-                        .color(color),
-                ));
-                ui.add(
-                    egui::Label::new(egui::RichText::new(label).color(color).size(12.5)).truncate(),
-                );
-                category_tag(ui, category, color);
-            });
-        })
-        .response
-        .interact(egui::Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .inner_margin(egui::Margin::symmetric(8, 5));
+    clickable_frame(ui, frame, label, |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 7.0;
+            ui.add(egui::Label::new(
+                egui::RichText::new(glyph)
+                    .monospace()
+                    .strong()
+                    .size(12.0)
+                    .color(color),
+            ));
+            ui.add(egui::Label::new(egui::RichText::new(label).color(color).size(12.5)).truncate());
+            category_tag(ui, category, color);
+        });
+    })
 }
 
 /// A small keycap hint (design `kbd`): `--bg-3` fill, `--line` border, mono
@@ -316,8 +330,8 @@ pub fn kbd_hint(ui: &mut egui::Ui, label: &str, palette: &Palette) {
         });
 }
 
-/// Small uppercase category tag (design output category pill): `--bg-3` fill,
-/// `--ink-3` text, no border.
+/// Small uppercase category tag (design output category pill): a 14%-tinted
+/// category-color fill and dimmed (80%) category-color text, no border.
 pub fn category_tag(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
     egui::Frame::new()
         .fill(color.gamma_multiply(0.14))
@@ -347,7 +361,7 @@ pub fn strip_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_3)
         .stroke(egui::Stroke::new(1.0, LINE))
-        .corner_radius(egui::CornerRadius::same(10))
+        .corner_radius(egui::CornerRadius::same(R_MD))
         .inner_margin(egui::Margin::same(4))
 }
 

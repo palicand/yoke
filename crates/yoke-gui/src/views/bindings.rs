@@ -427,14 +427,10 @@ fn roster_chord_row(
 ) -> Option<RosterAction> {
     let mut action = None;
     ui.add_space(28.0); // indent to align under WHEN block
-    if pill_frame()
-        .show(ui, |ui| {
-            ui.label(egui::RichText::new(modifier).small().color(palette.ink_2));
-        })
-        .response
-        .interact(egui::Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .clicked()
+    if crate::theme::clickable_frame(ui, pill_frame(), (input, output, modifier), |ui| {
+        ui.label(egui::RichText::new(modifier).small().color(palette.ink_2));
+    })
+    .clicked()
     {
         action = Some(RosterAction::EditModifier {
             input: input.to_owned(),

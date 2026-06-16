@@ -406,48 +406,42 @@ fn show_chip(
     selected: bool,
 ) -> bool {
     let frame = theme::sub_tab_frame(selected);
-    let resp = frame
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                theme::index_badge(ui, &format!("L{}", index + 1));
-                ui.add_space(2.0);
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 0.0;
-                    let name_color = if selected {
-                        palette.ink_1
-                    } else {
-                        palette.ink_2
-                    };
+    theme::clickable_frame(ui, frame, index, |ui| {
+        ui.horizontal(|ui| {
+            theme::index_badge(ui, &format!("L{}", index + 1));
+            ui.add_space(2.0);
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                let name_color = if selected {
+                    palette.ink_1
+                } else {
+                    palette.ink_2
+                };
+                ui.add(egui::Label::new(
+                    egui::RichText::new(name)
+                        .size(13.0)
+                        .strong()
+                        .color(name_color),
+                ));
+                if !sublabel.is_empty() {
                     ui.add(egui::Label::new(
-                        egui::RichText::new(name)
-                            .size(13.0)
-                            .strong()
-                            .color(name_color),
+                        egui::RichText::new(sublabel)
+                            .monospace()
+                            .size(10.0)
+                            .color(palette.ink_3),
                     ));
-                    if !sublabel.is_empty() {
-                        ui.add(egui::Label::new(
-                            egui::RichText::new(sublabel)
-                                .monospace()
-                                .size(10.0)
-                                .color(palette.ink_3),
-                        ));
-                    }
-                });
-                ui.add_space(2.0);
-                ui.label(
-                    egui::RichText::new(count.to_string())
-                        .monospace()
-                        .size(10.5)
-                        .color(palette.ink_3),
-                );
+                }
             });
-        })
-        .response;
-    // The frame's own rect is not clickable; promote it to a click target that
-    // also paints the pointer cursor, matching the design's button chips.
-    ui.interact(resp.rect, resp.id.with(index), egui::Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .clicked()
+            ui.add_space(2.0);
+            ui.label(
+                egui::RichText::new(count.to_string())
+                    .monospace()
+                    .size(10.5)
+                    .color(palette.ink_3),
+            );
+        });
+    })
+    .clicked()
 }
 
 /// Render the rename/clone/delete buttons for the currently-selected chip on a
