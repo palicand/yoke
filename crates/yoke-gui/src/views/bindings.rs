@@ -560,7 +560,7 @@ const fn kind_eyebrow(kind: StationKind) -> &'static str {
 /// map to the design's compact codes (`LMB`, `Wh↑`, cursor arrows, gamepad
 /// codes); everything else falls back to the leading token of the id so the
 /// glyph is always derived from real data, never fabricated.
-fn output_glyph(csv: &str) -> String {
+pub(crate) fn output_glyph(csv: &str) -> String {
     let mapped = match csv {
         "mouse_left_button" => "LMB",
         "mouse_right_button" => "RMB",
