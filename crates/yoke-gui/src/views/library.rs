@@ -7,6 +7,20 @@ const CARD_HEIGHT: f32 = 150.0;
 const CARD_ROW_GAP: f32 = 8.0;
 const COLS: usize = 3;
 
+/// Single source of truth for the device kind filter: maps each segment index
+/// to its label and the kind it selects. Index 0 is "All" (no filter); both the
+/// segmented control and the filter match read this so they can't desync.
+const KIND_FILTERS: &[(&str, Option<ProfileKind>)] = &[
+    ("All", None),
+    ("Mouse + Keys", Some(ProfileKind::MouseKeys)),
+    ("Gamepad", Some(ProfileKind::Gamepad)),
+    ("Mixed", Some(ProfileKind::Mixed)),
+];
+
+fn kind_for_filter(index: usize) -> Option<ProfileKind> {
+    KIND_FILTERS.get(index).and_then(|&(_, kind)| kind)
+}
+
 /// Cap on how many filtered community cards are rendered per frame.
 /// Search filters the full list first; only the display slice is limited.
 const LIB_COMMUNITY_DISPLAY_CAP: usize = 48;
@@ -78,11 +92,8 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
                 .hint_text("Search profiles\u{2026}"),
         );
         ui.add_space(8.0);
-        if let Some(i) = theme::segmented(
-            ui,
-            &["All", "Mouse + Keys", "Gamepad", "Mixed"],
-            app.lib_kind_filter(),
-        ) {
+        let kind_labels: Vec<&str> = KIND_FILTERS.iter().map(|&(label, _)| label).collect();
+        if let Some(i) = theme::segmented(ui, &kind_labels, app.lib_kind_filter()) {
             app.set_lib_kind_filter(i);
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -94,19 +105,14 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
 
     // --- Collect filtered display data before any &mut app calls ---
     let search = app.lib_search().to_lowercase();
-    let kind_filter = app.lib_kind_filter();
+    let kind_filter = kind_for_filter(app.lib_kind_filter());
 
     let device_entries: Vec<_> = app
         .device_profiles()
         .iter()
         .filter(|e| {
             let text_match = search.is_empty() || e.label.to_lowercase().contains(&search);
-            let kind_match = match kind_filter {
-                1 => e.kind == Some(ProfileKind::MouseKeys),
-                2 => e.kind == Some(ProfileKind::Gamepad),
-                3 => e.kind == Some(ProfileKind::Mixed),
-                _ => true,
-            };
+            let kind_match = kind_filter.is_none_or(|k| e.kind == Some(k));
             text_match && kind_match
         })
         .cloned()
@@ -185,7 +191,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
                 }
                 CommunityLoad::Loaded(entries) => {
                     // Community entries carry no kind; when a kind filter is active, show none.
-                    let filtered: Vec<usize> = if kind_filter != 0 {
+                    let filtered: Vec<usize> = if kind_filter.is_some() {
                         Vec::new()
                     } else if search.is_empty() {
                         (0..entries.len()).collect()

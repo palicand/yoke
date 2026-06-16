@@ -130,7 +130,7 @@ fn capture_banner(
     egui::Frame::new()
         .fill(banner_fill)
         .stroke(banner_stroke)
-        .corner_radius(egui::CornerRadius::same(6))
+        .corner_radius(egui::CornerRadius::same(theme::R_SM))
         .inner_margin(egui::Margin::symmetric(10, 7))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -181,7 +181,7 @@ fn search_bar(ui: &mut egui::Ui, state: &mut PickerState, palette: &Palette) {
     egui::Frame::new()
         .fill(ui.visuals().faint_bg_color)
         .stroke(egui::Stroke::new(1.0, palette.line))
-        .corner_radius(egui::CornerRadius::same(6))
+        .corner_radius(egui::CornerRadius::same(theme::R_SM))
         .inner_margin(egui::Margin::symmetric(10, 6))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -230,30 +230,26 @@ fn category_chip(
             egui::Stroke::new(1.0, palette.line),
         )
     };
-    egui::Frame::new()
+    let frame = egui::Frame::new()
         .fill(fill)
         .stroke(stroke)
-        .corner_radius(egui::CornerRadius::same(99))
-        .inner_margin(egui::Margin::symmetric(9, 3))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 5.0;
-                if let Some(dot) = dot {
-                    let (rect, _) =
-                        ui.allocate_exact_size(egui::vec2(7.0, 7.0), egui::Sense::hover());
-                    ui.painter().circle_filled(rect.center(), 3.5, dot);
-                }
-                let text_color = if selected {
-                    palette.ink_1
-                } else {
-                    palette.ink_2
-                };
-                ui.label(egui::RichText::new(label).size(12.0).color(text_color));
-            });
-        })
-        .response
-        .interact(egui::Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .corner_radius(egui::CornerRadius::same(theme::R_FULL))
+        .inner_margin(egui::Margin::symmetric(9, 3));
+    theme::clickable_frame(ui, frame, label, |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 5.0;
+            if let Some(dot) = dot {
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(7.0, 7.0), egui::Sense::hover());
+                ui.painter().circle_filled(rect.center(), 3.5, dot);
+            }
+            let text_color = if selected {
+                palette.ink_1
+            } else {
+                palette.ink_2
+            };
+            ui.label(egui::RichText::new(label).size(12.0).color(text_color));
+        });
+    })
 }
 
 /// Scrollable output list. Returns the csv id of the clicked row (if any) and

@@ -214,29 +214,25 @@ fn station_chip(
     } else {
         pill_frame()
     };
-    let resp = frame
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
-                ui.label(
-                    egui::RichText::new(kind_glyph(kind))
-                        .monospace()
-                        .size(11.0)
-                        .color(if selected { palette.accent } else { kind_color }),
-                );
-                ui.label(egui::RichText::new(label).size(12.0).color(text_color));
-                ui.label(
-                    egui::RichText::new(count.to_string())
-                        .monospace()
-                        .size(10.0)
-                        .color(count_color),
-                );
-            });
-        })
-        .response;
-    ui.interact(resp.rect, resp.id.with(label), egui::Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .clicked()
+    crate::theme::clickable_frame(ui, frame, label, |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.label(
+                egui::RichText::new(kind_glyph(kind))
+                    .monospace()
+                    .size(11.0)
+                    .color(if selected { palette.accent } else { kind_color }),
+            );
+            ui.label(egui::RichText::new(label).size(12.0).color(text_color));
+            ui.label(
+                egui::RichText::new(count.to_string())
+                    .monospace()
+                    .size(10.0)
+                    .color(count_color),
+            );
+        });
+    })
+    .clicked()
 }
 
 fn short_label(id: &str) -> &'static str {
