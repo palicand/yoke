@@ -1,0 +1,92 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # create the GitHub Release and upload the DMG
+
+jobs:
+  package:
+    # Matrix-shaped so a windows-latest (NSIS/MSI) leg can be added without
+    # restructuring once the Windows port lands.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: universal-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Channel/components come from rust-toolchain.toml; add the second macOS
+      # arch so we can lipo a universal binary (aarch64 is the runner's native
+      # target and is already present).
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: x86_64-apple-darwin
+
+      - name: Install cargo-packager
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager
+
+      # cargo-packager does not build or lipo; it packages a pre-built binary.
+      # Build both arches and fuse them into the universal target dir it reads.
+      - name: Build universal binary
+        run: |
+          cargo build --release -p yoke-gui --target aarch64-apple-darwin
+          cargo build --release -p yoke-gui --target x86_64-apple-darwin
+          mkdir -p target/universal-apple-darwin/release
+          lipo -create -output target/universal-apple-darwin/release/yoke-gui \
+            target/aarch64-apple-darwin/release/yoke-gui \
+            target/x86_64-apple-darwin/release/yoke-gui
+          file target/universal-apple-darwin/release/yoke-gui
+
+      # cargo-packager reads APPLE_API_KEY_PATH (a file), so materialize the
+      # base64-encoded .p8 secret to disk and point at it.
+      - name: Stage App Store Connect API key
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          printf '%s' "$APPLE_API_KEY_CONTENT" | base64 --decode > "$RUNNER_TEMP/private_keys/AuthKey.p8"
+          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/private_keys/AuthKey.p8" >> "$GITHUB_ENV"
+
+      # cargo-packager reads the signing identity only from config (never env),
+      # and a standalone Packager.toml would be treated as a second config, so
+      # inject the identity into the existing macos table at release time. The
+      # secret is read via Perl $ENV (kept out of the program text); guarded so a
+      # manual run without secrets still produces an unsigned DMG.
+      - name: Inject signing identity
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            perl -0pi -e 's/(\[package\.metadata\.packager\.macos\]\n)/$1 . "signing-identity = \"$ENV{APPLE_SIGNING_IDENTITY}\"\n"/e' crates/yoke-gui/Cargo.toml
+            echo "Injected signing-identity into crates/yoke-gui/Cargo.toml"
+          else
+            echo "APPLE_SIGNING_IDENTITY not set; building an UNSIGNED bundle"
+          fi
+
+      # Signing: APPLE_CERTIFICATE (+ password) is imported into a temporary
+      # keychain by cargo-packager; the identity to select was injected above.
+      # Notarization + stapling use the App Store Connect API key staged above.
+      - name: Package, sign, and notarize
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: cargo packager --release --target ${{ matrix.target }} -p yoke-gui --formats dmg --verbose
+
+      - name: Upload DMG to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/${{ matrix.target }}/release/*.dmg
+          fail_on_unmatched_files: true

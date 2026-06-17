@@ -265,7 +265,10 @@ fn show_strip(
                 show_mode_switch_hint(ui, palette);
                 egui::ScrollArea::horizontal()
                     .id_salt("subprofile_strip")
-                    .auto_shrink([false, false])
+                    // Fill remaining width, but shrink vertically to the chip
+                    // height — otherwise the strip claims all leftover panel
+                    // height and leaves a tall empty band above the body.
+                    .auto_shrink([false, true])
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                             show_chips(
