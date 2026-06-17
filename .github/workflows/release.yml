@@ -72,9 +72,11 @@ jobs:
             # Idempotent: a re-run over an already-injected tree would otherwise
             # add a second signing-identity key and break TOML parsing.
             echo "signing-identity already present; skipping injection"
+            echo "SIGNED=true" >> "$GITHUB_ENV"
           else
             perl -0pi -e 's/(\[package\.metadata\.packager\.macos\]\n)/$1 . "signing-identity = \"$ENV{APPLE_SIGNING_IDENTITY}\"\n"/e' crates/yoke-gui/Cargo.toml
             echo "Injected signing-identity into crates/yoke-gui/Cargo.toml"
+            echo "SIGNED=true" >> "$GITHUB_ENV"
           fi
 
       # Signing: APPLE_CERTIFICATE (+ password) is imported into a temporary
@@ -88,6 +90,21 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: cargo packager --release --target ${{ matrix.target }} -p yoke-gui --formats dmg --verbose
+
+      # cargo-packager notarizes the .app but only code-signs the .dmg, so the
+      # downloaded image would trip Gatekeeper on open. Notarize + staple the DMG
+      # itself. Unsigned (no-secret) builds skip this — nothing to notarize.
+      - name: Notarize and staple the DMG
+        if: env.SIGNED == 'true'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          dmg=$(ls target/${{ matrix.target }}/release/*.dmg | head -1)
+          xcrun notarytool submit "$dmg" \
+            --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
 
       # Only on a tag push. A workflow_dispatch run has no tag, and
       # action-gh-release would otherwise create a junk release tagged with the
