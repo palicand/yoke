@@ -6,7 +6,6 @@ computer, your way.*
 
 macOS first; Windows planned. Configuration only — no firmware flashing.
 
-<!-- Replace with a screenshot of the native app (Profiles → a profile editor). -->
 ![Yoke editing a QuadStick profile](docs/screenshot.png)
 
 ## What it does

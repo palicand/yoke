@@ -3,7 +3,7 @@ name = "yoke-gui"
 version = "0.1.0"
 edition = "2024"
 license.workspace = true
-description = "Read-only QuadStick profile viewer (egui)."
+description = "Configuration GUI for the QuadStick adaptive controller (egui)."
 
 # cdylib is the wasm artifact trunk bundles (carries the #[wasm_bindgen(start)]
 # entry + web-sys imports); rlib lets the native bin and tests `use yoke_gui::`.

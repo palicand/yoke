@@ -25,7 +25,8 @@ yoke/
 ├── README.md                 # user-facing
 ├── AGENTS.md                 # this file
 ├── LICENSE
-├── .github/workflows/ci.yml  # CI inside the devShell
+├── .github/workflows/ci.yml  # CI: native rustup (fmt/clippy/check/test + wasm)
+├── .github/workflows/release.yml # signed/notarized macOS DMG, on v* tags
 ├── crates/                   # workspace members
 │   ├── yoke-config           # CSV vocabulary catalog + model + serde (dual-target: host + wasm)
 │   ├── yoke-volume           # mount discovery + read/write (VolumeProvider trait + FsBackend)
@@ -58,7 +59,7 @@ All commands assume the Nix devShell is active (direnv handles this on
 
 | Command | Effect |
 |---|---|
-| `cargo metadata --no-deps` | Parse the workspace manifest. CI runs this on every push as the workspace integrity gate. |
+| `cargo metadata --no-deps` | Parse the workspace manifest — a fast local check of workspace integrity (CI relies on `cargo check`). |
 | `cargo check --workspace` | Type-check every workspace member. |
 | `cargo fmt --all --check` | Format check. |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lint with warnings-as-errors (workspace lints set `pedantic`+`nursery` to warn, so this is strict by default). |

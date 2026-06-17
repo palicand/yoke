@@ -57,7 +57,12 @@ secret**:
 | `APPLE_API_KEY` | App Store Connect API **Key ID** |
 | `APPLE_API_ISSUER` | App Store Connect API **Issuer ID** |
 | `APPLE_API_KEY_CONTENT` | base64 of the `.p8` key file |
-| `APPLE_TEAM_ID` | your 10-character Team ID |
+| `APPLE_TEAM_ID` | your 10-character Team ID (optional — see below) |
+
+`APPLE_TEAM_ID` is not consumed by the App Store Connect **API-key** notarization
+path this pipeline uses (`notarytool` derives the team from the issuer);
+`cargo-packager` reads it only for the alternative Apple-ID + app-password auth.
+It is kept for that fallback and for the signing-identity suffix.
 
 The signing identity is **not secret** (it is embedded in every signed binary),
 but it is stored as a secret so no Apple-account specifics live in tracked files.
