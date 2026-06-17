@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Placeholder Yoke app icon: JetBrains Mono "Y" glyph as a vector path, accent green on the dark panel surface. -->
-  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="#14161A"/>
-  <path transform="matrix(0.729425 0 0 -0.729425 293.1726 778.2400)" fill="#6ED274" d="M255 0V273L35 730H128L273 430Q285 405 292.0 387.5Q299 370 301 362Q303 370 310.5 387.5Q318 405 330 430L472 730H565L345 273V0Z"/>
-</svg>
