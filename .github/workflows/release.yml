@@ -39,16 +39,19 @@ jobs:
           tool: cargo-packager
 
       # cargo-packager does not build or lipo; it packages a pre-built binary.
-      # Build both arches and fuse them into the universal target dir it reads.
-      - name: Build universal binary
+      # Build both arches of the GUI (for the DMG) and the CLI (shipped as a
+      # standalone asset), and fuse each into a universal binary.
+      - name: Build universal binaries
         run: |
-          cargo build --release -p yoke-gui --target aarch64-apple-darwin
-          cargo build --release -p yoke-gui --target x86_64-apple-darwin
           mkdir -p target/universal-apple-darwin/release
-          lipo -create -output target/universal-apple-darwin/release/yoke-gui \
-            target/aarch64-apple-darwin/release/yoke-gui \
-            target/x86_64-apple-darwin/release/yoke-gui
-          file target/universal-apple-darwin/release/yoke-gui
+          for crate in yoke-gui yokectl; do
+            cargo build --release -p "$crate" --target aarch64-apple-darwin
+            cargo build --release -p "$crate" --target x86_64-apple-darwin
+            lipo -create -output "target/universal-apple-darwin/release/$crate" \
+              "target/aarch64-apple-darwin/release/$crate" \
+              "target/x86_64-apple-darwin/release/$crate"
+            file "target/universal-apple-darwin/release/$crate"
+          done
 
       # cargo-packager reads APPLE_API_KEY_PATH (a file), so materialize the
       # base64-encoded .p8 secret to disk and point at it.
@@ -109,12 +112,48 @@ jobs:
           xcrun stapler staple "$dmg"
           xcrun stapler validate "$dmg"
 
+      # yokectl ships as a standalone asset, not inside Yoke.app, so it is signed
+      # and notarized on its own. cargo-packager already deleted its temporary
+      # keychain, so import the cert into a fresh one here. A bare binary cannot
+      # be stapled (only .app/.dmg/.pkg can) — notarization lets Gatekeeper verify
+      # it online. Skipped for unsigned (no-secret) runs.
+      - name: Sign and notarize the yokectl CLI
+        if: env.SIGNED == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          bin=target/${{ matrix.target }}/release/yokectl
+          keychain="$RUNNER_TEMP/yokectl-signing.keychain-db"
+          keychain_pw="$(openssl rand -base64 24)"
+          security create-keychain -p "$keychain_pw" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_pw" "$keychain"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_pw" "$keychain" >/dev/null
+          codesign --force --options runtime --timestamp --keychain "$keychain" --sign "$APPLE_SIGNING_IDENTITY" "$bin"
+          codesign --verify --strict --verbose=2 "$bin"
+          ditto -c -k "$bin" "$RUNNER_TEMP/yokectl.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/yokectl.zip" \
+            --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
+          security delete-keychain "$keychain"
+          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/yokectl.zip"
+
+      - name: Package the yokectl CLI
+        run: tar -czf yokectl-universal-apple-darwin.tar.gz -C target/${{ matrix.target }}/release yokectl
+
       # Only on a tag push. A workflow_dispatch run has no tag, and
       # action-gh-release would otherwise create a junk release tagged with the
       # branch name; manual runs are for smoke-testing the build/sign steps.
-      - name: Upload DMG to release
+      - name: Upload release assets
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
-          files: target/${{ matrix.target }}/release/*.dmg
+          files: |
+            target/${{ matrix.target }}/release/*.dmg
+            yokectl-universal-apple-darwin.tar.gz
           fail_on_unmatched_files: true
