@@ -66,11 +66,15 @@ jobs:
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
-          if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "APPLE_SIGNING_IDENTITY not set; building an UNSIGNED bundle"
+          elif grep -q '^signing-identity' crates/yoke-gui/Cargo.toml; then
+            # Idempotent: a re-run over an already-injected tree would otherwise
+            # add a second signing-identity key and break TOML parsing.
+            echo "signing-identity already present; skipping injection"
+          else
             perl -0pi -e 's/(\[package\.metadata\.packager\.macos\]\n)/$1 . "signing-identity = \"$ENV{APPLE_SIGNING_IDENTITY}\"\n"/e' crates/yoke-gui/Cargo.toml
             echo "Injected signing-identity into crates/yoke-gui/Cargo.toml"
-          else
-            echo "APPLE_SIGNING_IDENTITY not set; building an UNSIGNED bundle"
           fi
 
       # Signing: APPLE_CERTIFICATE (+ password) is imported into a temporary
@@ -85,7 +89,11 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: cargo packager --release --target ${{ matrix.target }} -p yoke-gui --formats dmg --verbose
 
+      # Only on a tag push. A workflow_dispatch run has no tag, and
+      # action-gh-release would otherwise create a junk release tagged with the
+      # branch name; manual runs are for smoke-testing the build/sign steps.
       - name: Upload DMG to release
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           files: target/${{ matrix.target }}/release/*.dmg
