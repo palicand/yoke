@@ -1,5 +1,10 @@
 # Yoke
 
+[![CI](https://github.com/palicand/yoke/actions/workflows/ci.yml/badge.svg)](https://github.com/palicand/yoke/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/palicand/yoke?sort=semver)](https://github.com/palicand/yoke/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+![Platform: macOS 11+](https://img.shields.io/badge/platform-macOS%2011%2B-lightgrey)
+
 **Configuration software for the [QuadStick](https://www.quadstick.com/)** — a
 sip-and-puff adaptive game controller for quadriplegic gamers. *Pilot your
 computer, your way.*
@@ -7,6 +12,8 @@ computer, your way.*
 macOS first; Windows planned. Configuration only — no firmware flashing.
 
 ![Yoke editing a QuadStick profile](docs/screenshot.png)
+
+---
 
 ## What it does
 
@@ -16,7 +23,10 @@ lives in CSV *profiles* the device stores on the FAT volume it exposes in
 mass-storage mode. Yoke is how you read, build, and write those profiles —
 without hand-editing CSV.
 
-### Desktop app (`yoke-gui`)
+Yoke comes in two forms: **Yoke**, the desktop app you download below, and
+**`yokectl`**, a scriptable command-line tool you build from source.
+
+### Yoke — the desktop app
 
 - **Browse profiles** on your connected QuadStick alongside a curated community
   library.
@@ -29,12 +39,13 @@ without hand-editing CSV.
 - **Install community profiles** by name, URL, or local file.
 - **Validate and preview** a profile's CSV before writing it back to the device.
 
-### Command line (`yokectl`)
+### `yokectl` — the command line
 
 A scriptable surface over the same configuration model — list, inspect,
 validate, edit, and install profiles, emit human or JSON output, and target a
-real QuadStick volume or a filesystem-backed fake. See
-[the `yokectl` reference](#yokectl-reference) below.
+real QuadStick volume or a filesystem-backed fake. Download it as a standalone
+binary from the [Releases](https://github.com/palicand/yoke/releases) page (see
+[Install](#install)); the [`yokectl` reference](#yokectl-reference) is below.
 
 ## Install
 
@@ -52,6 +63,19 @@ natively on both Apple Silicon and Intel Macs.
 > QuadStick's USB mass-storage volume, which appears once the device's
 > mass-storage interface is enabled.
 
+### Command line (`yokectl`)
+
+Download **`yokectl-universal-apple-darwin.tar.gz`** from the
+[Releases](https://github.com/palicand/yoke/releases) page, then put the binary
+on your `PATH`:
+
+```sh
+tar -xzf yokectl-universal-apple-darwin.tar.gz
+sudo mv yokectl /usr/local/bin/
+```
+
+Universal (Apple Silicon + Intel), signed and notarized by Apple.
+
 ### Windows
 
 Planned — see the roadmap below.
@@ -61,7 +85,7 @@ Planned — see the roadmap below.
 Yoke is **alpha**, and macOS-only for now.
 
 - **Working today** — browsing, editing, validating, and installing profiles to
-  the QuadStick's mass-storage volume; the full `yokectl` CLI.
+  the QuadStick's mass-storage volume; the `yokectl` CLI.
 - **Next** — live device push over HID/serial (configure without
   mass-storage mode); a **Windows** build.
 - **Later (gated)** — firmware flashing, behind explicit safeguards, once the
@@ -118,15 +142,18 @@ contributor flow, repo map, and house rules live in [`AGENTS.md`](./AGENTS.md).
 
 ## Credits & license
 
-Yoke is an **independent project**. It is **not affiliated with, sponsored by,
-or endorsed by** the QuadStick or its creator. "QuadStick" refers to the
-hardware; "Yoke" is this configuration software. The two coexist — they are not
-the same thing.
+The QuadStick is the work of **Fred Davidson**, who designed and builds it to
+give people with limited hand mobility full, independent control of their games
+and computers. Yoke exists only because of that work and the community that has
+grown around it — our thanks to Fred and to everyone who shares profiles. Learn
+about the hardware, or get one, at
+[quadstick.com](https://www.quadstick.com/). The upstream Windows manager
+(QMP-4) is the authoritative reference for the device wire protocol Yoke speaks.
 
-Yoke would not exist without Fred Davidson and the QuadStick project. The
-upstream Windows manager (QMP-4) is the authoritative reference for the device
-wire protocol used here.
+Yoke is an **independent project** — not affiliated with, sponsored by, or
+endorsed by the QuadStick or its creator. "QuadStick" is the hardware; "Yoke"
+is this configuration software.
 
 Yoke is MIT licensed — see [`LICENSE`](./LICENSE). Bundled fonts (Instrument
-Serif, JetBrains Mono, Manrope) are licensed under the SIL Open Font License;
-see [`crates/yoke-gui/assets/fonts/ATTRIBUTION.md`](crates/yoke-gui/assets/fonts/ATTRIBUTION.md).
+Serif, JetBrains Mono, Manrope) are under the SIL Open Font License; see
+[`crates/yoke-gui/assets/fonts/ATTRIBUTION.md`](crates/yoke-gui/assets/fonts/ATTRIBUTION.md).
