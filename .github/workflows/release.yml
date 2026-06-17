@@ -38,6 +38,19 @@ jobs:
         with:
           tool: cargo-packager
 
+      # The pushed tag is the single source of truth for the release version:
+      # stamp it into the crates that cargo-packager (DMG) and `yokectl --version`
+      # read. workflow_dispatch has no tag and keeps the Cargo.toml defaults.
+      - name: Set version from tag
+        if: github.ref_type == 'tag'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "Release version: $version"
+          for c in yoke-gui yokectl; do
+            perl -0pi -e "s/^version = \"[^\"]*\"/version = \"$version\"/m" "crates/$c/Cargo.toml"
+          done
+          grep -m1 '^version' crates/yoke-gui/Cargo.toml crates/yokectl/Cargo.toml
+
       # cargo-packager does not build or lipo; it packages a pre-built binary.
       # Build both arches of the GUI (for the DMG) and the CLI (shipped as a
       # standalone asset), and fuse each into a universal binary.
@@ -134,6 +147,9 @@ jobs:
           security unlock-keychain -p "$keychain_pw" "$keychain"
           printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # set-key-partition-list only finds the imported key if the keychain is
+          # on the search list; add it while keeping the existing entries.
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_pw" "$keychain" >/dev/null
           codesign --force --options runtime --timestamp --keychain "$keychain" --sign "$APPLE_SIGNING_IDENTITY" "$bin"
           codesign --verify --strict --verbose=2 "$bin"

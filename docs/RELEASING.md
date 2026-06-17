@@ -69,15 +69,22 @@ but it is stored as a secret so no Apple-account specifics live in tracked files
 
 ## Cutting a release
 
+The tag **is** the version — the workflow stamps `vX.Y.Z` into the bundle and
+into `yokectl --version`, so there is no `Cargo.toml` bump to remember. Use a
+clean SemVer tag (`v0.1.0`); a pre-release suffix is not a valid Apple bundle
+version.
+
 ```sh
-# bump the version in crates/yoke-gui/Cargo.toml, commit it, then:
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
+The release uploads two assets: `Yoke.dmg` (the signed, notarized desktop app)
+and `yokectl-universal-apple-darwin.tar.gz` (the signed, notarized CLI).
+
 The workflow can also be run by hand from **Actions → release →
-Run workflow** (`workflow_dispatch`); without the secrets above it produces an
-unsigned DMG.
+Run workflow** (`workflow_dispatch`); it builds with the `Cargo.toml` version and,
+without the secrets above, produces unsigned artifacts.
 
 ## Verifying a release
 
