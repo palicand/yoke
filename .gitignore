@@ -18,6 +18,9 @@ result-*
 # are committed.
 docs/superpowers/plans/
 
+# Superpowers brainstorm scratch (rendered HTML + dev-server state).
+.superpowers/
+
 # Work-in-progress reference material (e.g. the QuadStick wire-protocol
 # document) lives in the maintainer's local notes / Obsidian vault until
 # every fact is confirmed. Promote individual sections back into the
