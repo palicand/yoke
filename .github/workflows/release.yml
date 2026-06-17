@@ -1,0 +1,175 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # create the GitHub Release and upload the DMG
+
+jobs:
+  package:
+    # Matrix-shaped so a windows-latest (NSIS/MSI) leg can be added without
+    # restructuring once the Windows port lands.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: universal-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      # Channel/components come from rust-toolchain.toml; add the second macOS
+      # arch so we can lipo a universal binary (aarch64 is the runner's native
+      # target and is already present).
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        with:
+          target: x86_64-apple-darwin
+          cache: false
+
+      - name: Install cargo-packager
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: cargo-packager
+
+      # The pushed tag is the single source of truth for the release version:
+      # stamp it into the crates that cargo-packager (DMG) and `yokectl --version`
+      # read. workflow_dispatch has no tag and keeps the Cargo.toml defaults.
+      - name: Set version from tag
+        if: github.ref_type == 'tag'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "Release version: $version"
+          for c in yoke-gui yokectl; do
+            perl -0pi -e "s/^version = \"[^\"]*\"/version = \"$version\"/m" "crates/$c/Cargo.toml"
+          done
+          grep -m1 '^version' crates/yoke-gui/Cargo.toml crates/yokectl/Cargo.toml
+
+      # cargo-packager does not build or lipo; it packages a pre-built binary.
+      # Build both arches of the GUI (for the DMG) and the CLI (shipped as a
+      # standalone asset), and fuse each into a universal binary.
+      - name: Build universal binaries
+        run: |
+          mkdir -p target/universal-apple-darwin/release
+          for crate in yoke-gui yokectl; do
+            cargo build --release -p "$crate" --target aarch64-apple-darwin
+            cargo build --release -p "$crate" --target x86_64-apple-darwin
+            lipo -create -output "target/universal-apple-darwin/release/$crate" \
+              "target/aarch64-apple-darwin/release/$crate" \
+              "target/x86_64-apple-darwin/release/$crate"
+            file "target/universal-apple-darwin/release/$crate"
+          done
+
+      # cargo-packager reads APPLE_API_KEY_PATH (a file), so materialize the
+      # base64-encoded .p8 secret to disk and point at it.
+      - name: Stage App Store Connect API key
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          printf '%s' "$APPLE_API_KEY_CONTENT" | base64 --decode > "$RUNNER_TEMP/private_keys/AuthKey.p8"
+          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/private_keys/AuthKey.p8" >> "$GITHUB_ENV"
+
+      # cargo-packager reads the signing identity only from config (never env),
+      # and a standalone Packager.toml would be treated as a second config, so
+      # inject the identity into the existing macos table at release time. The
+      # secret is read via Perl $ENV (kept out of the program text); guarded so a
+      # manual run without secrets still produces an unsigned DMG.
+      - name: Inject signing identity
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "APPLE_SIGNING_IDENTITY not set; building an UNSIGNED bundle"
+          elif grep -q '^signing-identity' crates/yoke-gui/Cargo.toml; then
+            # Idempotent: a re-run over an already-injected tree would otherwise
+            # add a second signing-identity key and break TOML parsing.
+            echo "signing-identity already present; skipping injection"
+            echo "SIGNED=true" >> "$GITHUB_ENV"
+          else
+            perl -0pi -e 's/(\[package\.metadata\.packager\.macos\]\n)/$1 . "signing-identity = \"$ENV{APPLE_SIGNING_IDENTITY}\"\n"/e' crates/yoke-gui/Cargo.toml
+            echo "Injected signing-identity into crates/yoke-gui/Cargo.toml"
+            echo "SIGNED=true" >> "$GITHUB_ENV"
+          fi
+
+      # Signing: APPLE_CERTIFICATE (+ password) is imported into a temporary
+      # keychain by cargo-packager; the identity to select was injected above.
+      # Notarization + stapling use the App Store Connect API key staged above.
+      - name: Package, sign, and notarize
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: cargo packager --release --target ${{ matrix.target }} -p yoke-gui --formats dmg --verbose
+
+      # cargo-packager notarizes the .app but only code-signs the .dmg, so the
+      # downloaded image would trip Gatekeeper on open. Notarize + staple the DMG
+      # itself. Unsigned (no-secret) builds skip this — nothing to notarize.
+      - name: Notarize and staple the DMG
+        if: env.SIGNED == 'true'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          dmg=$(ls target/${{ matrix.target }}/release/*.dmg | head -1)
+          xcrun notarytool submit "$dmg" \
+            --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+
+      # yokectl ships as a standalone asset, not inside Yoke.app, so it is signed
+      # and notarized on its own. cargo-packager already deleted its temporary
+      # keychain, so import the cert into a fresh one here. A bare binary cannot
+      # be stapled (only .app/.dmg/.pkg can) — notarization lets Gatekeeper verify
+      # it online. Skipped for unsigned (no-secret) runs.
+      - name: Sign and notarize the yokectl CLI
+        if: env.SIGNED == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          bin=target/${{ matrix.target }}/release/yokectl
+          keychain="$RUNNER_TEMP/yokectl-signing.keychain-db"
+          keychain_pw="$(openssl rand -base64 24)"
+          security create-keychain -p "$keychain_pw" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_pw" "$keychain"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # set-key-partition-list only finds the imported key if the keychain is
+          # on the search list; add it while keeping the existing entries.
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_pw" "$keychain" >/dev/null
+          codesign --force --options runtime --timestamp --keychain "$keychain" --sign "$APPLE_SIGNING_IDENTITY" "$bin"
+          codesign --verify --strict --verbose=2 "$bin"
+          ditto -c -k "$bin" "$RUNNER_TEMP/yokectl.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/yokectl.zip" \
+            --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
+          security delete-keychain "$keychain"
+          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/yokectl.zip"
+
+      - name: Package the yokectl CLI
+        run: tar -czf yokectl-universal-apple-darwin.tar.gz -C target/${{ matrix.target }}/release yokectl
+
+      # Only on a tag push. A workflow_dispatch run has no tag, and
+      # action-gh-release would otherwise create a junk release tagged with the
+      # branch name; manual runs are for smoke-testing the build/sign steps.
+      - name: Upload release assets
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: |
+            target/${{ matrix.target }}/release/*.dmg
+            yokectl-universal-apple-darwin.tar.gz
+          fail_on_unmatched_files: true

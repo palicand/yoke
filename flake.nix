@@ -30,14 +30,20 @@
           packages = [
             rustToolchain
             pkgs.trunk
-            pkgs.cargo-tauri
             pkgs.pkg-config
           ]
-          # Linux runtime deps for Tauri's webview. Uncomment when the
-          # Linux port begins.
+          # Linux runtime deps for winit/wgpu (X11/Wayland, libxkbcommon, a
+          # Vulkan/GL loader). Starting point — confirm the set when the Linux
+          # port begins.
           # ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
-          #   pkgs.webkitgtk_4_1
-          #   pkgs.libayatana-appindicator
+          #   pkgs.libxkbcommon
+          #   pkgs.wayland
+          #   pkgs.libGL
+          #   pkgs.vulkan-loader
+          #   pkgs.xorg.libX11
+          #   pkgs.xorg.libXcursor
+          #   pkgs.xorg.libXi
+          #   pkgs.xorg.libXrandr
           # ]
           ;
 
@@ -45,7 +51,6 @@
             echo "Yoke devShell ready."
             echo "  rustc: $(rustc --version)"
             echo "  trunk: $(trunk --version 2>/dev/null | head -n1)"
-            echo "  cargo-tauri: $(cargo tauri --version 2>/dev/null || echo 'not on PATH')"
           '';
         };
       });

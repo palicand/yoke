@@ -3,7 +3,7 @@ name = "yoke-gui"
 version = "0.1.0"
 edition = "2024"
 license.workspace = true
-description = "Read-only QuadStick profile viewer (egui)."
+description = "Configuration GUI for the QuadStick adaptive controller (egui)."
 
 # cdylib is the wasm artifact trunk bundles (carries the #[wasm_bindgen(start)]
 # entry + web-sys imports); rlib lets the native bin and tests `use yoke_gui::`.
@@ -49,3 +49,23 @@ web-sys = { version = "0.3", features = ["HtmlCanvasElement", "Window", "Documen
 [dev-dependencies]
 tempfile = "3"
 yoke-volume = { path = "../yoke-volume", features = ["test-utils"] }
+
+# cargo-packager bundle config. `cargo packager` reads this; ordinary cargo
+# builds ignore it. `signing-identity` is intentionally absent: a plain
+# `cargo packager` produces an unsigned bundle (fine for local smoke tests),
+# and the release workflow injects the identity from the APPLE_SIGNING_IDENTITY
+# secret so no Apple-account specifics live in tracked files. See docs/RELEASING.md.
+[package.metadata.packager]
+product-name = "Yoke"
+identifier = "com.github.palicand.yoke"
+category = "public.app-category.utilities"
+description = "Configuration software for the QuadStick adaptive controller."
+homepage = "https://github.com/palicand/yoke"
+# A real .icns is used directly; a lone PNG fails cargo-packager's ICNS size
+# matching. Add icon.ico here when the Windows leg lands.
+icons = ["assets/icons/icon.icns"]
+binaries = [{ path = "yoke-gui", main = true }]
+formats = ["dmg"]
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"

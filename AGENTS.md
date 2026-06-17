@@ -5,9 +5,11 @@ Read top-to-bottom before opening files.
 
 ## What Yoke is
 
-Configuration software for the QuadStick. All-Rust. Tauri 2 desktop shell;
-Leptos WASM frontend; CLI for programmatic and agentic workflows.
-macOS first, Windows planned. See [`README.md`](./README.md) for the
+Configuration software for the QuadStick. All-Rust. An **egui/eframe**
+desktop GUI (`yoke-gui`; native = wgpu, wasm = glow) and a `yokectl` CLI for
+programmatic and agentic workflows. macOS first, Windows planned. (An earlier
+Tauri 2 + Leptos plan was dropped in favour of the single egui crate.)
+See [`README.md`](./README.md) for the
 user-facing summary and [`docs/superpowers/specs/`](./docs/superpowers/specs)
 for the architectural decisions.
 
@@ -15,7 +17,7 @@ for the architectural decisions.
 
 ```
 yoke/
-├── Cargo.toml                # virtual workspace (no members yet)
+├── Cargo.toml                # virtual workspace (members under crates/)
 ├── rust-toolchain.toml       # Rust channel + components + wasm target
 ├── flake.nix                 # Nix devShell (reads rust-toolchain.toml)
 ├── flake.lock                # pinned flake inputs
@@ -23,7 +25,16 @@ yoke/
 ├── README.md                 # user-facing
 ├── AGENTS.md                 # this file
 ├── LICENSE
-├── .github/workflows/ci.yml  # CI inside the devShell
+├── .github/workflows/ci.yml  # CI: native rustup (fmt/clippy/check/test + wasm)
+├── .github/workflows/release.yml # signed/notarized macOS DMG, on v* tags
+├── crates/                   # workspace members
+│   ├── yoke-config           # CSV vocabulary catalog + model + serde (dual-target: host + wasm)
+│   ├── yoke-volume           # mount discovery + read/write (VolumeProvider trait + FsBackend)
+│   ├── yoke-volume-macos     # macOS DiskArbitration + IOKit backend
+│   ├── yoke-edit             # catalog-aware profile edit operations
+│   ├── yoke-index            # community index + TTL cache + Sheets fetch
+│   ├── yokectl               # CLI binary (clap)
+│   └── yoke-gui              # egui/eframe desktop GUI (native wgpu; wasm glow dev build)
 └── docs/
     ├── README.md             # docs index
     └── superpowers/
@@ -38,8 +49,8 @@ promoted into the repo (likely as `crates/yoke-device/PROTOCOL.md`)
 once each fact is confirmed.
 
 Crates land under `crates/` as the sub-projects that need them are
-implemented. The intended eventual layout is documented in the scaffold
-spec.
+implemented; the seven above are present on `main`. The intended layout is
+documented in the scaffold spec.
 
 ## Build, run, test
 
@@ -48,13 +59,14 @@ All commands assume the Nix devShell is active (direnv handles this on
 
 | Command | Effect |
 |---|---|
-| `cargo metadata --no-deps` | Parse the workspace manifest. Works even when `members = []`. CI runs this on every push as the workspace integrity gate. |
-| `cargo check --workspace` | Type-check every workspace member. **Errors on an empty workspace** — only useful once the first crate lands. |
-| `cargo fmt --all --check` | Format check. Same caveat as above. |
-| `cargo clippy --workspace --all-targets -- -D warnings` | Lint with warnings-as-errors. Same caveat. |
-| `cargo test --workspace` | Run all unit and integration tests. Same caveat. |
-| `cargo tauri dev` | Run the desktop app in dev mode (once `yoke-tauri` exists). |
-| `trunk serve` (inside `crates/yoke-ui/`) | Run the Leptos UI as a regular browser app for development (once `yoke-ui` exists). |
+| `cargo metadata --no-deps` | Parse the workspace manifest — a fast local check of workspace integrity (CI relies on `cargo check`). |
+| `cargo check --workspace` | Type-check every workspace member. |
+| `cargo fmt --all --check` | Format check. |
+| `cargo clippy --workspace --all-targets -- -D warnings` | Lint with warnings-as-errors (workspace lints set `pedantic`+`nursery` to warn, so this is strict by default). |
+| `cargo test --workspace` | Run all unit and integration tests. |
+| `cargo run -p yoke-gui` | Run the egui desktop app (native, wgpu). |
+| `trunk serve` (inside `crates/yoke-gui/`) | Run `yoke-gui` as a standalone browser app (wasm, glow) against the in-memory mock data source. |
+| `cargo build -p yoke-gui --target wasm32-unknown-unknown` | Verify the wasm build (CI runs this). |
 
 ## House rules
 
@@ -126,30 +138,32 @@ note it in the PR description.
 
 ## UI development substrate
 
-`yoke-ui` (once it exists) must remain runnable as a standalone browser
-app via `trunk serve` against a mock IPC backend, in addition to running
-inside the Tauri shell. This is what lets agents that cannot see a native
-desktop window iterate on the UI through a regular browser. The Tauri
-shell is the production wrapper, not the development substrate.
+`yoke-gui` must remain runnable as a standalone browser app via
+`trunk serve` (wasm target, glow backend) against an in-memory mock data
+source, in addition to the native desktop build. This is what lets agents
+that cannot see a native desktop window iterate on the UI through a regular
+browser. The wasm build is mock-only — it never touches a real volume or
+device.
 
 ## Platform prerequisites
 
 - **macOS:** Xcode Command Line Tools (`xcode-select --install`).
-  Required for the linker, system headers, and the WebKit framework
-  Tauri's webview uses. Not provided by the flake — outside nixpkgs.
-- **Linux** (when the Linux port begins): `webkit2gtk-4.1` and
-  `libayatana-appindicator`. A commented-out block in `flake.nix` is
-  ready to enable.
-- **Windows** (when the Windows port begins): WebView2 runtime
-  (ships with current Windows 11) and Visual Studio Build Tools. Not a
-  Nix target.
+  Required for the linker and system headers. Not provided by the flake —
+  outside nixpkgs.
+- **Linux** (when the Linux port begins): the usual `winit`/`wgpu` runtime
+  dependencies (X11/Wayland client libs, `libxkbcommon`, a Vulkan/GL
+  loader); exact set TBD when the port starts. The commented-out block in
+  `flake.nix` is a starting point.
+- **Windows** (when the Windows port begins): Visual Studio Build Tools
+  (the MSVC linker). Not a Nix target.
 
 ## Non-Nix contributors
 
 - macOS: `xcode-select --install`, then install rustup. The committed
   `rust-toolchain.toml` auto-fetches the channel, components, and the
-  `wasm32-unknown-unknown` target on first `cargo` invocation.
-  Then: `cargo install trunk tauri-cli`.
+  `wasm32-unknown-unknown` target on first `cargo` invocation. `cargo run
+  -p yoke-gui` runs the native app; `cargo install trunk` is only needed
+  for the in-browser dev build.
 - Windows: instructions land when sub-project H begins.
 
 ## Fixtures
