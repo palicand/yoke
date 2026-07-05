@@ -104,7 +104,10 @@ mod tests {
     #[test]
     fn multi_sz_splits_entries() {
         let buf: Vec<u16> = "abc\0de\0\0".encode_utf16().collect();
-        assert_eq!(split_multi_sz(&buf), vec!["abc".to_string(), "de".to_string()]);
+        assert_eq!(
+            split_multi_sz(&buf),
+            vec!["abc".to_string(), "de".to_string()]
+        );
     }
 
     #[test]
