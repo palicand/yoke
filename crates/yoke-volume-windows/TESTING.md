@@ -29,7 +29,7 @@ In PowerShell, from the repo root, with the stick attached:
     $env:YOKE_TEST_VIDPIDS = "vvvv:pppp"   # the stick's IDs
     $env:YOKE_REAL_DEVICE = "1"
     cargo test -p yoke-volume-windows --test real_device -- --nocapture
-    cargo run -p yokectl -- status         # expect Present + drive letter
+    cargo run -p yokectl -- device         # expect Present + drive letter
     cargo run -p yokectl -- list
     cargo run -p yokectl -- watch          # then detach/reattach the stick:
                                            # expect VolumeUnmounted/DeviceDisappeared
@@ -39,8 +39,8 @@ In PowerShell, from the repo root, with the stick attached:
 
 Persona stickiness (two sticks, different VID:PIDs, same physical port):
 put only stick A's IDs in YOKE_TEST_VIDPIDS; attach A (Present), detach,
-attach stick B in the same port. Expect
-`DeviceVisibleNoVolume { mode_hint: Emulation }`. This approximates the
+attach stick B in the same port. Expect a DeviceVisibleNoVolume state with
+the Emulation mode hint (stick B's VID:PID). This approximates the
 persona flip; the exact QuadStick behavior (the same device re-enumerating
 in place) is what the real-device smoke test below is for.
 

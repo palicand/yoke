@@ -182,7 +182,7 @@ The VM setup and test procedure get written down in
 
 - `cargo test --workspace` green on macOS and on the Windows CI job.
 - `cargo clippy --workspace --all-targets -- -D warnings` green on both.
-- In the UTM guest with a stick + override: `yokectl status` reports
+- In the UTM guest with a stick + override: `yokectl device` reports
   `Present`, profile round-trip works, unplugging reports `Absent`, and
   `yoke-gui` shows the library.
 - Persona table verified with two sticks; real-device persona timing
