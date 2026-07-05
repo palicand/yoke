@@ -1,0 +1,30 @@
+[package]
+name = "yoke-volume-windows"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+description = "Windows device-notification backend for the yoke-volume VolumeProvider trait."
+
+# This crate does not inherit `[lints] workspace = true` because the workspace
+# forbids `unsafe_code`, and this crate is the host-OS FFI boundary that needs
+# `unsafe` blocks. The clippy rules below mirror the workspace.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+
+[dependencies]
+tokio = { version = "1.52.3", features = ["sync"] }
+tracing = "0.1.44"
+yoke-volume = { version = "0.1.0", path = "../yoke-volume" }
+
+[target."cfg(windows)".dependencies]
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Properties", "Win32_Devices_Usb", "Win32_Storage_FileSystem", "Win32_System_Ioctl", "Win32_System_LibraryLoader", "Win32_Graphics_Gdi"] }
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter"] }

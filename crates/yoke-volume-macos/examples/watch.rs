@@ -1,11 +1,14 @@
-#![cfg(target_os = "macos")]
 #![allow(clippy::print_stdout)]
 
-use std::time::Duration;
-use yoke_volume::provider::VolumeProvider;
-use yoke_volume_macos::MacOsVolumeProvider;
+#[cfg(not(target_os = "macos"))]
+fn main() {}
 
+#[cfg(target_os = "macos")]
 fn main() {
+    use std::time::Duration;
+    use yoke_volume::provider::VolumeProvider;
+    use yoke_volume_macos::MacOsVolumeProvider;
+
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_time()
         .build()
