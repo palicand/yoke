@@ -15,7 +15,9 @@ pub enum DocsFormat {
 }
 
 #[derive(Parser, Debug, Clone)]
-#[command(name = "yokectl", version, about)]
+// Explicit bin_name keeps `--help` usage text platform-independent — clap
+// otherwise falls back to argv[0]'s file name, which is "yokectl.exe" on Windows.
+#[command(name = "yokectl", bin_name = "yokectl", version, about)]
 pub struct Cli {
     #[arg(
         long,
