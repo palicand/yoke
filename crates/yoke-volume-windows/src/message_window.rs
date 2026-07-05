@@ -16,6 +16,9 @@ use yoke_volume::error::VolumeError;
 pub const WM_APP_SHUTDOWN: u32 = WM_APP + 1;
 const WINDOW_CLASS: PCWSTR = w!("yoke-volume-windows-msgwin");
 
+/// Worker methods run inside the wndproc via an `Rc<RefCell<W>>`; they must
+/// not synchronously send a message to their own window, or the re-entrant
+/// wndproc call panics on the `RefCell`'s double `borrow_mut`.
 pub trait MessageWorker: Send + 'static {
     fn setup(&mut self, hwnd: HWND) -> Result<(), VolumeError>;
     fn handle_message(&mut self, msg: u32, wparam: WPARAM, lparam: LPARAM);

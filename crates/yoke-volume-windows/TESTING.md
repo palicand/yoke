@@ -37,6 +37,11 @@ In PowerShell, from the repo root, with the stick attached:
     cargo run -p yoke-gui                  # library shows the stick's CSVs;
                                            # edit + save round-trips
 
+After attaching the stick, wait ~10 seconds without generating any other USB
+activity and confirm `yokectl device` reaches Present rather than sitting in
+Mounting: the backend is event-driven with no poll underneath (unlike
+macOS), so a missed notification would strand it in Mounting indefinitely.
+
 Persona stickiness (two sticks, different VID:PIDs, same physical port):
 put only stick A's IDs in YOKE_TEST_VIDPIDS; attach A (Present), detach,
 attach stick B in the same port. Expect a DeviceVisibleNoVolume state with

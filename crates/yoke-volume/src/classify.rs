@@ -1,6 +1,7 @@
 use crate::error::VolumeError;
 use crate::state::{HORI_PS4_VID_PID, QUADSTICK_VID_PIDS, VidPid};
 use std::collections::HashSet;
+use std::env::VarError;
 
 pub const TEST_VIDPIDS_ENV: &str = "YOKE_TEST_VIDPIDS";
 
@@ -33,7 +34,10 @@ impl DeviceClassifier {
                 );
                 Ok(Self::with_extra(&extra))
             }
-            Err(_) => Ok(Self::with_extra(&[])),
+            Err(VarError::NotPresent) => Ok(Self::with_extra(&[])),
+            Err(VarError::NotUnicode(_)) => Err(VolumeError::BackendInit(format!(
+                "{TEST_VIDPIDS_ENV} contains non-UTF-8 data"
+            ))),
         }
     }
 

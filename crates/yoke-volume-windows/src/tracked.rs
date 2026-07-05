@@ -137,6 +137,24 @@ mod tests {
     }
 
     #[test]
+    fn emulation_persona_with_mount_is_present() {
+        let t = Tracked {
+            emulation_vp: Some(DS3),
+            mount_point: Some(PathBuf::from(r"E:\")),
+            label: Some("QUADSTICK".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            t.compute(),
+            MountState::Present {
+                mount_point: PathBuf::from(r"E:\"),
+                vid_pid: DS3,
+                label: "QUADSTICK".into(),
+            }
+        );
+    }
+
+    #[test]
     fn hori_is_ps4_hint() {
         let t = Tracked {
             hori_seen: true,
