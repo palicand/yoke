@@ -11,7 +11,7 @@ use core_foundation_sys::number::{CFNumberGetValue, kCFNumberSInt32Type};
 use core_foundation_sys::runloop::CFRunLoopSourceRef;
 use core_foundation_sys::string::{CFStringCreateWithCString, CFStringRef, kCFStringEncodingUTF8};
 use libc::{c_char, c_void};
-use yoke_volume::state::{HORI_PS4_VID_PID, QUADSTICK_VID_PIDS, VidPid};
+use yoke_volume::state::VidPid;
 
 pub type io_object_t = u32;
 pub type io_service_t = io_object_t;
@@ -228,57 +228,4 @@ pub unsafe fn read_u16_property(entry: io_registry_entry_t, key: &str) -> Option
         return None;
     }
     u16::try_from(value).ok()
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DeviceClass {
-    QuadStick(VidPid),
-    HoriPs4,
-    Other,
-}
-
-#[must_use]
-pub fn classify(vid_pid: VidPid) -> DeviceClass {
-    if QUADSTICK_VID_PIDS.contains(&vid_pid) {
-        DeviceClass::QuadStick(vid_pid)
-    } else if vid_pid == HORI_PS4_VID_PID {
-        DeviceClass::HoriPs4
-    } else {
-        DeviceClass::Other
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn classify_quadstick_primary() {
-        assert_eq!(
-            classify(VidPid {
-                vendor: 0x16D0,
-                product: 0x092B
-            }),
-            DeviceClass::QuadStick(VidPid {
-                vendor: 0x16D0,
-                product: 0x092B
-            })
-        );
-    }
-
-    #[test]
-    fn classify_hori_ps4() {
-        assert_eq!(classify(HORI_PS4_VID_PID), DeviceClass::HoriPs4);
-    }
-
-    #[test]
-    fn classify_random_device() {
-        assert_eq!(
-            classify(VidPid {
-                vendor: 0x1234,
-                product: 0x5678
-            }),
-            DeviceClass::Other
-        );
-    }
 }

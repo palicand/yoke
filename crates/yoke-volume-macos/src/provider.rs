@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, watch};
+use yoke_volume::classify::{DeviceClass, DeviceClassifier};
 use yoke_volume::error::VolumeError;
 use yoke_volume::io;
 use yoke_volume::profile::{ProfileEntry, ProfileName};
@@ -43,6 +44,7 @@ pub struct Inner {
     state_tx: watch::Sender<MountState>,
     event_tx: broadcast::Sender<MountEvent>,
     tracked: Mutex<Tracked>,
+    classifier: DeviceClassifier,
 }
 
 #[derive(Default)]
@@ -162,17 +164,17 @@ fn drain_usb_devices(inner: &Inner) {
                     product: pid,
                 };
                 let location = usb::read_location_id(entry);
-                match usb::classify(vp) {
-                    usb::DeviceClass::QuadStick(vp) => {
+                match inner.classifier.classify(vp) {
+                    DeviceClass::QuadStick(vp) => {
                         new_quadsticks.insert(vp);
                         if let Some(loc) = location {
                             new_qs_location = Some(loc);
                         }
                     }
-                    usb::DeviceClass::HoriPs4 => {
+                    DeviceClass::HoriPs4 => {
                         hori_seen = true;
                     }
-                    usb::DeviceClass::Other => {
+                    DeviceClass::Other => {
                         // Recognize any device at the port where we last
                         // saw a confirmed Quad Stick as the same device
                         // in some emulation persona (Sony, Xbox, Switch,
@@ -316,7 +318,7 @@ fn handle_disk_appeared(inner: &Inner, disk: da::DADiskRef) {
     let Some(vp) = vid_pid else {
         return;
     };
-    if !matches!(usb::classify(vp), usb::DeviceClass::QuadStick(_)) {
+    if !matches!(inner.classifier.classify(vp), DeviceClass::QuadStick(_)) {
         return;
     }
     // SAFETY: bsd was non-null above and DADiskGetBSDName returns a static
@@ -517,10 +519,12 @@ impl MacOsVolumeProvider {
     pub fn new() -> Result<Self, VolumeError> {
         let (state_tx, _) = watch::channel(MountState::Absent);
         let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let classifier = DeviceClassifier::from_env()?;
         let inner = Arc::new(Inner {
             state_tx,
             event_tx,
             tracked: Mutex::new(Tracked::default()),
+            classifier,
         });
         let worker = Worker::new(Arc::clone(&inner));
         let thread = RunLoopThread::spawn(worker)?;

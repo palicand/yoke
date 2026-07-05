@@ -48,6 +48,23 @@ pub struct VidPid {
     pub product: u16,
 }
 
+impl VidPid {
+    /// Parse `"vvvv:pppp"` hex notation (as used by lsusb and
+    /// `YOKE_TEST_VIDPIDS`). Rejects anything but exactly two 1-4 digit hex
+    /// fields.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        let (v, p) = s.split_once(':')?;
+        if v.is_empty() || p.is_empty() || v.len() > 4 || p.len() > 4 || p.contains(':') {
+            return None;
+        }
+        Some(Self {
+            vendor: u16::from_str_radix(v, 16).ok()?,
+            product: u16::from_str_radix(p, 16).ok()?,
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ModeHint {
     Ps4OrHori,
@@ -305,5 +322,32 @@ mod tests {
         let json = serde_json::to_string(&evt).unwrap();
         let restored: MountEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(evt, restored);
+    }
+
+    #[test]
+    fn vid_pid_parse_valid_hex() {
+        assert_eq!(
+            VidPid::parse("16d0:092b"),
+            Some(VidPid {
+                vendor: 0x16D0,
+                product: 0x092B,
+            })
+        );
+        assert_eq!(
+            VidPid::parse("ABCD:1234"),
+            Some(VidPid {
+                vendor: 0xABCD,
+                product: 0x1234,
+            })
+        );
+    }
+
+    #[test]
+    fn vid_pid_parse_rejects_garbage() {
+        assert_eq!(VidPid::parse(""), None);
+        assert_eq!(VidPid::parse("16d0"), None);
+        assert_eq!(VidPid::parse("16d0:zzzz"), None);
+        assert_eq!(VidPid::parse("16d0:092b:extra"), None);
+        assert_eq!(VidPid::parse("0x16d0:0x092b"), None);
     }
 }
