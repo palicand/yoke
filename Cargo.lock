@@ -5328,6 +5328,7 @@ dependencies = [
  "yoke-index",
  "yoke-volume",
  "yoke-volume-macos",
+ "yoke-volume-windows",
 ]
 
 [[package]]
@@ -5415,6 +5416,7 @@ dependencies = [
  "yoke-index",
  "yoke-volume",
  "yoke-volume-macos",
+ "yoke-volume-windows",
 ]
 
 [[package]]
