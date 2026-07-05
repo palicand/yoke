@@ -1,6 +1,3 @@
-// Consumed by provider.rs in a later task; not wired up yet.
-#![allow(dead_code)]
-
 use crate::ids::{split_multi_sz, to_wide, utf16_to_string, vid_pid_from_pnp_id};
 use std::path::PathBuf;
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
@@ -264,8 +261,8 @@ fn volume_mount_and_label(interface_path: &str) -> (Option<PathBuf>, Option<Stri
     };
     let root_wide = to_wide(&root);
     let mut label_buf = [0u16; 256];
-    // SAFETY: NUL-terminated root path; fixed label buffer per the API's
-    // MAX_PATH+1 guidance.
+    // SAFETY: NUL-terminated root path; fixed 256-u16 label buffer, well
+    // above the 32-char max a volume label can hold.
     let label = unsafe {
         GetVolumeInformationW(
             PCWSTR(root_wide.as_ptr()),

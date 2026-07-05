@@ -1,6 +1,3 @@
-// Consumed by provider.rs in a later task; not wired up yet.
-#![allow(dead_code)]
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Mutex;

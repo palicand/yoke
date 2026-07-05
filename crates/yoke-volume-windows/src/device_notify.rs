@@ -1,6 +1,3 @@
-// Consumed by provider.rs in a later task; not wired up yet.
-#![allow(dead_code)]
-
 use windows::Win32::Devices::Usb::GUID_DEVINTERFACE_USB_DEVICE;
 use windows::Win32::Foundation::{HANDLE, HWND};
 use windows::Win32::System::Ioctl::GUID_DEVINTERFACE_VOLUME;
