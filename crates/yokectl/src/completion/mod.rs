@@ -45,7 +45,7 @@ fn fake_volume_from_argv(argv: &[std::ffi::OsString]) -> Option<PathBuf> {
     None
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn platform_backend_with_timeout() -> Option<Arc<dyn VolumeProvider>> {
     use std::sync::mpsc;
     use std::thread;
@@ -55,15 +55,17 @@ fn platform_backend_with_timeout() -> Option<Arc<dyn VolumeProvider>> {
 
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
-        let result = yoke_volume_macos::MacOsVolumeProvider::new()
-            .ok()
-            .map(|b| Arc::new(b) as Arc<dyn VolumeProvider>);
+        #[cfg(target_os = "macos")]
+        let backend = yoke_volume_macos::MacOsVolumeProvider::new();
+        #[cfg(target_os = "windows")]
+        let backend = yoke_volume_windows::WindowsVolumeProvider::new();
+        let result = backend.ok().map(|b| Arc::new(b) as Arc<dyn VolumeProvider>);
         let _ = tx.send(result);
     });
     rx.recv_timeout(PROBE_TIMEOUT).ok().flatten()
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn platform_backend_with_timeout() -> Option<Arc<dyn VolumeProvider>> {
     None
 }

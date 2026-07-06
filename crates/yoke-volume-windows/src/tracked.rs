@@ -22,7 +22,15 @@ pub struct Tracked {
 impl Tracked {
     #[must_use]
     pub fn compute(&self) -> MountState {
-        if let Some(vp) = self.quadstick_vid_pids.iter().next().copied() {
+        // Pick deterministically: the set is rebuilt with a fresh RandomState
+        // every rescan, so iter().next() would flip between two attached
+        // QuadSticks and churn the reported vid_pid.
+        if let Some(vp) = self
+            .quadstick_vid_pids
+            .iter()
+            .min_by_key(|vp| (vp.vendor, vp.product))
+            .copied()
+        {
             if let (Some(mp), Some(lbl)) = (self.mount_point.as_ref(), self.label.as_ref()) {
                 return MountState::Present {
                     mount_point: mp.clone(),

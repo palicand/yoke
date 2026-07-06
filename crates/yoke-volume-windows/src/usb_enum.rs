@@ -10,11 +10,12 @@ use windows::Win32::Devices::Properties::{
     DEVPKEY_Device_InstanceId, DEVPKEY_Device_LocationPaths, DEVPROPTYPE,
 };
 use windows::Win32::Devices::Usb::GUID_DEVINTERFACE_USB_DEVICE;
+use windows::Win32::Foundation::ERROR_MORE_DATA;
 use windows::Win32::Storage::FileSystem::{
     GetVolumeInformationW, GetVolumeNameForVolumeMountPointW, GetVolumePathNamesForVolumeNameW,
 };
 use windows::Win32::System::Ioctl::GUID_DEVINTERFACE_VOLUME;
-use windows::core::{GUID, PCWSTR};
+use windows::core::{GUID, HRESULT, PCWSTR};
 use yoke_volume::state::VidPid;
 
 pub struct UsbDevice {
@@ -241,20 +242,9 @@ fn volume_mount_and_label(interface_path: &str) -> (Option<PathBuf>, Option<Stri
     {
         return (None, None);
     }
-    let mut paths = [0u16; 1024];
-    let mut len: u32 = 0;
-    // SAFETY: NUL-terminated volume name from the call above.
-    if unsafe {
-        GetVolumePathNamesForVolumeNameW(
-            PCWSTR(volume_name.as_ptr()),
-            Some(&mut paths),
-            &raw mut len,
-        )
-    }
-    .is_err()
-    {
+    let Some(paths) = volume_path_names(&volume_name) else {
         return (None, None);
-    }
+    };
     let Some(root) = split_multi_sz(&paths).into_iter().next() else {
         // Volume exists but has no drive letter / mount folder yet.
         return (None, None);
@@ -277,6 +267,34 @@ fn volume_mount_and_label(interface_path: &str) -> (Option<PathBuf>, Option<Stri
     .map(|()| utf16_to_string(&label_buf))
     .filter(|l| !l.is_empty());
     (Some(PathBuf::from(root)), label)
+}
+
+/// `GetVolumePathNamesForVolumeNameW` with the documented grow-on-
+/// `ERROR_MORE_DATA` retry: the call reports the required length in `len`
+/// rather than filling a too-small buffer, so a volume with many mount points
+/// isn't silently read as "no mount point".
+fn volume_path_names(volume_name: &[u16]) -> Option<Vec<u16>> {
+    let mut cap: u32 = 1024;
+    for _ in 0..4 {
+        let mut buf = vec![0u16; cap as usize];
+        let mut len: u32 = 0;
+        // SAFETY: NUL-terminated volume name; buffer sized by `cap`.
+        let result = unsafe {
+            GetVolumePathNamesForVolumeNameW(
+                PCWSTR(volume_name.as_ptr()),
+                Some(&mut buf),
+                &raw mut len,
+            )
+        };
+        match result {
+            Ok(()) => return Some(buf),
+            Err(e) if e.code() == HRESULT::from_win32(ERROR_MORE_DATA.0) && len > cap => {
+                cap = len;
+            }
+            Err(_) => return None,
+        }
+    }
+    None
 }
 
 fn bytes_to_wide(buf: &[u8]) -> Vec<u16> {

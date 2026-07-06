@@ -55,7 +55,12 @@ impl VidPid {
     #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         let (v, p) = s.split_once(':')?;
-        if v.is_empty() || p.is_empty() || v.len() > 4 || p.len() > 4 || p.contains(':') {
+        // Each field must be 1-4 raw hex digits. `u16::from_str_radix` also
+        // accepts a leading '+', so guard with an explicit hex-digit check to
+        // reject "+95:1666" and friends rather than parse them as 0x95.
+        let is_hex_field =
+            |f: &str| !f.is_empty() && f.len() <= 4 && f.bytes().all(|b| b.is_ascii_hexdigit());
+        if !is_hex_field(v) || !is_hex_field(p) {
             return None;
         }
         Some(Self {
@@ -349,5 +354,8 @@ mod tests {
         assert_eq!(VidPid::parse("16d0:zzzz"), None);
         assert_eq!(VidPid::parse("16d0:092b:extra"), None);
         assert_eq!(VidPid::parse("0x16d0:0x092b"), None);
+        assert_eq!(VidPid::parse("+95:1666"), None);
+        assert_eq!(VidPid::parse("16d0:+92b"), None);
+        assert_eq!(VidPid::parse(" 16d0:092b"), None);
     }
 }

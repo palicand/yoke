@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, watch};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DBT_DEVICEARRIVAL, DBT_DEVICEREMOVECOMPLETE, WM_DEVICECHANGE,
+    DBT_DEVICEARRIVAL, DBT_DEVICEREMOVECOMPLETE, KillTimer, SetTimer, WM_DEVICECHANGE, WM_TIMER,
 };
 use yoke_volume::classify::{DeviceClass, DeviceClassifier};
 use yoke_volume::error::VolumeError;
@@ -18,6 +18,11 @@ use yoke_volume::provider::{VolumeProvider, require_present_at};
 use yoke_volume::state::{MountEvent, MountState, state_transition_events};
 
 const EVENT_CHANNEL_CAPACITY: usize = 64;
+// Device-change notifications don't cover drive-letter assignment or a volume
+// becoming readable after its interface arrives, so a periodic rescan self-
+// heals those transitions, mirroring the macOS 1 s CFRunLoop poll.
+const POLL_INTERVAL_MS: u32 = 1000;
+const POLL_TIMER_ID: usize = 1;
 
 pub struct WindowsVolumeProvider {
     inner: Arc<Inner>,
@@ -34,6 +39,7 @@ struct Inner {
 struct Worker {
     inner: Arc<Inner>,
     notifications: Option<DeviceNotifications>,
+    hwnd: Option<HWND>,
 }
 
 // SAFETY: `notifications` holds raw HDEVNOTIFY handles that are registered,
@@ -45,26 +51,48 @@ unsafe impl Send for Worker {}
 impl MessageWorker for Worker {
     fn setup(&mut self, hwnd: HWND) -> Result<(), VolumeError> {
         self.notifications = Some(DeviceNotifications::register(hwnd)?);
+        self.hwnd = Some(hwnd);
+        // SAFETY: hwnd is the live message-only window owned by this worker's
+        // thread; the timer is killed in `teardown` before the window dies.
+        if unsafe { SetTimer(Some(hwnd), POLL_TIMER_ID, POLL_INTERVAL_MS, None) } == 0 {
+            tracing::warn!("SetTimer failed; falling back to event-only rescan");
+        }
         rescan(&self.inner);
         publish(&self.inner);
         Ok(())
     }
 
     fn handle_message(&mut self, msg: u32, wparam: WPARAM, _lparam: LPARAM) {
-        if msg != WM_DEVICECHANGE {
-            return;
-        }
-        // Full rescan on any arrival/removal: Tracked is recomputed from a
-        // fresh snapshot so a missed or reordered event self-heals on the
-        // next one (same philosophy as the macOS 1 s poll).
-        let event = u32::try_from(wparam.0).unwrap_or(0);
-        if event == DBT_DEVICEARRIVAL || event == DBT_DEVICEREMOVECOMPLETE {
-            rescan(&self.inner);
-            publish(&self.inner);
+        match msg {
+            // Full rescan on any arrival/removal: Tracked is recomputed from a
+            // fresh snapshot so a missed or reordered event self-heals on the
+            // next one (same philosophy as the macOS 1 s poll).
+            WM_DEVICECHANGE => {
+                let event = u32::try_from(wparam.0).unwrap_or(0);
+                if event == DBT_DEVICEARRIVAL || event == DBT_DEVICEREMOVECOMPLETE {
+                    rescan(&self.inner);
+                    publish(&self.inner);
+                }
+            }
+            // The periodic poll catches transitions that fire no notification
+            // (drive-letter assignment) and lets a transient enumeration
+            // failure recover on the next tick instead of stranding.
+            WM_TIMER => {
+                rescan(&self.inner);
+                publish(&self.inner);
+            }
+            _ => {}
         }
     }
 
     fn teardown(&mut self) {
+        if let Some(hwnd) = self.hwnd.take() {
+            // SAFETY: hwnd + timer id are the ones registered in setup on this
+            // same thread; the window is still alive during teardown.
+            unsafe {
+                let _ = KillTimer(Some(hwnd), POLL_TIMER_ID);
+            }
+        }
         self.notifications = None;
     }
 }
@@ -116,13 +144,20 @@ fn rescan(inner: &Inner) {
     let mut volume_devnode_seen = false;
     let mut mount: Option<(PathBuf, String)> = None;
     for vol in &volumes {
-        if !matches!(
+        let is_quadstick = matches!(
             inner.classifier.classify(vol.vid_pid),
             DeviceClass::QuadStick(_)
-        ) {
+        );
+        // A QuadStick in an unlisted emulation persona (recognized by port
+        // location, not VID:PID) can still expose its FAT volume; capture that
+        // mount so it reads Present, matching the macOS label-based scan.
+        let is_emulation = emulation_vp == Some(vol.vid_pid);
+        if !is_quadstick && !is_emulation {
             continue;
         }
-        volume_devnode_seen = true;
+        if is_quadstick {
+            volume_devnode_seen = true;
+        }
         if let Some(mp) = &vol.mount_point
             && mount_point_is_ready(mp)
         {
@@ -178,6 +213,7 @@ impl WindowsVolumeProvider {
         let worker = Worker {
             inner: Arc::clone(&inner),
             notifications: None,
+            hwnd: None,
         };
         let thread = MessageWindowThread::spawn(worker)?;
         Ok(Self {

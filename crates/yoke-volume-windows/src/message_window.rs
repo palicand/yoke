@@ -83,16 +83,21 @@ impl MessageWindowThread {
 impl Drop for MessageWindowThread {
     fn drop(&mut self) {
         let hwnd = self.hwnd.lock().unwrap().take();
-        if let Some(hwnd) = hwnd {
+        let posted = hwnd.is_some_and(|hwnd| {
             let hwnd = HWND(hwnd as *mut core::ffi::c_void);
             // SAFETY: the pump thread keeps the window alive until it sees
             // this message; posting to a destroyed window only fails the call.
-            unsafe {
-                let _ = PostMessageW(Some(hwnd), WM_APP_SHUTDOWN, WPARAM(0), LPARAM(0));
-            }
-        }
+            unsafe { PostMessageW(Some(hwnd), WM_APP_SHUTDOWN, WPARAM(0), LPARAM(0)) }.is_ok()
+        });
         if let Some(handle) = self.handle.take() {
-            let _ = handle.join();
+            if posted {
+                let _ = handle.join();
+            } else {
+                // The shutdown message never reached the pump, so its
+                // GetMessageW loop will not exit; joining would block forever.
+                // Detach instead of hanging the caller on drop.
+                tracing::warn!("failed to signal message-window shutdown; detaching pump thread");
+            }
         }
     }
 }

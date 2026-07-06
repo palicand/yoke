@@ -27,10 +27,12 @@ fn main() -> eframe::Result<()> {
         {
             match yoke_volume_windows::WindowsVolumeProvider::new() {
                 Ok(p) => (Arc::new(p), None),
+                // Windows has no stable QuadStick mount path (drive letters are
+                // dynamic), so the fallback must be inert: an empty path is
+                // never a directory, so FsBackend stays Absent and a profile
+                // save refuses instead of silently landing in a stray dir.
                 Err(e) => (
-                    Arc::new(yoke_volume::FsBackend::new(std::path::PathBuf::from(
-                        "/Volumes/QUADSTICK",
-                    ))),
+                    Arc::new(yoke_volume::FsBackend::new(std::path::PathBuf::new())),
                     Some(e.to_string()),
                 ),
             }
