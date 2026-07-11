@@ -21,7 +21,7 @@ jobs:
       # Reads channel, components, and the wasm32 target from rust-toolchain.toml.
       # Caching (Swatinem/rust-cache) is enabled by default.
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
 
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
