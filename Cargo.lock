@@ -5328,6 +5328,7 @@ dependencies = [
  "yoke-index",
  "yoke-volume",
  "yoke-volume-macos",
+ "yoke-volume-windows",
 ]
 
 [[package]]
@@ -5374,6 +5375,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "yoke-volume-windows"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "windows",
+ "yoke-volume",
+]
+
+[[package]]
 name = "yokectl"
 version = "0.1.0"
 dependencies = [
@@ -5404,6 +5416,7 @@ dependencies = [
  "yoke-index",
  "yoke-volume",
  "yoke-volume-macos",
+ "yoke-volume-windows",
 ]
 
 [[package]]

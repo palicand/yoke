@@ -8,7 +8,8 @@ fn main() -> eframe::Result<()> {
 
     tracing_subscriber::fmt::init();
 
-    // Volume provider: macOS impl, else a never-present fs backend fallback.
+    // Volume provider: native impl per platform, else a never-present fs
+    // backend fallback.
     let (provider, backend_error): (Arc<dyn yoke_volume::VolumeProvider>, Option<String>) = {
         #[cfg(target_os = "macos")]
         {
@@ -22,7 +23,21 @@ fn main() -> eframe::Result<()> {
                 ),
             }
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            match yoke_volume_windows::WindowsVolumeProvider::new() {
+                Ok(p) => (Arc::new(p), None),
+                // Windows has no stable QuadStick mount path (drive letters are
+                // dynamic), so the fallback must be inert: an empty path is
+                // never a directory, so FsBackend stays Absent and a profile
+                // save refuses instead of silently landing in a stray dir.
+                Err(e) => (
+                    Arc::new(yoke_volume::FsBackend::new(std::path::PathBuf::new())),
+                    Some(e.to_string()),
+                ),
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             (
                 Arc::new(yoke_volume::FsBackend::new(std::path::PathBuf::from(

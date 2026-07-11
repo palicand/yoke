@@ -36,25 +36,28 @@ override.
 
 ## Architecture
 
-New crate, a structural twin of `yoke-volume-macos`:
+New crate, a structural twin of `yoke-volume-macos`. The authoritative module
+layout is `crates/yoke-volume-windows/src/`; in outline:
 
-```
-crates/yoke-volume-windows/
-├── Cargo.toml            # lints mirror the macos crate (unsafe allowed: FFI boundary)
-└── src/
-    ├── lib.rs            # cfg(windows)-gated modules, exports WindowsVolumeProvider
-    ├── message_window.rs # twin of run_loop.rs: thread owning a message-only window + pump
-    ├── device_notify.rs  # RegisterDeviceNotification plumbing (USB + volume interfaces)
-    ├── usb_enum.rs       # twin of iokit_usb.rs: SetupAPI/CfgMgr32 — VID:PID enumeration,
-    │                     #   volume→USB-parent correlation
-    └── provider.rs       # WindowsVolumeProvider: Tracked + compute(), VolumeProvider impl
-```
+- `lib.rs` — module wiring: `ids` and `tracked` are public on every target;
+  the FFI modules (`provider`, `message_window`, `device_notify`, `usb_enum`)
+  and the `WindowsVolumeProvider` re-export are `cfg(windows)`-gated.
+- `provider.rs` — `WindowsVolumeProvider` plus the rescan/publish event loop
+  and its `SetTimer` poll (analogue of the macOS `run_loop.rs` worker).
+- `tracked.rs` — `Tracked` + `compute()`, the `MountState` decision tree.
+- `ids.rs` — PnP-ID / UTF-16 string parsing (VID:PID, multi-sz).
+- `message_window.rs` — twin of `run_loop.rs`: a thread owning a message-only
+  window + pump.
+- `device_notify.rs` — `RegisterDeviceNotification` plumbing (USB + volume
+  interfaces).
+- `usb_enum.rs` — twin of `iokit_usb.rs`: SetupAPI/CfgMgr32 VID:PID
+  enumeration and volume→USB-parent correlation.
 
-- On non-Windows targets the crate compiles as an empty shell, exactly how
-  `yoke-volume-macos` cfg-gates everything on `target_os = "macos"`. The
-  [`windows`][winrs] crate (the single new dependency) sits under
-  `[target.'cfg(windows)'.dependencies]`; tokio/tracing/yoke-volume match
-  the macOS crate.
+- The FFI modules are `cfg(windows)`-gated, but `ids` and `tracked` are pure
+  and compile (and unit-test) on every host, so the state machine keeps
+  coverage off Windows too. The [`windows`][winrs] crate (the single new
+  dependency) sits under `[target.'cfg(windows)'.dependencies]`;
+  tokio/tracing/yoke-volume match the macOS crate.
 - Threading model matches macOS: one dedicated OS-event thread.
   `MessageWindowThread` mirrors `RunLoopThread`'s contract — spawn with a
   worker, setup handshake over a rendezvous channel (construction fails
@@ -182,7 +185,7 @@ The VM setup and test procedure get written down in
 
 - `cargo test --workspace` green on macOS and on the Windows CI job.
 - `cargo clippy --workspace --all-targets -- -D warnings` green on both.
-- In the UTM guest with a stick + override: `yokectl status` reports
+- In the UTM guest with a stick + override: `yokectl device` reports
   `Present`, profile round-trip works, unplugging reports `Absent`, and
   `yoke-gui` shows the library.
 - Persona table verified with two sticks; real-device persona timing
