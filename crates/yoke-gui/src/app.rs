@@ -451,7 +451,7 @@ impl eframe::App for YokeApp {
             .frame(rail_frame)
             .show_inside(ui, |ui| {
                 let on_library = self.open_profile.is_none();
-                if ui.selectable_label(on_library, "Profiles").clicked() {
+                if theme::nav_item(ui, "Profiles", on_library).clicked() {
                     self.request_close_profile();
                 }
                 ui.add_space(10.0);

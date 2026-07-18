@@ -3,7 +3,7 @@ use crate::data::{AppCommand, ProfileEntryView, ProfileKind};
 use crate::state::CommunityLoad;
 use crate::theme;
 
-const CARD_HEIGHT: f32 = 150.0;
+const CARD_HEIGHT: f32 = 112.0;
 const CARD_ROW_GAP: f32 = 8.0;
 const COLS: usize = 3;
 
@@ -85,11 +85,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
 
     // --- Toolbar (pinned, not scrolled) ---
     ui.horizontal(|ui| {
-        ui.add(
-            egui::TextEdit::singleline(app.lib_search_mut())
-                .desired_width(260.0)
-                .hint_text("Search profiles\u{2026}"),
-        );
+        theme::search_pill(ui, app.lib_search_mut(), "Search profiles\u{2026}");
         ui.add_space(8.0);
         let kind_labels: Vec<&str> = KIND_FILTERS.iter().map(|&(label, _)| label).collect();
         if let Some(i) = theme::segmented(ui, &kind_labels, app.lib_kind_filter()) {
@@ -284,13 +280,18 @@ fn profile_card(ui: &mut egui::Ui, palette: &crate::theme::Palette, card: &CardV
     if ui.is_rect_visible(rect) {
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
         theme::card_frame().show(&mut child, |ui| {
+            // The frame hugs content; force the full card rect (minus the
+            // frame's 14px vertical margins) so footer-less cards match.
+            ui.set_min_size(egui::vec2(ui.available_width(), CARD_HEIGHT - 28.0));
+
             // The name is the card's identity (design `.pc-name`).
-            ui.label(egui::RichText::new(card.label).strong().size(15.0));
+            ui.label(egui::RichText::new(card.label).strong().size(17.0));
 
             // Footer pinned to the card's bottom edge (design `.pc-foot`):
-            // neutral kind tag left, layer count right.
+            // hairline on top, neutral kind tag left, layer count right.
             if card.kind.is_some() || card.sub_profiles > 1 {
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
                     ui.horizontal(|ui| {
                         if let Some(kind) = card.kind {
                             theme::kind_badge(ui, kind.label());
@@ -314,6 +315,16 @@ fn profile_card(ui: &mut egui::Ui, palette: &crate::theme::Palette, card: &CardV
                             );
                         }
                     });
+                    ui.add_space(10.0);
+                    let (line_rect, _) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 1.0),
+                        egui::Sense::hover(),
+                    );
+                    ui.painter().hline(
+                        line_rect.x_range(),
+                        line_rect.center().y,
+                        egui::Stroke::new(1.0, palette.line),
+                    );
                 });
             }
         });

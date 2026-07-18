@@ -400,20 +400,129 @@ pub fn kind_badge(ui: &mut egui::Ui, label: &str) {
         });
 }
 
-/// Segmented selector rendered as a strip of `selectable_label`s.
+/// Segmented selector (design `.seg`): `--bg-3` strip, `--line` border, 3px padding.
+///
+/// Chips are painted directly so the selected state uses the design's
+/// `--bg-2` + `--line` look instead of egui's global selection tint.
 /// Returns the newly-selected index when the selection changes.
 pub fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize) -> Option<usize> {
     let mut changed = None;
-    strip_frame().show(ui, |ui| {
-        ui.horizontal(|ui| {
-            for (i, l) in labels.iter().enumerate() {
-                if ui.selectable_label(i == selected, *l).clicked() && i != selected {
-                    changed = Some(i);
+    egui::Frame::new()
+        .fill(BG_3)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(R_SM))
+        .inner_margin(egui::Margin::same(3))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                for (i, l) in labels.iter().enumerate() {
+                    if seg_chip(ui, l, i == selected).clicked() && i != selected {
+                        changed = Some(i);
+                    }
                 }
-            }
+            });
         });
-    });
     changed
+}
+
+/// One segmented-control chip (design `.seg button` / `.seg button.on`).
+fn seg_chip(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
+    let color = if on { INK_1 } else { INK_2 };
+    let galley =
+        ui.painter()
+            .layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), color);
+    let size = galley.size() + egui::vec2(24.0, 8.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        if on {
+            painter.rect(
+                rect,
+                egui::CornerRadius::same(4),
+                BG_2,
+                egui::Stroke::new(1.0, LINE),
+                egui::StrokeKind::Inside,
+            );
+        } else if response.hovered() {
+            // BG_3 would vanish against the BG_3 strip; one step up instead.
+            painter.rect_filled(rect, egui::CornerRadius::same(4), BG_4);
+        }
+        painter.galley(rect.center() - galley.size() / 2.0, galley, color);
+    }
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Left-rail navigation item (design `.side-item` / `.side-item.active`):
+/// active = `--bg-2` fill + `--line` border + `--ink-1`; inactive =
+/// transparent + `--ink-2`, hover `--bg-4`. Spans the rail width.
+pub fn nav_item(ui: &mut egui::Ui, label: &str, active: bool) -> egui::Response {
+    let color = if active { INK_1 } else { INK_2 };
+    let galley =
+        ui.painter()
+            .layout_no_wrap(label.to_owned(), egui::FontId::proportional(13.0), color);
+    let size = egui::vec2(ui.available_width(), galley.size().y + 16.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        if active {
+            painter.rect(
+                rect,
+                egui::CornerRadius::same(R_SM),
+                BG_2,
+                egui::Stroke::new(1.0, LINE),
+                egui::StrokeKind::Inside,
+            );
+        } else if response.hovered() {
+            painter.rect_filled(rect, egui::CornerRadius::same(R_SM), BG_4);
+        }
+        let pos = egui::pos2(rect.left() + 10.0, rect.center().y - galley.size().y / 2.0);
+        painter.galley(pos, galley, color);
+    }
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Search input in a design pill (design `.search-pill`).
+///
+/// Fixed 280x32, `--bg-2` fill, `--line` border, painted magnifier glyph.
+/// The `TextEdit` is frameless so egui's accent focus ring never shows.
+pub fn search_pill(ui: &mut egui::Ui, text: &mut String, hint: &str) {
+    egui::Frame::new()
+        .fill(BG_2)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(R_SM))
+        .inner_margin(egui::Margin::symmetric(10, 0))
+        .show(ui, |ui| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(260.0, 32.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    magnifier_icon(ui);
+                    // A custom frame suppresses egui's own fill and accent
+                    // focus ring (design: the pill is the only chrome).
+                    ui.add(
+                        egui::TextEdit::singleline(text)
+                            .frame(egui::Frame::new())
+                            .hint_text(hint)
+                            .desired_width(ui.available_width()),
+                    );
+                },
+            );
+        });
+}
+
+/// Stroked magnifier glyph matching the design's inline SVG.
+fn magnifier_icon(ui: &mut egui::Ui) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+    let stroke = egui::Stroke::new(1.2, INK_2);
+    let dir = egui::vec2(
+        std::f32::consts::FRAC_1_SQRT_2,
+        std::f32::consts::FRAC_1_SQRT_2,
+    );
+    // Nudge the lens up-left so the handle stays inside the icon box.
+    let center = rect.center() - egui::vec2(1.5, 1.5);
+    let painter = ui.painter();
+    painter.circle_stroke(center, 4.5, stroke);
+    painter.line_segment([center + 4.5 * dir, center + 8.0 * dir], stroke);
 }
 
 /// Embed OFL-licensed fonts and register them with egui. Call once at startup,
