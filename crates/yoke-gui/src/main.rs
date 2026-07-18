@@ -56,10 +56,22 @@ fn main() -> eframe::Result<()> {
         }
     };
 
+    let viewport = egui::ViewportBuilder::default()
+        .with_title("Yoke")
+        .with_inner_size([1100.0, 720.0]);
+    // Keep the native traffic lights but hide the titlebar and title text; the
+    // chrome strip extends under the now-transparent titlebar band.
+    #[cfg(target_os = "macos")]
+    let viewport = viewport
+        .with_titlebar_shown(false)
+        .with_fullsize_content_view(true)
+        .with_title_shown(false);
+    // Fully undecorated; the chrome strip draws its own caption buttons.
+    #[cfg(target_os = "windows")]
+    let viewport = viewport.with_decorations(false);
+
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("Yoke")
-            .with_inner_size([1100.0, 720.0]),
+        viewport,
         // AutoVsync (Metal Fifo) makes get_current_texture's nextDrawable() block
         // on the vsync-paced drawable queue, which freezes the window during
         // macOS's synchronous live-resize loop. AutoNoVsync maps to Metal

@@ -422,22 +422,17 @@ impl eframe::App for YokeApp {
 
         let ctx = ui.ctx().clone();
         let style = ctx.global_style();
-        let top_frame =
-            egui::Frame::side_top_panel(&style).inner_margin(egui::Margin::symmetric(16, 12));
         let rail_frame =
             egui::Frame::side_top_panel(&style).inner_margin(egui::Margin::symmetric(12, 14));
         let central_frame =
             egui::Frame::central_panel(&style).inner_margin(egui::Margin::symmetric(24, 20));
 
         egui::Panel::top("yoke_top")
-            .frame(top_frame)
+            .exact_size(crate::chrome::HEIGHT)
+            .frame(crate::chrome::frame())
             .show_inside(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading("Yoke");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        self.status_pill(ui);
-                    });
-                });
+                let (status_text, dot_color) = self.status_label();
+                crate::chrome::strip(ui, status_text, dot_color);
             });
 
         egui::Panel::left("yoke_rail")
@@ -482,6 +477,8 @@ impl eframe::App for YokeApp {
                     crate::views::library::show(self, ui);
                 }
             });
+
+        crate::chrome::edge_resize(ui);
 
         self.show_loading_overlay(&ctx);
         self.show_toast(&ctx, ui);
@@ -530,11 +527,6 @@ impl eframe::App for YokeApp {
 }
 
 impl YokeApp {
-    fn status_pill(&self, ui: &mut egui::Ui) {
-        let (text, color) = self.status_label();
-        ui.colored_label(color, text);
-    }
-
     fn status_bar(&self, ui: &mut egui::Ui) {
         ui.horizontal_centered(|ui| {
             let (status_text, dot_color) = self.status_label();

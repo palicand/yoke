@@ -30,10 +30,11 @@ status text), per design `.win-chrome`:
 ## Per-OS window setup (`main.rs`)
 
 - **macOS** — keep the native traffic lights, hide everything else:
-  [`with_titlebar_transparent(true)`][vb] + [`with_fullsize_content_view(true)`][vb]
-  + [`with_title_shown(false)`][vb]. Content extends under the (transparent)
-  titlebar; the strip reserves a ~78px left inset so nothing collides with
-  the lights. Native drag, zoom, minimize, fullscreen all keep working; the
+  [`with_titlebar_shown(false)`][vb] (egui's name for winit's
+  titlebar-transparent flag; the buttons stay) +
+  [`with_fullsize_content_view(true)`][vb] + [`with_title_shown(false)`][vb].
+  Content extends under the (transparent) titlebar; the strip keeps a ~78px
+  left inset clear so nothing collides with the lights. Native drag, zoom, minimize, fullscreen all keep working; the
   strip additionally arms [`ViewportCommand::StartDrag`][vc] on drag-start
   and toggles `ViewportCommand::Maximized` on double-click so the whole
   40px strip behaves like a titlebar, not just the native ~28px band.
