@@ -546,40 +546,33 @@ impl YokeApp {
                 .circle_filled(dot_rect.center(), 3.0, dot_color);
 
             ui.add_space(4.0);
+            // One phrase, mount path first when present (design `.st-l`,
+            // "/Volumes/QuadStick · in sync").
+            #[cfg(not(target_arch = "wasm32"))]
+            let status_line = match &self.volume {
+                Some(MountState::Present { mount_point, .. }) => {
+                    format!("{} \u{00B7} {status_text}", mount_point.display())
+                }
+                _ => status_text.to_owned(),
+            };
+            #[cfg(target_arch = "wasm32")]
+            let status_line = status_text.to_owned();
             ui.label(
-                egui::RichText::new(status_text)
+                egui::RichText::new(status_line)
                     .monospace()
                     .size(11.0)
                     .color(self.palette.ink_2),
             );
 
-            // Native only: show the mount path when the volume is present.
-            #[cfg(not(target_arch = "wasm32"))]
-            if let Some(MountState::Present { mount_point, .. }) = &self.volume {
+            // Right edge: app version (design `.st-i.mono`).
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
-                    egui::RichText::new(format!("  \u{00B7}  {}", mount_point.display()))
+                    egui::RichText::new(concat!("v ", env!("CARGO_PKG_VERSION")))
                         .monospace()
                         .size(11.0)
                         .color(self.palette.ink_3),
                 );
-            }
-
-            let community_count = if let CommunityLoad::Loaded(v) = &self.community {
-                v.len()
-            } else {
-                0
-            };
-            let counts = format!(
-                "  \u{00B7}  {} profiles  \u{00B7}  {} community",
-                self.device_profiles.len(),
-                community_count,
-            );
-            ui.label(
-                egui::RichText::new(counts)
-                    .monospace()
-                    .size(11.0)
-                    .color(self.palette.ink_3),
-            );
+            });
         });
     }
 

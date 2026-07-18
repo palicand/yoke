@@ -32,8 +32,8 @@ impl Palette {
     #[must_use]
     pub const fn console() -> Self {
         Self {
-            accent: rgb(0x6E_D2_74),
-            accent_2: rgb(0x1E_3B_1F),
+            accent: rgb(0x84_C4_85),
+            accent_2: rgb(0x21_33_21),
             keyboard: rgb(0x6F_BE_FF),
             mouse: rgb(0xF9_B6_4F),
             gamepad: rgb(0x75_D8_7A),
@@ -46,18 +46,6 @@ impl Palette {
             ink_3: rgb(0x5E_64_6C),
             line: rgb(0x2A_2F_36),
         }
-    }
-}
-
-/// Map a `StationKind` to its palette color for legend dots and tints.
-#[must_use]
-pub const fn station_kind_color(palette: &Palette, kind: crate::stations::StationKind) -> Color32 {
-    use crate::stations::StationKind;
-    match kind {
-        StationKind::Joystick => palette.joystick,
-        StationKind::Mouthpiece => palette.mouse,
-        StationKind::Lip => palette.keyboard,
-        StationKind::Side => palette.system,
     }
 }
 
@@ -102,10 +90,12 @@ const BG_3: Color32 = rgb(0x20_24_2A); // subtle surface / hover
 const BG_4: Color32 = rgb(0x2A_2F_36); // depressed / active
 const INK_1: Color32 = rgb(0xE8_E6_E0);
 const INK_2: Color32 = rgb(0x9A_A0_A8);
+const INK_3: Color32 = rgb(0x5E_64_6C);
 const LINE: Color32 = rgb(0x2A_2F_36);
 const LINE_STRONG: Color32 = rgb(0x3A_40_48);
-const ACCENT: Color32 = rgb(0x6E_D2_74);
-const ACCENT_2: Color32 = rgb(0x1E_3B_1F);
+const ACCENT: Color32 = rgb(0x84_C4_85);
+const ACCENT_2: Color32 = rgb(0x21_33_21);
+const BG_BINDING: Color32 = rgb(0x2A_2A_1E);
 
 // Corner-radius scale; widgets read u8. One source of truth for the values
 // used in more than one place.
@@ -239,30 +229,6 @@ pub fn row_frame() -> egui::Frame {
         .inner_margin(egui::Margin::symmetric(10, 7))
 }
 
-/// Leading short-code glyph box (design `.evt-short`): a 20x16px bordered box,
-/// `--bg-3` fill, `--line` border, holding a short mono glyph. Display-only; the
-/// glyph is a label, not a control.
-pub fn glyph_box(ui: &mut egui::Ui, glyph: &str, color: egui::Color32) {
-    egui::Frame::new()
-        .fill(BG_3)
-        .stroke(egui::Stroke::new(1.0, LINE))
-        .corner_radius(egui::CornerRadius::same(R_SM))
-        .inner_margin(egui::Margin::symmetric(6, 4))
-        .show(ui, |ui| {
-            // Min square footprint; render the glyph directly. Do NOT justify to
-            // available width: in a horizontal row that expands the box across the
-            // whole pane and pushes the rest of the row off-screen.
-            ui.set_min_size(egui::vec2(20.0, 16.0));
-            ui.add(egui::Label::new(
-                egui::RichText::new(glyph)
-                    .monospace()
-                    .strong()
-                    .size(12.0)
-                    .color(color),
-            ));
-        });
-}
-
 /// Show a frame, then promote its whole rect to a pointer-cursor click target.
 ///
 /// `id_salt` disambiguates the interaction id from the frame's own id so
@@ -280,20 +246,19 @@ pub fn clickable_frame<R>(
 
 /// Filled, bordered output button (design `.brow-out.set`).
 ///
-/// A category-color-tinted fill and border with `--r-sm` corners, containing a
-/// leading output glyph, the output label, and a trailing category tag. Returns
+/// `--bg-binding` fill and a solid `--line` border with `--r-sm` corners,
+/// containing a category-colored output glyph and an `--ink-1` label. Returns
 /// the button's response so the caller can wire it to the existing edit-output
 /// picker. Visual container only — it carries no mutation itself.
 pub fn output_button(
     ui: &mut egui::Ui,
     glyph: &str,
     label: &str,
-    category: &str,
     color: egui::Color32,
 ) -> egui::Response {
     let frame = egui::Frame::new()
-        .fill(color.gamma_multiply(0.14))
-        .stroke(egui::Stroke::new(1.0, color.gamma_multiply(0.55)))
+        .fill(BG_BINDING)
+        .stroke(egui::Stroke::new(1.0, LINE))
         .corner_radius(egui::CornerRadius::same(R_SM))
         .inner_margin(egui::Margin::symmetric(8, 5));
     clickable_frame(ui, frame, label, |ui| {
@@ -306,10 +271,47 @@ pub fn output_button(
                     .size(12.0)
                     .color(color),
             ));
-            ui.add(egui::Label::new(egui::RichText::new(label).color(color).size(12.5)).truncate());
-            category_tag(ui, category, color);
+            ui.add(egui::Label::new(egui::RichText::new(label).color(INK_1).size(12.5)).truncate());
         });
     })
+}
+
+/// Unset output button (design `.brow-out.empty`): a faint solid border (egui
+/// has no dashed strokes) around `--ink-3` "+ Bind output" text.
+pub fn empty_output_button(ui: &mut egui::Ui, id_salt: impl std::hash::Hash) -> egui::Response {
+    let frame = egui::Frame::new()
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(R_SM))
+        .inner_margin(egui::Margin::symmetric(8, 5));
+    clickable_frame(ui, frame, id_salt, |ui| {
+        ui.label(egui::RichText::new("+ Bind output").size(12.5).color(INK_3));
+    })
+}
+
+/// Modifier pill frame + text color.
+///
+/// A plain `normal` modifier renders borderless and dimmed, brightening while
+/// the pointer is over its row (design `.mod-pill.quiet`); any other modifier
+/// keeps the standard pill (design `.mod-pill`).
+pub fn mod_pill_style(
+    palette: &Palette,
+    modifier: &str,
+    row_hovered: bool,
+) -> (egui::Frame, Color32) {
+    if modifier != "normal" {
+        return (pill_frame(), palette.ink_2);
+    }
+    let quiet = egui::Frame::new()
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::symmetric(7, 2));
+    if row_hovered {
+        (
+            quiet.stroke(egui::Stroke::new(1.0, LINE)),
+            palette.ink_2.gamma_multiply(0.8),
+        )
+    } else {
+        (quiet, palette.ink_2.gamma_multiply(0.4))
+    }
 }
 
 /// A small keycap hint (design `kbd`): `--bg-3` fill, `--line` border, mono
@@ -326,23 +328,6 @@ pub fn kbd_hint(ui: &mut egui::Ui, label: &str, palette: &Palette) {
                     .monospace()
                     .size(10.0)
                     .color(palette.ink_3),
-            );
-        });
-}
-
-/// Small uppercase category tag (design output category pill): a 14%-tinted
-/// category-color fill and dimmed (80%) category-color text, no border.
-pub fn category_tag(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
-    egui::Frame::new()
-        .fill(color.gamma_multiply(0.14))
-        .corner_radius(egui::CornerRadius::same(4))
-        .inner_margin(egui::Margin::symmetric(5, 2))
-        .show(ui, |ui| {
-            ui.label(
-                egui::RichText::new(label.to_uppercase())
-                    .monospace()
-                    .size(10.0)
-                    .color(color.gamma_multiply(0.8)),
             );
         });
 }
@@ -374,9 +359,12 @@ pub fn eyebrow(text: &str) -> egui::RichText {
         .color(INK_2)
 }
 
-/// Filled primary action button: `ACCENT` background, `BG_1` label.
+/// Filled primary action button (design `.btn-primary`): `INK_1` fill and
+/// border, `BG_1` label.
 pub fn primary_button(text: &str) -> egui::Button<'_> {
-    egui::Button::new(egui::RichText::new(text).color(BG_1).strong()).fill(ACCENT)
+    egui::Button::new(egui::RichText::new(text).color(BG_1).strong())
+        .fill(INK_1)
+        .stroke(egui::Stroke::new(1.0, INK_1))
 }
 
 /// One sub-profile chip container (design `.sub-tab` / `.sub-tab.on`):
@@ -395,28 +383,11 @@ pub fn sub_tab_frame(selected: bool) -> egui::Frame {
         .inner_margin(egui::Margin::symmetric(10, 6))
 }
 
-/// Sub-profile index badge (design `.sub-tab-i`): bold mono label on the
-/// `--accent-2` fill, `--bg-1` text in the console theme, 3px corners.
-pub fn index_badge(ui: &mut egui::Ui, label: &str) {
+/// Neutral profile-kind tag (design `.kind-tag`): `--bg-3` fill, mono
+/// `--ink-2` text, 4px corners.
+pub fn kind_badge(ui: &mut egui::Ui, label: &str) {
     egui::Frame::new()
-        .fill(ACCENT_2)
-        .corner_radius(egui::CornerRadius::same(3))
-        .inner_margin(egui::Margin::symmetric(5, 2))
-        .show(ui, |ui| {
-            ui.label(
-                egui::RichText::new(label)
-                    .monospace()
-                    .size(9.5)
-                    .strong()
-                    .color(BG_1),
-            );
-        });
-}
-
-/// Inline colored kind badge: tinted fill at 18% opacity, 4px corners.
-pub fn kind_badge(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
-    egui::Frame::new()
-        .fill(color.gamma_multiply(0.18))
+        .fill(BG_3)
         .corner_radius(egui::CornerRadius::same(4))
         .inner_margin(egui::Margin::symmetric(6, 2))
         .show(ui, |ui| {
@@ -424,7 +395,7 @@ pub fn kind_badge(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
                 egui::RichText::new(label)
                     .monospace()
                     .size(10.5)
-                    .color(color),
+                    .color(INK_2),
             );
         });
 }
@@ -496,6 +467,7 @@ mod tests {
     #[test]
     fn console_palette_accent_is_the_expected_green() {
         let p = Palette::console();
-        assert_eq!(p.accent, Color32::from_rgb(0x6E, 0xD2, 0x74));
+        assert_eq!(p.accent, Color32::from_rgb(0x84, 0xC4, 0x85));
+        assert_eq!(p.accent_2, Color32::from_rgb(0x21, 0x33, 0x21));
     }
 }

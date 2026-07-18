@@ -88,25 +88,14 @@ fn output_body(
     PickerOutcome::Open
 }
 
-/// Thin footer: navigation hint on the left, filtered match count on the right.
-/// Keyboard navigation is not wired here; the hint is informational, matching
-/// the design.
+/// Thin footer under the list (design `.picker-foot`): the filtered count.
 fn output_footer(ui: &mut egui::Ui, palette: &Palette, matches: usize) {
     ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.add(egui::Label::new(
-            egui::RichText::new("\u{2195} navigate   \u{21b5} select")
-                .small()
-                .color(palette.ink_3),
-        ));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add(egui::Label::new(
-                egui::RichText::new(format!("{matches} matches"))
-                    .small()
-                    .color(palette.ink_3),
-            ));
-        });
-    });
+    ui.label(
+        egui::RichText::new(format!("{matches} outputs"))
+            .small()
+            .color(palette.ink_3),
+    );
 }
 
 /// Key-capture banner + capture event handler. Returns a commit outcome when a
@@ -278,9 +267,9 @@ fn output_list(
                 matches += 1;
                 let color = theme::output_color(palette, &output);
                 let glyph = output_glyph(&id);
-                // Full-width clickable row: leading glyph badge, the csv code
-                // (the catalog exposes no human label distinct from the id),
-                // a category tag, and a trailing enter hint.
+                // Full-width clickable row: a fixed-width colored glyph column
+                // (design `.picker-glyph`) so the csv codes align (the catalog
+                // exposes no human label distinct from the id).
                 let row_resp = egui::Frame::new()
                     .corner_radius(egui::CornerRadius::same(5))
                     .inner_margin(egui::Margin::symmetric(8, 4))
@@ -288,7 +277,15 @@ fn output_list(
                         ui.set_min_width(ui.available_width());
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 8.0;
-                            theme::glyph_box(ui, &glyph, color);
+                            ui.add_sized(
+                                egui::vec2(40.0, 18.0),
+                                egui::Label::new(
+                                    egui::RichText::new(&glyph)
+                                        .monospace()
+                                        .size(13.0)
+                                        .color(color),
+                                ),
+                            );
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(&id)
@@ -297,13 +294,6 @@ fn output_list(
                                         .color(palette.ink_2),
                                 )
                                 .truncate(),
-                            );
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(egui::RichText::new("\u{21b5}").color(palette.ink_3));
-                                    theme::category_tag(ui, cat, color);
-                                },
                             );
                         });
                     })

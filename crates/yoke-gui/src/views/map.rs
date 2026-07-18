@@ -2,7 +2,7 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 
 use crate::app::YokeApp;
 use crate::stations::{FPS_STATIONS, StationKind, VIEWBOX_H, VIEWBOX_W, binding_counts};
-use crate::theme::{eyebrow, pill_frame, station_kind_color};
+use crate::theme::pill_frame;
 
 // Cluster label + padding (viewbox units), drawn as a dashed region box.
 const REGIONS: &[(StationKind, &str, f32)] = &[
@@ -26,17 +26,13 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
 
     let palette = *app.palette();
 
-    // Dev-meta header row above the map canvas.
-    ui.horizontal(|ui| {
-        ui.add(egui::Label::new(eyebrow("FPS / Original")));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add(egui::Label::new(
-                egui::RichText::new("click any input to filter")
-                    .size(11.0)
-                    .color(palette.ink_3),
-            ));
-        });
-    });
+    // Dev-meta line above the map canvas (design `.dev-meta`).
+    ui.label(
+        egui::RichText::new("Click an input to filter bindings")
+            .monospace()
+            .size(11.0)
+            .color(palette.ink_3),
+    );
     ui.add_space(4.0);
 
     let width = ui.available_width().min(560.0);
@@ -54,14 +50,6 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     draw_mouthpiece_rail(&painter, &to_screen, palette.ink_3);
 
     let clicked = draw_stations(app, ui, &painter, &to_screen, scale, &counts, &palette);
-
-    painter.text(
-        rect.left_bottom() + Vec2::new(4.0, -4.0),
-        Align2::LEFT_BOTTOM,
-        "QS · FPS · INPUT MAP",
-        FontId::monospace(10.0),
-        palette.ink_3,
-    );
 
     // Station-filter chips below the map; clicking one reuses the same
     // selected-station filter the map dots drive.
@@ -157,21 +145,11 @@ fn draw_stations(
     clicked
 }
 
-/// Compact glyph per station kind (design `kindGlyph`).
-const fn kind_glyph(kind: StationKind) -> &'static str {
-    match kind {
-        StationKind::Joystick => "✛",
-        StationKind::Mouthpiece => "◍",
-        StationKind::Lip => "⏛",
-        StationKind::Side => "⌇",
-    }
-}
-
 /// Draw the bottom row of station-filter chips (design `.dev-legend`/`.leg-chip`):
-/// one chip per station showing a kind glyph, the station label, and the count of
-/// bindings on that station. Clicking a chip filters the bindings pane to that
-/// station; the active station's chip renders selected. Returns the clicked
-/// station id, if any — the caller routes it through the shared filter toggle.
+/// one chip per station showing the station label and the count of bindings on
+/// that station. Clicking a chip filters the bindings pane to that station; the
+/// active station's chip renders selected. Returns the clicked station id, if
+/// any — the caller routes it through the shared filter toggle.
 fn draw_station_chips(
     ui: &mut egui::Ui,
     palette: &crate::theme::Palette,
@@ -183,7 +161,7 @@ fn draw_station_chips(
         for st in FPS_STATIONS {
             let is_selected = selected == Some(st.id);
             let count = counts.get(st.id).copied().unwrap_or(0);
-            if station_chip(ui, palette, st.kind, st.label, count, is_selected) {
+            if station_chip(ui, palette, st.label, count, is_selected) {
                 clicked = Some(st.id);
             }
         }
@@ -196,12 +174,10 @@ fn draw_station_chips(
 fn station_chip(
     ui: &mut egui::Ui,
     palette: &crate::theme::Palette,
-    kind: StationKind,
     label: &str,
     count: usize,
     selected: bool,
 ) -> bool {
-    let kind_color = station_kind_color(palette, kind);
     let (text_color, count_color) = if selected {
         (palette.accent, palette.accent)
     } else {
@@ -217,12 +193,6 @@ fn station_chip(
     crate::theme::clickable_frame(ui, frame, label, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
-            ui.label(
-                egui::RichText::new(kind_glyph(kind))
-                    .monospace()
-                    .size(11.0)
-                    .color(if selected { palette.accent } else { kind_color }),
-            );
             ui.label(egui::RichText::new(label).size(12.0).color(text_color));
             ui.label(
                 egui::RichText::new(count.to_string())
