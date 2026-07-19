@@ -97,66 +97,101 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     };
     let palette = *app.palette();
 
-    let actions = show_header(ui, &header, &title);
+    let actions = show_header(ui, &header, &title, total_bindings, &palette);
     if actions.go_back {
         app.request_close_profile();
         return;
     }
     dispatch_toolbar(app, &actions);
 
-    // Stat row: binding count + amber "unsaved" when dirty.
-    ui.horizontal(|ui| {
-        stat(ui, &palette, total_bindings, "bindings");
-        if header.dirty {
-            ui.add_space(8.0);
-            ui.label(
-                egui::RichText::new("unsaved")
-                    .monospace()
-                    .size(11.0)
-                    .color(palette.mouse),
-            );
-        }
-    });
-    ui.add_space(10.0);
+    // Section rhythm (design `.ed` gap: 16px).
+    ui.add_space(8.0);
 
     // Always show the strip — management requires it even for a single layer.
     let strip_action = show_strip(app, ui, &palette, &tabs);
     dispatch_strip_action(app, strip_action);
 
-    ui.add_space(10.0);
+    ui.add_space(8.0);
 
-    ui.columns(2, |cols| {
-        card_frame().show(&mut cols[0], |ui| crate::views::map::show(app, ui));
-        card_frame().show(&mut cols[1], |ui| crate::views::bindings::show(app, ui));
-    });
+    // Two-pane grid (design `.ed-grid`: 1.15fr 1fr, 16px gap). Explicit child
+    // rects, not allocate_ui: a child allocated inside a horizontal layout
+    // inherits its left-to-right flow and ignores the desired width once
+    // content overflows.
+    let gap = 16.0;
+    let rect = ui.available_rect_before_wrap();
+    let left_w = (rect.width() - gap) * (1.15 / 2.15);
+    let left_rect = egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + left_w, rect.max.y));
+    let right_rect =
+        egui::Rect::from_min_max(egui::pos2(rect.min.x + left_w + gap, rect.min.y), rect.max);
+    for (pane_rect, is_map) in [(left_rect, true), (right_rect, false)] {
+        let mut pane = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(pane_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        pane.set_min_size(pane_rect.size());
+        card_frame().show(&mut pane, |ui| {
+            ui.set_min_size(ui.available_size());
+            if is_map {
+                crate::views::map::show(app, ui);
+            } else {
+                crate::views::bindings::show(app, ui);
+            }
+        });
+    }
+    ui.allocate_rect(rect, egui::Sense::hover());
 }
 
-/// Render the back button, title block (eyebrow + serif heading), and the
-/// right-aligned toolbar (ghost undo/redo/preview/save, primary save-to-qs).
-fn show_header(ui: &mut egui::Ui, header: &HeaderState, title: &str) -> ToolbarActions {
+/// Render the back button, title block (eyebrow + bold heading), inline stats,
+/// and the right-aligned toolbar (ghost undo/redo/preview/save, primary
+/// save-to-qs) — one row, matching the design `.ed-top`.
+fn show_header(
+    ui: &mut egui::Ui,
+    header: &HeaderState,
+    title: &str,
+    total_bindings: usize,
+    palette: &Palette,
+) -> ToolbarActions {
     let mut actions = ToolbarActions::default();
 
     ui.horizontal(|ui| {
-        // Ghost "< Library" back button.
-        if ui.button("< Library").clicked() {
+        // "‹ Library" back button (design `.back-btn`): transparent fill,
+        // `--line` border, 12px SemiBold `--ink-2` label.
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("\u{2039} Library")
+                        .font(theme::semibold(12.0))
+                        .color(palette.ink_2),
+                )
+                .fill(egui::Color32::TRANSPARENT),
+            )
+            .clicked()
+        {
             actions.go_back = true;
         }
-        ui.add_space(4.0);
+        ui.add_space(6.0);
 
-        // Title block: breadcrumb eyebrow over the serif italic title
-        // (design `.ed-eyebrow` + `.ed-title`, 24px).
+        // Title block: breadcrumb eyebrow over the bold title
+        // (design `.ed-eyebrow` + `.ed-title`, 18px/700).
         ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
             ui.add(egui::Label::new(theme::eyebrow(&header.breadcrumb)));
-            ui.add_space(-4.0); // tighten the gap between eyebrow and heading
-            ui.label(
-                egui::RichText::new(title)
-                    .font(egui::FontId::new(
-                        24.0,
-                        egui::FontFamily::Name("Instrument".into()),
-                    ))
-                    .italics(),
-            );
+            ui.label(theme::display_title(title, 18.0));
         });
+
+        // Inline stats (design `.ed-stats`): binding count, amber "unsaved".
+        ui.add_space(10.0);
+        stat(ui, palette, total_bindings, "bindings");
+        if header.dirty {
+            ui.add_space(6.0);
+            // Design `.stat.unsaved b`: mono-bold amber.
+            ui.label(
+                egui::RichText::new("unsaved")
+                    .font(theme::mono_bold(12.0))
+                    .color(palette.mouse),
+            );
+        }
 
         // Right-aligned toolbar: ghost buttons first (right-to-left order in
         // egui), then the primary "Save to QuadStick" at the far right.
@@ -266,6 +301,8 @@ fn show_strip(
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    // Chip gap (design `.sub-tabs` gap: 6px).
+                    ui.spacing_mut().item_spacing.x = 6.0;
                     show_chips(
                         ui,
                         palette,
@@ -371,8 +408,7 @@ fn show_chips(
         let add_resp = ui.add(
             egui::Button::new(
                 egui::RichText::new("+ Add layer")
-                    .monospace()
-                    .size(11.0)
+                    .font(theme::medium(12.5))
                     .color(palette.ink_3),
             )
             .frame(false),
@@ -410,8 +446,7 @@ fn show_chip(
             };
             ui.add(egui::Label::new(
                 egui::RichText::new(name)
-                    .size(13.0)
-                    .strong()
+                    .font(theme::semibold(12.5))
                     .color(name_color),
             ));
             ui.label(
@@ -446,7 +481,7 @@ fn show_chip_buttons(
                 .small()
                 .color(palette.ink_3),
         );
-        if ui.small_button("rename").clicked() {
+        if ui.add(theme::mini_button("rename")).clicked() {
             *new_ui_state = Some(SubProfileUi::Renaming {
                 index,
                 // Seed with the raw profile_name (not the display label) so
@@ -457,7 +492,7 @@ fn show_chip_buttons(
                     .map_or_else(String::new, |s| s.header.profile_name.clone()),
             });
         }
-        if ui.small_button("clone").clicked() {
+        if ui.add(theme::mini_button("clone")).clicked() {
             // Read the current name at action-build time — the index the user saw
             // must match the index dispatched.
             let current_name = app
@@ -471,7 +506,7 @@ fn show_chip_buttons(
             };
             *action = Some(StripAction::Clone { index, to });
         }
-        if ui.small_button("delete").clicked() {
+        if ui.add(theme::mini_button("delete")).clicked() {
             *action = Some(StripAction::Delete { index });
         }
     });
@@ -497,13 +532,13 @@ fn show_rename_form(
         // type immediately without clicking the field first.
         resp.request_focus();
         let commit = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        if commit || ui.small_button("ok").clicked() {
+        if commit || ui.add(theme::mini_button("ok")).clicked() {
             *action = Some(StripAction::Rename {
                 index,
                 to: buf.clone(),
             });
             // set_subprofile_ui(Closed) is handled in dispatch_strip_action
-        } else if ui.small_button("cancel").clicked() {
+        } else if ui.add(theme::mini_button("cancel")).clicked() {
             *new_ui_state = Some(SubProfileUi::Closed);
         } else {
             // Keep the edited buffer live — write it back so next frame the
@@ -556,7 +591,7 @@ fn show_add_form(
             });
     });
     ui.horizontal(|ui| {
-        if ui.button("add").clicked() {
+        if ui.add(theme::mini_button("add")).clicked() {
             *action = Some(StripAction::Add {
                 name: name_buf.clone(),
                 mode: SubProfileMode::KNOWN[mode_idx].clone(),
@@ -564,7 +599,7 @@ fn show_add_form(
                 channel: Channel::ALL[channel_idx],
             });
             // set_subprofile_ui(Closed) handled in dispatch_strip_action
-        } else if ui.button("cancel").clicked() {
+        } else if ui.add(theme::mini_button("cancel")).clicked() {
             *new_ui_state = Some(SubProfileUi::Closed);
         } else {
             // Preserve the user's in-progress form fields.
@@ -658,14 +693,17 @@ fn dispatch_strip_action(app: &mut YokeApp, action: Option<StripAction>) {
     }
 }
 
+// One design `.stat`: mono-bold count in `--ink-1`, 12px `--ink-2` label.
 fn stat(ui: &mut egui::Ui, palette: &Palette, n: usize, label: &str) {
-    ui.label(
-        egui::RichText::new(n.to_string())
-            .monospace()
-            .strong()
-            .color(palette.ink_1),
-    );
-    ui.label(egui::RichText::new(label).color(palette.ink_2));
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = 5.0;
+        ui.label(
+            egui::RichText::new(n.to_string())
+                .font(theme::mono_bold(12.0))
+                .color(palette.ink_1),
+        );
+        ui.label(egui::RichText::new(label).size(12.0).color(palette.ink_2));
+    });
 }
 
 // The selected-layer caption's dim sublabel. When the sub-profile carries an

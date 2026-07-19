@@ -422,10 +422,11 @@ impl eframe::App for YokeApp {
 
         let ctx = ui.ctx().clone();
         let style = ctx.global_style();
+        // Design paddings: `.side` 14px 10px, `.main` 24px 32px.
         let rail_frame =
-            egui::Frame::side_top_panel(&style).inner_margin(egui::Margin::symmetric(12, 14));
+            egui::Frame::side_top_panel(&style).inner_margin(egui::Margin::symmetric(10, 14));
         let central_frame =
-            egui::Frame::central_panel(&style).inner_margin(egui::Margin::symmetric(24, 20));
+            egui::Frame::central_panel(&style).inner_margin(egui::Margin::symmetric(32, 24));
 
         egui::Panel::top("yoke_top")
             .exact_size(crate::chrome::HEIGHT)
@@ -445,14 +446,18 @@ impl eframe::App for YokeApp {
             .exact_size(260.0)
             .frame(rail_frame)
             .show_inside(ui, |ui| {
-                let on_library = self.open_profile.is_none();
-                if theme::nav_item(ui, "Profiles", on_library).clicked() {
+                // Active for both the library and the editor (design keeps
+                // the Profiles item lit on either route).
+                if theme::nav_item(ui, "Profiles", true).clicked() {
                     self.request_close_profile();
                 }
                 ui.add_space(10.0);
+                // Rail section caption (design `.side-cap`): 10px/700
+                // uppercase sans with 0.08em tracking.
                 ui.label(
                     egui::RichText::new("DEVICE")
-                        .small()
+                        .font(theme::bold(10.0))
+                        .extra_letter_spacing(0.8)
                         .color(self.palette.ink_3),
                 );
                 ui.add_space(2.0);

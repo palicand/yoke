@@ -32,12 +32,13 @@ pub fn strip(ui: &mut egui::Ui, status_text: &str, dot_color: Color32) {
     );
 
     // Centered on the full strip so the title sits at the window's center,
-    // not the center of the space left over by the pill.
+    // not the center of the space left over by the pill (design `.win-title`:
+    // 13px/600).
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
         "Yoke",
-        FontId::proportional(13.0),
+        crate::theme::semibold(13.0),
         INK_1,
     );
 

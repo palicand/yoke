@@ -58,20 +58,17 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     let palette = *app.palette();
 
     // --- Header (pinned, not scrolled) ---
-    // Serif italic display title (design `.lib-title`, 32px).
-    ui.label(
-        egui::RichText::new("Profiles")
-            .font(egui::FontId::new(
-                32.0,
-                egui::FontFamily::Name("Instrument".into()),
-            ))
-            .italics(),
-    );
+    // Bold display title (design `.lib-title`, 24px/700, -0.02em).
+    ui.label(theme::display_title("Profiles", 24.0).extra_letter_spacing(-0.48));
     ui.horizontal(|ui| {
         let count = app.device_profiles().len();
         let status = app.device_status_text();
         let noun = if count == 1 { "profile" } else { "profiles" };
-        ui.label(egui::RichText::new(format!("{count} {noun} · {status}")).color(palette.ink_2));
+        ui.label(
+            egui::RichText::new(format!("{count} {noun} · {status}"))
+                .size(13.0)
+                .color(palette.ink_2),
+        );
         // Import only makes sense on native (no file dialog on wasm).
         #[cfg(not(target_arch = "wasm32"))]
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -81,19 +78,22 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
         });
     });
 
-    ui.add_space(8.0);
+    // Header block bottom margin (design `.lib-hd` margin-bottom 22px).
+    ui.add_space(14.0);
 
     // --- Toolbar (pinned, not scrolled) ---
     ui.horizontal(|ui| {
-        theme::search_pill(ui, app.lib_search_mut(), "Search profiles\u{2026}");
-        ui.add_space(8.0);
+        theme::search_pill(ui, app.lib_search_mut(), "Search profiles");
+        ui.add_space(2.0);
         let kind_labels: Vec<&str> = KIND_FILTERS.iter().map(|&(label, _)| label).collect();
         if let Some(i) = theme::segmented(ui, &kind_labels, app.lib_kind_filter()) {
             app.set_lib_kind_filter(i);
         }
     });
+    // Toolbar hairline (design `.lib-toolbar`: 14px to the rule, 18px after).
+    ui.add_space(6.0);
     ui.separator();
-    ui.add_space(8.0);
+    ui.add_space(10.0);
 
     // --- Collect filtered display data before any &mut app calls ---
     let search = app.lib_search().to_lowercase();
@@ -284,8 +284,12 @@ fn profile_card(ui: &mut egui::Ui, palette: &crate::theme::Palette, card: &CardV
             // frame's 14px vertical margins) so footer-less cards match.
             ui.set_min_size(egui::vec2(ui.available_width(), CARD_HEIGHT - 28.0));
 
-            // The name is the card's identity (design `.pc-name`).
-            ui.label(egui::RichText::new(card.label).strong().size(17.0));
+            // The name is the card's identity (design `.pc-name`, 15px/700).
+            ui.label(
+                egui::RichText::new(card.label)
+                    .font(theme::bold(15.0))
+                    .color(palette.ink_1),
+            );
 
             // Footer pinned to the card's bottom edge (design `.pc-foot`):
             // hairline on top, neutral kind tag left, layer count right.

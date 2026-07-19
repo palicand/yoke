@@ -86,20 +86,21 @@ fn show_pane_header(
     let mut clear_filter = false;
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 1.0;
-            ui.heading(&title.title);
+            ui.spacing_mut().item_spacing.y = 2.0;
+            // Design `.bind-title`: 16px/700.
+            ui.label(crate::theme::display_title(&title.title, 16.0));
             ui.add(egui::Label::new(
                 egui::RichText::new(format!("{} · {count} bindings", title.subtitle))
                     .color(palette.ink_2)
-                    .size(12.0),
+                    .size(12.5),
             ));
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
             // Display-only: live device testing is not implemented. Disabled so
             // it never looks actionable; carries no behavior.
-            ui.add_enabled(false, egui::Button::new("Test"))
+            ui.add_enabled(false, crate::theme::mini_button("Test"))
                 .on_disabled_hover_text("Live device testing is not available yet");
-            if can_clear_filter && ui.small_button("Show all").clicked() {
+            if can_clear_filter && ui.add(crate::theme::mini_button("Show all")).clicked() {
                 clear_filter = true;
             }
         });
@@ -214,6 +215,13 @@ fn show_all(app: &mut YokeApp, ui: &mut egui::Ui, palette: &crate::theme::Palett
         .id_salt("all_bindings")
         .auto_shrink(false)
         .show(ui, |ui| {
+            // Row gap (design `.bind-list` gap: 6px).
+            ui.spacing_mut().item_spacing.y = 6.0;
+            // Shared input-name column width so the modifier pills and arrows
+            // align across rows (design `.brow` grid column
+            // `minmax(140px, 1fr)`; 1fr ~ a third of the free space after the
+            // ~118px of pill/arrow/clear columns and gaps).
+            let name_w = ((ui.available_width() - 118.0) / 3.0).max(140.0);
             if rows.is_empty() {
                 ui.add_space(24.0);
                 ui.vertical_centered(|ui| {
@@ -226,10 +234,12 @@ fn show_all(app: &mut YokeApp, ui: &mut egui::Ui, palette: &crate::theme::Palett
                 let row_id = ui.id().with(("brow", i));
                 let hovered = row_hovered(ui, row_id);
                 let resp = row_frame().show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
                     ui.horizontal(|ui| {
                         if let Some(a) = binding_row_content(
                             ui,
                             palette,
+                            name_w,
                             input_label,
                             modifier,
                             output_label,
@@ -261,10 +271,14 @@ fn row_hovered(ui: &egui::Ui, id: egui::Id) -> bool {
 /// Render one design `.brow` row: input label, modifier pill (quiet for
 /// "normal"), arrow, output button, clear "x". Returns the deferred action
 /// (edit-output or clear-one) the user triggered.
+///
+/// `name_w` is the shared input-name column width; a fixed column keeps the
+/// modifier pills and arrows vertically aligned across rows.
 #[allow(clippy::too_many_arguments)]
 fn binding_row_content(
     ui: &mut egui::Ui,
     palette: &crate::theme::Palette,
+    name_w: f32,
     input_label: &str,
     modifier: &str,
     output_label: &str,
@@ -278,36 +292,56 @@ fn binding_row_content(
     // controls rather than dispatch an op guaranteed to fail with a stray toast.
     let bound = input_label != "(unbound)";
 
-    // Input name (design `.brow-when` now holds only `.when-input`).
-    ui.add(
-        egui::Label::new(
-            egui::RichText::new(input_label)
-                .monospace()
-                .strong()
-                .color(palette.ink_1)
-                .size(12.5),
-        )
-        .truncate(),
+    // Column gap (design `.brow` gap: 8px).
+    ui.spacing_mut().item_spacing.x = 8.0;
+
+    // Input name in its fixed column (design `.when-input`: 12px/600).
+    ui.allocate_ui_with_layout(
+        egui::vec2(name_w, 22.0),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.set_min_width(name_w);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(input_label)
+                        .font(crate::theme::semibold(12.0))
+                        .color(palette.ink_1),
+                )
+                .truncate(),
+            );
+        },
     );
 
     // Modifier pill — quiet for a plain "normal" (design `.mod-pill.quiet`).
     let (pill, pill_color) = mod_pill_style(palette, modifier, row_hovered);
     pill.show(ui, |ui| {
-        ui.label(egui::RichText::new(modifier).small().color(pill_color));
+        ui.label(
+            egui::RichText::new(modifier)
+                .monospace()
+                .size(10.0)
+                .color(pill_color),
+        );
     });
 
     // Arrow.
-    ui.label(egui::RichText::new("→").color(palette.ink_3));
+    ui.label(egui::RichText::new("→").monospace().color(palette.ink_3));
 
-    // Filled output button: clicking it re-opens the existing edit-output picker
-    // for this exact (input, modifier).
+    // Filled output button stretched across the remaining column, leaving the
+    // 24px clear column at the row's end (design `.brow` `2fr 24px`).
+    let out_w = (ui.available_width() - 30.0).max(60.0);
     ui.add_enabled_ui(bound, |ui| {
-        if output_button(ui, output_glyph, output_label, output_color).clicked() {
-            action = Some(RosterAction::EditOutput {
-                input: input_label.to_owned(),
-                modifier: modifier.to_owned(),
-            });
-        }
+        ui.allocate_ui_with_layout(
+            egui::vec2(out_w, 32.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                if output_button(ui, output_glyph, output_label, output_color, out_w).clicked() {
+                    action = Some(RosterAction::EditOutput {
+                        input: input_label.to_owned(),
+                        modifier: modifier.to_owned(),
+                    });
+                }
+            },
+        );
     });
 
     // Trailing clear "x": removes this exact (input, modifier) via the existing
@@ -352,21 +386,19 @@ fn roster_input_header(
     ui.add(
         egui::Label::new(
             egui::RichText::new(input)
-                .monospace()
-                .strong()
-                .color(palette.ink_1)
-                .size(12.5),
+                .font(crate::theme::semibold(12.0))
+                .color(palette.ink_1),
         )
         .truncate(),
     );
     if has_rows {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("clear all").clicked() {
+            if ui.add(crate::theme::mini_button("clear all")).clicked() {
                 action = Some(RosterAction::ClearAll {
                     input: input.to_owned(),
                 });
             }
-            if ui.small_button("add").clicked() {
+            if ui.add(crate::theme::mini_button("add")).clicked() {
                 action = Some(RosterAction::Add {
                     input: input.to_owned(),
                 });
@@ -396,7 +428,12 @@ fn roster_chord_row(
     ui.add_space(28.0); // indent to align under the input label
     let (pill, pill_color) = mod_pill_style(palette, modifier, row_hovered);
     if crate::theme::clickable_frame(ui, pill, (input, output, modifier), |ui| {
-        ui.label(egui::RichText::new(modifier).small().color(pill_color));
+        ui.label(
+            egui::RichText::new(modifier)
+                .monospace()
+                .size(10.0)
+                .color(pill_color),
+        );
     })
     .clicked()
     {
@@ -406,8 +443,8 @@ fn roster_chord_row(
             modifier: modifier.to_owned(),
         });
     }
-    ui.label(egui::RichText::new("→").color(palette.ink_3));
-    if output_button(ui, output_glyph, output, color).clicked() {
+    ui.label(egui::RichText::new("→").monospace().color(palette.ink_3));
+    if output_button(ui, output_glyph, output, color, 0.0).clicked() {
         action = Some(RosterAction::EditOutput {
             input: input.to_owned(),
             modifier: modifier.to_owned(),

@@ -160,30 +160,30 @@ pub fn console_visuals() -> egui::Visuals {
 
 /// Build the full Console `Style`.
 ///
-/// Layers the design typography scale (Instrument serif display headings,
-/// `JetBrains` Mono eyebrows/labels, Manrope body) and roomier spacing on
+/// Layers the design typography scale (Manrope Bold display headings, Manrope
+/// body/buttons, `JetBrains` Mono eyebrows/labels) and roomier spacing on
 /// `console_visuals`.
 #[must_use]
 pub fn console_style() -> egui::Style {
     use egui::{FontFamily, FontId, TextStyle};
 
-    let mut style = egui::Style::default();
-    let serif = FontFamily::Name("Instrument".into());
-    style.text_styles = [
-        (TextStyle::Heading, FontId::new(30.0, serif)),
-        (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
-        (
-            TextStyle::Button,
-            FontId::new(13.0, FontFamily::Proportional),
-        ),
-        (
-            TextStyle::Monospace,
-            FontId::new(12.5, FontFamily::Monospace),
-        ),
-        // Eyebrows/captions render mono, matching the design's small labels.
-        (TextStyle::Small, FontId::new(11.0, FontFamily::Monospace)),
-    ]
-    .into();
+    let mut style = egui::Style {
+        text_styles: [
+            // Dialog/picker headings (design `.picker-title`, 18px/700).
+            (TextStyle::Heading, bold(18.0)),
+            (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
+            // Design buttons are 13px at weight 500 (`.btn-ghost`).
+            (TextStyle::Button, medium(13.0)),
+            (
+                TextStyle::Monospace,
+                FontId::new(12.5, FontFamily::Monospace),
+            ),
+            // Eyebrows/captions render mono, matching the design's small labels.
+            (TextStyle::Small, FontId::new(11.0, FontFamily::Monospace)),
+        ]
+        .into(),
+        ..egui::Style::default()
+    };
 
     let s = &mut style.spacing;
     s.item_spacing = egui::vec2(8.0, 8.0);
@@ -197,8 +197,12 @@ pub fn console_style() -> egui::Style {
 }
 
 /// Install the Console theme on a context. Call once at startup.
+///
+/// Force dark: egui's `theme_preference` defaults to `System`, so pin it to Dark
+/// and set the dark slot directly — the app has no light palette to fall back to.
 pub fn apply(ctx: &egui::Context) {
-    ctx.set_global_style(console_style());
+    ctx.set_theme(egui::ThemePreference::Dark);
+    ctx.set_style_of(egui::Theme::Dark, console_style());
 }
 
 /// Surface card for the editor's device/bindings panes (design
@@ -211,22 +215,24 @@ pub fn card_frame() -> egui::Frame {
         .inner_margin(egui::Margin::symmetric(16, 14))
 }
 
-/// Small rounded pill (design `.mod-pill`): `--bg-2` fill, `--line` border.
+/// Small rounded pill (design `.mod-pill`): `--bg-2` fill, `--line` border,
+/// 12px corners, 3px 8px padding.
 pub fn pill_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_2)
         .stroke(egui::Stroke::new(1.0, LINE))
-        .corner_radius(egui::CornerRadius::same(8))
-        .inner_margin(egui::Margin::symmetric(7, 2))
+        .corner_radius(egui::CornerRadius::same(12))
+        .inner_margin(egui::Margin::symmetric(8, 3))
 }
 
-/// Bordered binding-row container (design `.brow`): `--bg-1`, `--line` border.
+/// Bordered binding-row container (design `.brow`): `--bg-1`, `--line` border,
+/// 8px corners, 8px 10px padding.
 pub fn row_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_1)
         .stroke(egui::Stroke::new(1.0, LINE))
         .corner_radius(egui::CornerRadius::same(8))
-        .inner_margin(egui::Margin::symmetric(10, 7))
+        .inner_margin(egui::Margin::symmetric(10, 8))
 }
 
 /// Show a frame, then promote its whole rect to a pointer-cursor click target.
@@ -247,31 +253,43 @@ pub fn clickable_frame<R>(
 /// Filled, bordered output button (design `.brow-out.set`).
 ///
 /// `--bg-binding` fill and a solid `--line` border with `--r-sm` corners,
-/// containing a category-colored output glyph and an `--ink-1` label. Returns
-/// the button's response so the caller can wire it to the existing edit-output
-/// picker. Visual container only — it carries no mutation itself.
+/// containing a category-colored output glyph and an `--ink-1` label. `min_w`
+/// stretches the chip to a column width (CSS grid items stretch to their
+/// cell); pass 0.0 to hug content. Returns the button's response so the
+/// caller can wire it to the existing edit-output picker. Visual container
+/// only — it carries no mutation itself.
 pub fn output_button(
     ui: &mut egui::Ui,
     glyph: &str,
     label: &str,
     color: egui::Color32,
+    min_w: f32,
 ) -> egui::Response {
     let frame = egui::Frame::new()
         .fill(BG_BINDING)
         .stroke(egui::Stroke::new(1.0, LINE))
         .corner_radius(egui::CornerRadius::same(R_SM))
-        .inner_margin(egui::Margin::symmetric(8, 5));
+        .inner_margin(egui::Margin::symmetric(10, 6));
     clickable_frame(ui, frame, label, |ui| {
+        if min_w > 0.0 {
+            ui.set_min_width(min_w - 22.0);
+        }
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 7.0;
-            ui.add(egui::Label::new(
-                egui::RichText::new(glyph)
-                    .monospace()
-                    .strong()
-                    .size(12.0)
-                    .color(color),
-            ));
-            ui.add(egui::Label::new(egui::RichText::new(label).color(INK_1).size(12.5)).truncate());
+            ui.spacing_mut().item_spacing.x = 8.0;
+            // Fixed 28px glyph column (design `.evt-glyph`) so labels align
+            // across rows regardless of glyph width.
+            ui.allocate_ui_with_layout(
+                egui::vec2(28.0, 18.0),
+                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                |ui| {
+                    ui.add(egui::Label::new(
+                        egui::RichText::new(glyph)
+                            .font(mono_bold(14.0))
+                            .color(color),
+                    ));
+                },
+            );
+            ui.add(egui::Label::new(egui::RichText::new(label).color(INK_1).size(14.0)).truncate());
         });
     })
 }
@@ -282,9 +300,9 @@ pub fn empty_output_button(ui: &mut egui::Ui, id_salt: impl std::hash::Hash) -> 
     let frame = egui::Frame::new()
         .stroke(egui::Stroke::new(1.0, LINE))
         .corner_radius(egui::CornerRadius::same(R_SM))
-        .inner_margin(egui::Margin::symmetric(8, 5));
+        .inner_margin(egui::Margin::symmetric(10, 6));
     clickable_frame(ui, frame, id_salt, |ui| {
-        ui.label(egui::RichText::new("+ Bind output").size(12.5).color(INK_3));
+        ui.label(egui::RichText::new("+ Bind output").size(14.0).color(INK_3));
     })
 }
 
@@ -302,8 +320,8 @@ pub fn mod_pill_style(
         return (pill_frame(), palette.ink_2);
     }
     let quiet = egui::Frame::new()
-        .corner_radius(egui::CornerRadius::same(8))
-        .inner_margin(egui::Margin::symmetric(7, 2));
+        .corner_radius(egui::CornerRadius::same(12))
+        .inner_margin(egui::Margin::symmetric(8, 3));
     if row_hovered {
         (
             quiet.stroke(egui::Stroke::new(1.0, LINE)),
@@ -350,21 +368,28 @@ pub fn strip_frame() -> egui::Frame {
         .inner_margin(egui::Margin::same(4))
 }
 
-/// Mono uppercase eyebrow label at 11px in `INK_2`.
+/// Mono uppercase eyebrow label (design `.eyebrow`): 11px `SemiBold`, 0.1em
+/// tracking, `INK_3`.
 #[must_use]
 pub fn eyebrow(text: &str) -> egui::RichText {
     egui::RichText::new(text.to_uppercase())
-        .monospace()
-        .size(11.0)
-        .color(INK_2)
+        .font(mono_semibold(11.0))
+        .extra_letter_spacing(1.1)
+        .color(INK_3)
 }
 
 /// Filled primary action button (design `.btn-primary`): `INK_1` fill and
-/// border, `BG_1` label.
+/// border, `BG_1` label at 13px `SemiBold`.
 pub fn primary_button(text: &str) -> egui::Button<'_> {
-    egui::Button::new(egui::RichText::new(text).color(BG_1).strong())
+    egui::Button::new(egui::RichText::new(text).font(semibold(13.0)).color(BG_1))
         .fill(INK_1)
         .stroke(egui::Stroke::new(1.0, INK_1))
+}
+
+/// Small quiet action button (design `.btn-mini`): `--bg-3` fill, `--line`
+/// border, 12px Medium `--ink-2` label.
+pub fn mini_button(text: &str) -> egui::Button<'_> {
+    egui::Button::new(egui::RichText::new(text).font(medium(12.0)).color(INK_2)).fill(BG_3)
 }
 
 /// One sub-profile chip container (design `.sub-tab` / `.sub-tab.on`):
@@ -393,8 +418,7 @@ pub fn kind_badge(ui: &mut egui::Ui, label: &str) {
         .show(ui, |ui| {
             ui.label(
                 egui::RichText::new(label)
-                    .monospace()
-                    .size(10.5)
+                    .font(mono_semibold(10.5))
                     .color(INK_2),
             );
         });
@@ -428,9 +452,9 @@ pub fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize) -> Option<
 /// One segmented-control chip (design `.seg button` / `.seg button.on`).
 fn seg_chip(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
     let color = if on { INK_1 } else { INK_2 };
-    let galley =
-        ui.painter()
-            .layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), color);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), medium(12.5), color);
     let size = galley.size() + egui::vec2(24.0, 8.0);
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     if ui.is_rect_visible(rect) {
@@ -457,9 +481,9 @@ fn seg_chip(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
 /// transparent + `--ink-2`, hover `--bg-4`. Spans the rail width.
 pub fn nav_item(ui: &mut egui::Ui, label: &str, active: bool) -> egui::Response {
     let color = if active { INK_1 } else { INK_2 };
-    let galley =
-        ui.painter()
-            .layout_no_wrap(label.to_owned(), egui::FontId::proportional(13.0), color);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), medium(13.0), color);
     let size = egui::vec2(ui.available_width(), galley.size().y + 16.0);
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     if ui.is_rect_visible(rect) {
@@ -527,28 +551,50 @@ fn magnifier_icon(ui: &mut egui::Ui) {
 
 /// Embed OFL-licensed fonts and register them with egui. Call once at startup,
 /// before `apply`, so visuals reference the correct families.
+///
+/// egui cannot synthesize weights, so each design weight (Manrope 500/600/700,
+/// `JetBrains` Mono 600/700) ships as its own font under a named family. Every
+/// named family keeps the default fallback chain so symbol glyphs still render.
 pub fn install_fonts(ctx: &egui::Context) {
     use egui::{FontData, FontDefinitions, FontFamily};
     let mut fonts = FontDefinitions::default();
 
-    fonts.font_data.insert(
-        "Manrope".to_owned(),
-        std::sync::Arc::new(FontData::from_static(include_bytes!(
-            "../assets/fonts/manrope/Manrope-Regular.ttf"
-        ))),
-    );
-    fonts.font_data.insert(
-        "JetBrainsMono".to_owned(),
-        std::sync::Arc::new(FontData::from_static(include_bytes!(
-            "../assets/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"
-        ))),
-    );
-    fonts.font_data.insert(
-        "InstrumentSerif".to_owned(),
-        std::sync::Arc::new(FontData::from_static(include_bytes!(
-            "../assets/fonts/instrument-serif/InstrumentSerif-Regular.ttf"
-        ))),
-    );
+    let faces: [(&str, &[u8]); 7] = [
+        (
+            "Manrope",
+            include_bytes!("../assets/fonts/manrope/Manrope-Regular.ttf"),
+        ),
+        (
+            "ManropeMedium",
+            include_bytes!("../assets/fonts/manrope/Manrope-Medium.ttf"),
+        ),
+        (
+            "ManropeSemiBold",
+            include_bytes!("../assets/fonts/manrope/Manrope-SemiBold.ttf"),
+        ),
+        (
+            "ManropeBold",
+            include_bytes!("../assets/fonts/manrope/Manrope-Bold.ttf"),
+        ),
+        (
+            "JetBrainsMono",
+            include_bytes!("../assets/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"),
+        ),
+        (
+            "JetBrainsMonoSemiBold",
+            include_bytes!("../assets/fonts/jetbrains-mono/JetBrainsMono-SemiBold.ttf"),
+        ),
+        (
+            "JetBrainsMonoBold",
+            include_bytes!("../assets/fonts/jetbrains-mono/JetBrainsMono-Bold.ttf"),
+        ),
+    ];
+    for (name, bytes) in faces {
+        fonts.font_data.insert(
+            name.to_owned(),
+            std::sync::Arc::new(FontData::from_static(bytes)),
+        );
+    }
 
     fonts
         .families
@@ -560,13 +606,64 @@ pub fn install_fonts(ctx: &egui::Context) {
         .entry(FontFamily::Monospace)
         .or_default()
         .insert(0, "JetBrainsMono".to_owned());
-    // Named family for display headings; not a standard egui family.
-    fonts.families.insert(
-        FontFamily::Name("Instrument".into()),
-        vec!["InstrumentSerif".to_owned()],
-    );
+
+    let proportional = fonts.families[&FontFamily::Proportional].clone();
+    let monospace = fonts.families[&FontFamily::Monospace].clone();
+    for (family, base) in [
+        ("ManropeMedium", &proportional),
+        ("ManropeSemiBold", &proportional),
+        ("ManropeBold", &proportional),
+        ("JetBrainsMonoSemiBold", &monospace),
+        ("JetBrainsMonoBold", &monospace),
+    ] {
+        let mut chain = vec![family.to_owned()];
+        chain.extend(base.iter().cloned());
+        fonts
+            .families
+            .insert(FontFamily::Name(family.into()), chain);
+    }
 
     ctx.set_fonts(fonts);
+}
+
+/// Manrope Medium (design weight 500) at `size`.
+#[must_use]
+pub fn medium(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("ManropeMedium".into()))
+}
+
+/// Manrope `SemiBold` (design weight 600) at `size`.
+#[must_use]
+pub fn semibold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("ManropeSemiBold".into()))
+}
+
+/// Manrope Bold (design weight 700) at `size`.
+#[must_use]
+pub fn bold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("ManropeBold".into()))
+}
+
+/// `JetBrains` Mono `SemiBold` (design mono weight 600) at `size`.
+#[must_use]
+pub fn mono_semibold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("JetBrainsMonoSemiBold".into()))
+}
+
+/// `JetBrains` Mono Bold (design mono weight 700) at `size`.
+#[must_use]
+pub fn mono_bold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("JetBrainsMonoBold".into()))
+}
+
+/// Display heading (design `.lib-title`/`.ed-title`/`.bind-title`): Manrope
+/// Bold with the design's negative tracking (-0.01em).
+#[must_use]
+pub fn display_title(text: &str, size: f32) -> egui::RichText {
+    egui::RichText::new(text)
+        .font(bold(size))
+        .extra_letter_spacing(size * -0.01)
+        .color(INK_1)
 }
 
 #[cfg(test)]
