@@ -31,6 +31,19 @@
             rustToolchain
             pkgs.trunk
             pkgs.pkg-config
+
+            # Windows cross-compile from macOS, e.g.
+            #   cargo xwin build --release -p yoke-gui --target aarch64-pc-windows-msvc
+            # cargo-xwin fetches the MSVC CRT + Windows SDK on first run; lld
+            # supplies lld-link (the MSVC-target linker); llvm supplies llvm-lib
+            # (the MSVC librarian cc-rs invokes). clang + cmake build the C
+            # dependencies reqwest's rustls stack pulls in (aws-lc-sys). nasm is
+            # only needed when cross-building the x86_64 target, not aarch64.
+            pkgs.cargo-xwin
+            pkgs.lld
+            pkgs.llvm
+            pkgs.clang
+            pkgs.cmake
           ]
           # Linux runtime deps for winit/wgpu (X11/Wayland, libxkbcommon, a
           # Vulkan/GL loader). Starting point — confirm the set when the Linux
