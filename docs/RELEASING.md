@@ -1,15 +1,26 @@
 # Releasing Yoke
 
-Yoke ships a **signed and notarized universal macOS `.dmg`**. Pushing a
-`vX.Y.Z` tag runs [`.github/workflows/release.yml`](../.github/workflows/release.yml):
-it builds `yoke-gui` for both Apple Silicon and Intel, fuses them into a
-universal binary with `lipo`, then [`cargo-packager`][packager] bundles a
-`Yoke.app`, signs it, notarizes it with Apple, staples the ticket, and uploads
-the DMG to a GitHub Release.
+Yoke ships a **signed and notarized universal macOS `.dmg`** and an **unsigned
+64-bit Windows NSIS installer**. Pushing a `vX.Y.Z` tag runs
+[`.github/workflows/release.yml`](../.github/workflows/release.yml):
+
+- **macOS** — builds `yoke-gui` for Apple Silicon and Intel, fuses them into a
+  universal binary with `lipo`, then [`cargo-packager`][packager] bundles a
+  `Yoke.app`, signs it, notarizes it with Apple, and staples the ticket.
+- **Windows** — builds `x86_64-pc-windows-msvc` on a `windows-latest` runner and
+  packages it as an NSIS `-setup.exe`.
+
+Each job uploads its assets as a workflow artifact; a final `publish` job
+collects them into one GitHub Release, so the two platforms cannot race to
+create it.
 
 All Apple-account specifics live in **repository secrets** — nothing is
 committed. A plain `cargo packager` (or a tag push before the secrets exist)
 produces an *unsigned* bundle.
+
+There is no Windows code-signing certificate, so SmartScreen warns on first run
+of the installer. Windows on ARM is not built: GitHub's `windows-11-arm` runners
+are not free for public repositories.
 
 ## One-time setup
 
@@ -79,12 +90,19 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release uploads two assets: `Yoke.dmg` (the signed, notarized desktop app)
-and `yokectl-universal-apple-darwin.tar.gz` (the signed, notarized CLI).
+The release uploads four assets:
+
+| Asset | Contents |
+|---|---|
+| `Yoke_<version>_universal.dmg` | signed, notarized macOS app |
+| `yokectl-universal-apple-darwin.tar.gz` | signed, notarized macOS CLI |
+| `yoke-gui_<version>_x64-setup.exe` | Windows NSIS installer |
+| `yokectl-x86_64-pc-windows-msvc.zip` | Windows CLI |
 
 The workflow can also be run by hand from **Actions → release →
-Run workflow** (`workflow_dispatch`); it builds with the `Cargo.toml` version and,
-without the secrets above, produces unsigned artifacts.
+Run workflow** (`workflow_dispatch`); it builds with the `Cargo.toml` version,
+skips publishing, and leaves the artifacts on the run for a smoke test. Without
+the secrets above, the macOS artifacts are unsigned.
 
 ## Verifying a release
 

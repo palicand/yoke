@@ -31,6 +31,14 @@
             rustToolchain
             pkgs.trunk
             pkgs.pkg-config
+
+            # `cargo xwin build --target aarch64-pc-windows-msvc`; lld/llvm
+            # supply lld-link and llvm-lib, clang+cmake build aws-lc-sys.
+            pkgs.cargo-xwin
+            pkgs.lld
+            pkgs.llvm
+            pkgs.clang
+            pkgs.cmake
           ]
           # Linux runtime deps for winit/wgpu (X11/Wayland, libxkbcommon, a
           # Vulkan/GL loader). Starting point — confirm the set when the Linux

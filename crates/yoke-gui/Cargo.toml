@@ -53,6 +53,9 @@ yoke-volume-windows = { version = "0.1.0", path = "../yoke-volume-windows" }
 tempfile = "3"
 yoke-volume = { path = "../yoke-volume", features = ["test-utils"] }
 
+[build-dependencies]
+embed-resource = "3.0.11"
+
 # cargo-packager bundle config. `cargo packager` reads this; ordinary cargo
 # builds ignore it. `signing-identity` is intentionally absent: a plain
 # `cargo packager` produces an unsigned bundle (fine for local smoke tests),
@@ -65,10 +68,15 @@ category = "public.app-category.utilities"
 description = "Configuration software for the QuadStick adaptive controller."
 homepage = "https://github.com/palicand/yoke"
 # A real .icns is used directly; a lone PNG fails cargo-packager's ICNS size
-# matching. Add icon.ico here when the Windows leg lands.
+# matching.
 icons = ["assets/icons/icon.icns"]
 binaries = [{ path = "yoke-gui", main = true }]
 formats = ["dmg"]
 
 [package.metadata.packager.macos]
 minimum-system-version = "11.0"
+
+# Wizard icon only; the installed app takes its icon from the .exe resource that
+# build.rs embeds.
+[package.metadata.packager.nsis]
+installer-icon = "assets/icons/icon.ico"
