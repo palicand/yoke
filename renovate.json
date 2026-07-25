@@ -1,6 +1,38 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "group:allNonMajor"
+  ],
+  "separateMajorMinor": true,
+  "packageRules": [
+    {
+      "description": "Cargo treats a 0.x minor bump as breaking, so it must not ride along in the grouped non-major PR.",
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "matchCurrentVersion": "/^0\\./",
+      "groupName": null
+    },
+    {
+      "description": "The egui crates only compile against their own generation, and they are absent from Renovate's monorepo list.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "egui",
+        "egui-**",
+        "egui_**",
+        "eframe",
+        "epaint",
+        "ecolor",
+        "emath"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "groupName": "egui"
+    }
   ]
 }
