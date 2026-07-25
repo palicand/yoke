@@ -89,7 +89,7 @@ fn conn_pill(ui: &mut egui::Ui, text: &str, dot_color: Color32) {
         rect,
         CornerRadius::same(R_FULL),
         BG_2,
-        Stroke::new(1.0, LINE),
+        Stroke::new(1.0_f32, LINE),
         StrokeKind::Inside,
     );
     painter.circle_filled(
@@ -152,7 +152,7 @@ fn caption_button(ui: &mut egui::Ui, glyph: Caption) -> egui::Response {
     } else {
         INK_2
     };
-    let stroke = Stroke::new(1.0, ink);
+    let stroke = Stroke::new(1.0_f32, ink);
     let c = rect.center();
     match glyph {
         Caption::Minimize => {

@@ -115,8 +115,8 @@ pub fn console_visuals() -> egui::Visuals {
     v.override_text_color = Some(INK_1);
     v.hyperlink_color = ACCENT;
     v.selection.bg_fill = ACCENT_2;
-    v.selection.stroke = Stroke::new(1.0, ACCENT);
-    v.window_stroke = Stroke::new(1.0, LINE);
+    v.selection.stroke = Stroke::new(1.0_f32, ACCENT);
+    v.window_stroke = Stroke::new(1.0_f32, LINE);
     v.window_corner_radius = CornerRadius::same(R_MD);
     v.menu_corner_radius = CornerRadius::same(R_SM);
 
@@ -125,31 +125,31 @@ pub fn console_visuals() -> egui::Visuals {
     // Separators, frame outlines, non-clickable text.
     w.noninteractive.bg_fill = BG_1;
     w.noninteractive.weak_bg_fill = BG_1;
-    w.noninteractive.bg_stroke = Stroke::new(1.0, LINE);
-    w.noninteractive.fg_stroke = Stroke::new(1.0, INK_2);
+    w.noninteractive.bg_stroke = Stroke::new(1.0_f32, LINE);
+    w.noninteractive.fg_stroke = Stroke::new(1.0_f32, INK_2);
     w.noninteractive.corner_radius = radius;
     // Resting buttons.
     w.inactive.bg_fill = BG_2;
     w.inactive.weak_bg_fill = BG_2;
-    w.inactive.bg_stroke = Stroke::new(1.0, LINE);
-    w.inactive.fg_stroke = Stroke::new(1.0, INK_1);
+    w.inactive.bg_stroke = Stroke::new(1.0_f32, LINE);
+    w.inactive.fg_stroke = Stroke::new(1.0_f32, INK_1);
     w.inactive.corner_radius = radius;
     w.hovered.bg_fill = BG_3;
     w.hovered.weak_bg_fill = BG_3;
-    w.hovered.bg_stroke = Stroke::new(1.0, LINE_STRONG);
-    w.hovered.fg_stroke = Stroke::new(1.0, INK_1);
+    w.hovered.bg_stroke = Stroke::new(1.0_f32, LINE_STRONG);
+    w.hovered.fg_stroke = Stroke::new(1.0_f32, INK_1);
     w.hovered.corner_radius = radius;
     // Pressed.
     w.active.bg_fill = BG_4;
     w.active.weak_bg_fill = BG_4;
-    w.active.bg_stroke = Stroke::new(1.0, ACCENT);
-    w.active.fg_stroke = Stroke::new(1.0, INK_1);
+    w.active.bg_stroke = Stroke::new(1.0_f32, ACCENT);
+    w.active.fg_stroke = Stroke::new(1.0_f32, INK_1);
     w.active.corner_radius = radius;
     // Open combo/menu.
     w.open.bg_fill = BG_3;
     w.open.weak_bg_fill = BG_3;
-    w.open.bg_stroke = Stroke::new(1.0, LINE_STRONG);
-    w.open.fg_stroke = Stroke::new(1.0, INK_1);
+    w.open.bg_stroke = Stroke::new(1.0_f32, LINE_STRONG);
+    w.open.fg_stroke = Stroke::new(1.0_f32, INK_1);
     w.open.corner_radius = radius;
     v
 }
@@ -202,7 +202,7 @@ pub fn apply(ctx: &egui::Context) {
 pub fn card_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_2)
-        .stroke(egui::Stroke::new(1.0, LINE))
+        .stroke(egui::Stroke::new(1.0_f32, LINE))
         .corner_radius(egui::CornerRadius::same(R_MD))
         .inner_margin(egui::Margin::symmetric(16, 14))
 }
@@ -211,7 +211,7 @@ pub fn card_frame() -> egui::Frame {
 pub fn pill_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_2)
-        .stroke(egui::Stroke::new(1.0, LINE))
+        .stroke(egui::Stroke::new(1.0_f32, LINE))
         .corner_radius(egui::CornerRadius::same(12))
         .inner_margin(egui::Margin::symmetric(8, 3))
 }
@@ -220,7 +220,7 @@ pub fn pill_frame() -> egui::Frame {
 pub fn row_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_1)
-        .stroke(egui::Stroke::new(1.0, LINE))
+        .stroke(egui::Stroke::new(1.0_f32, LINE))
         .corner_radius(egui::CornerRadius::same(8))
         .inner_margin(egui::Margin::symmetric(10, 8))
 }
@@ -253,7 +253,7 @@ pub fn output_button(
 ) -> egui::Response {
     let frame = egui::Frame::new()
         .fill(BG_BINDING)
-        .stroke(egui::Stroke::new(1.0, LINE))
+        .stroke(egui::Stroke::new(1.0_f32, LINE))
         .corner_radius(egui::CornerRadius::same(R_SM))
         .inner_margin(egui::Margin::symmetric(10, 6));
     clickable_frame(ui, frame, label, |ui| {
@@ -284,7 +284,7 @@ pub fn output_button(
 /// egui has no dashed strokes.
 pub fn empty_output_button(ui: &mut egui::Ui, id_salt: impl std::hash::Hash) -> egui::Response {
     let frame = egui::Frame::new()
-        .stroke(egui::Stroke::new(1.0, LINE))
+        .stroke(egui::Stroke::new(1.0_f32, LINE))
         .corner_radius(egui::CornerRadius::same(R_SM))
         .inner_margin(egui::Margin::symmetric(10, 6));
     clickable_frame(ui, frame, id_salt, |ui| {
@@ -306,7 +306,7 @@ pub fn mod_pill_style(
         .inner_margin(egui::Margin::symmetric(8, 3));
     if row_hovered {
         (
-            quiet.stroke(egui::Stroke::new(1.0, LINE)),
+            quiet.stroke(egui::Stroke::new(1.0_f32, LINE)),
             palette.ink_2.gamma_multiply(0.8),
         )
     } else {
@@ -318,7 +318,7 @@ pub fn mod_pill_style(
 pub fn kbd_hint(ui: &mut egui::Ui, label: &str, palette: &Palette) {
     egui::Frame::new()
         .fill(BG_3)
-        .stroke(egui::Stroke::new(1.0, LINE))
+        .stroke(egui::Stroke::new(1.0_f32, LINE))
         .corner_radius(egui::CornerRadius::same(4))
         .inner_margin(egui::Margin::symmetric(5, 1))
         .show(ui, |ui| {
@@ -336,14 +336,14 @@ pub fn kbd_hint(ui: &mut egui::Ui, label: &str, palette: &Palette) {
 pub fn status_bar_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_3)
-        .stroke(egui::Stroke::new(1.0, LINE))
+        .stroke(egui::Stroke::new(1.0_f32, LINE))
 }
 
 /// Segmented container for the sub-profile tab strip (design `.sub-tabs`).
 pub fn strip_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_3)
-        .stroke(egui::Stroke::new(1.0, LINE))
+        .stroke(egui::Stroke::new(1.0_f32, LINE))
         .corner_radius(egui::CornerRadius::same(R_MD))
         .inner_margin(egui::Margin::same(4))
 }
@@ -361,7 +361,7 @@ pub fn eyebrow(text: &str) -> egui::RichText {
 pub fn primary_button(text: &str) -> egui::Button<'_> {
     egui::Button::new(egui::RichText::new(text).font(semibold(13.0)).color(BG_1))
         .fill(INK_1)
-        .stroke(egui::Stroke::new(1.0, INK_1))
+        .stroke(egui::Stroke::new(1.0_f32, INK_1))
 }
 
 /// Small quiet action button (design `.btn-mini`).
@@ -372,7 +372,7 @@ pub fn mini_button(text: &str) -> egui::Button<'_> {
 /// One sub-profile chip container (design `.sub-tab` / `.sub-tab.on`).
 pub fn sub_tab_frame(selected: bool) -> egui::Frame {
     let (fill, stroke) = if selected {
-        (BG_2, egui::Stroke::new(1.0, LINE))
+        (BG_2, egui::Stroke::new(1.0_f32, LINE))
     } else {
         (Color32::TRANSPARENT, egui::Stroke::NONE)
     };
@@ -407,7 +407,7 @@ pub fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize) -> Option<
     let mut changed = None;
     egui::Frame::new()
         .fill(BG_3)
-        .stroke(egui::Stroke::new(1.0, LINE))
+        .stroke(egui::Stroke::new(1.0_f32, LINE))
         .corner_radius(egui::CornerRadius::same(R_SM))
         .inner_margin(egui::Margin::same(3))
         .show(ui, |ui| {
@@ -438,7 +438,7 @@ fn seg_chip(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
                 rect,
                 egui::CornerRadius::same(4),
                 BG_2,
-                egui::Stroke::new(1.0, LINE),
+                egui::Stroke::new(1.0_f32, LINE),
                 egui::StrokeKind::Inside,
             );
         } else if response.hovered() {
@@ -465,7 +465,7 @@ pub fn nav_item(ui: &mut egui::Ui, label: &str, active: bool) -> egui::Response 
                 rect,
                 egui::CornerRadius::same(R_SM),
                 BG_2,
-                egui::Stroke::new(1.0, LINE),
+                egui::Stroke::new(1.0_f32, LINE),
                 egui::StrokeKind::Inside,
             );
         } else if response.hovered() {
@@ -483,7 +483,7 @@ pub fn nav_item(ui: &mut egui::Ui, label: &str, active: bool) -> egui::Response 
 pub fn search_pill(ui: &mut egui::Ui, text: &mut String, hint: &str) {
     egui::Frame::new()
         .fill(BG_2)
-        .stroke(egui::Stroke::new(1.0, LINE))
+        .stroke(egui::Stroke::new(1.0_f32, LINE))
         .corner_radius(egui::CornerRadius::same(R_SM))
         .inner_margin(egui::Margin::symmetric(10, 0))
         .show(ui, |ui| {
@@ -508,7 +508,7 @@ pub fn search_pill(ui: &mut egui::Ui, text: &mut String, hint: &str) {
 /// Stroked magnifier glyph matching the design's inline SVG.
 fn magnifier_icon(ui: &mut egui::Ui) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-    let stroke = egui::Stroke::new(1.2, INK_2);
+    let stroke = egui::Stroke::new(1.2_f32, INK_2);
     let dir = egui::vec2(
         std::f32::consts::FRAC_1_SQRT_2,
         std::f32::consts::FRAC_1_SQRT_2,
