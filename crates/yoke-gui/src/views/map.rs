@@ -23,8 +23,6 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
 
     let palette = *app.palette();
 
-    // Dev-meta line above the map canvas (design `.dev-meta`): hint left,
-    // binding tally (or filter-clear) right, dashed hairline underneath.
     let mut clear_filter = false;
     ui.horizontal(|ui| {
         ui.label(
@@ -182,11 +180,8 @@ fn draw_stations(
     clicked
 }
 
-/// Draw the bottom row of station-filter chips (design `.dev-legend`/`.leg-chip`):
-/// one chip per station showing the station label and the count of bindings on
-/// that station. Clicking a chip filters the bindings pane to that station; the
-/// active station's chip renders selected. Returns the clicked station id, if
-/// any — the caller routes it through the shared filter toggle.
+/// Draw the bottom row of station-filter chips (design
+/// `.dev-legend`/`.leg-chip`). Returns the clicked station id, if any.
 fn draw_station_chips(
     ui: &mut egui::Ui,
     palette: &crate::theme::Palette,
@@ -195,8 +190,8 @@ fn draw_station_chips(
 ) -> Option<&'static str> {
     let mut clicked = None;
     ui.horizontal_wrapped(|ui| {
-        // Chip gap (design `.dev-legend` gap: 6px) and design chip metrics
-        // (`.leg-chip` padding 4px 9px, no 30px minimum row height).
+        // Zeroed interact_size: egui's 30px minimum would overrule the design's
+        // shorter chip height (`.leg-chip`).
         ui.spacing_mut().item_spacing = Vec2::splat(6.0);
         ui.spacing_mut().button_padding = egui::vec2(9.0, 4.0);
         ui.spacing_mut().interact_size.y = 0.0;
@@ -212,7 +207,6 @@ fn draw_station_chips(
 }
 
 /// Render one station-filter chip and return `true` when clicked this frame.
-/// Selected chips carry the accent-2 fill + accent text (design `.leg-chip.on`).
 ///
 /// A `Button` (not a framed child ui) so `horizontal_wrapped` can pre-measure
 /// it and wrap the row like the design's flex-wrap; framed uis are sized only
@@ -225,7 +219,6 @@ fn station_chip(
     selected: bool,
 ) -> bool {
     let (text_color, count_color, fill, stroke) = if selected {
-        // Design `.leg-chip.on`: `--accent-2` fill, half-faded accent border.
         (
             palette.accent,
             palette.accent,

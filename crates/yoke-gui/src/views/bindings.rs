@@ -48,15 +48,11 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     }
 }
 
-/// Title-block data for the bindings pane header, derived from the selected
-/// sub-profile's real mode and channel.
 struct PaneTitle {
     title: String,
     subtitle: String,
 }
 
-/// Build the all-list pane title from the sub-profile's mode: serif
-/// "<mode> bindings", subtitle "<mode> mode · <channel> output".
 fn all_pane_title(sub: &yoke_config::model::SubProfile) -> PaneTitle {
     let mode = sub.header.mode.canonical_csv();
     let mode = if mode.trim().is_empty() {
@@ -71,11 +67,6 @@ fn all_pane_title(sub: &yoke_config::model::SubProfile) -> PaneTitle {
     }
 }
 
-/// Render the pane header: serif title, subtitle, and a right-aligned
-/// display-only "Test" button plus an optional "Show all" filter-clear.
-///
-/// The "Test" button implies live on-device testing, which Yoke cannot do yet,
-/// so it is rendered disabled (display-only) and wired to nothing.
 fn show_pane_header(
     ui: &mut egui::Ui,
     palette: &crate::theme::Palette,
@@ -87,7 +78,6 @@ fn show_pane_header(
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            // Design `.bind-title`: 16px/700.
             ui.label(crate::theme::display_title(&title.title, 16.0));
             ui.add(egui::Label::new(
                 egui::RichText::new(format!("{} · {count} bindings", title.subtitle))
@@ -96,8 +86,8 @@ fn show_pane_header(
             ));
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-            // Display-only: live device testing is not implemented. Disabled so
-            // it never looks actionable; carries no behavior.
+            // Disabled because live on-device testing does not exist yet; an
+            // enabled button here would look actionable and do nothing.
             ui.add_enabled(false, crate::theme::mini_button("Test"))
                 .on_disabled_hover_text("Live device testing is not available yet");
             if can_clear_filter && ui.add(crate::theme::mini_button("Show all")).clicked() {
@@ -108,7 +98,6 @@ fn show_pane_header(
     clear_filter
 }
 
-/// Station view: full input roster with edit affordances.
 fn show_station(
     app: &mut YokeApp,
     ui: &mut egui::Ui,
@@ -177,9 +166,8 @@ fn show_station(
     }
 }
 
-/// Browse view: list of all bindings across the selected sub-profile. Every row
-/// belongs to one sub-profile, so its `(input, modifier)` key is unambiguous and
-/// the per-row clear is safe here too.
+/// Every row belongs to one sub-profile, so its `(input, modifier)` key is
+/// unambiguous and the per-row clear is safe here too.
 fn show_all(app: &mut YokeApp, ui: &mut egui::Ui, palette: &crate::theme::Palette, sub_idx: usize) {
     let (title, rows) = {
         let Some(open) = app.open_profile() else {
@@ -215,12 +203,10 @@ fn show_all(app: &mut YokeApp, ui: &mut egui::Ui, palette: &crate::theme::Palett
         .id_salt("all_bindings")
         .auto_shrink(false)
         .show(ui, |ui| {
-            // Row gap (design `.bind-list` gap: 6px).
             ui.spacing_mut().item_spacing.y = 6.0;
-            // Shared input-name column width so the modifier pills and arrows
-            // align across rows (design `.brow` grid column
-            // `minmax(140px, 1fr)`; 1fr ~ a third of the free space after the
-            // ~118px of pill/arrow/clear columns and gaps).
+            // Shared column width so the modifier pills and arrows align across
+            // rows. Approximates the design's `minmax(140px, 1fr)`: 1fr is about
+            // a third of what is left after the ~118px of pill/arrow/clear.
             let name_w = ((ui.available_width() - 118.0) / 3.0).max(140.0);
             if rows.is_empty() {
                 ui.add_space(24.0);
@@ -268,10 +254,6 @@ fn row_hovered(ui: &egui::Ui, id: egui::Id) -> bool {
         .is_some_and(|rect| ui.rect_contains_pointer(rect))
 }
 
-/// Render one design `.brow` row: input label, modifier pill (quiet for
-/// "normal"), arrow, output button, clear "x". Returns the deferred action
-/// (edit-output or clear-one) the user triggered.
-///
 /// `name_w` is the shared input-name column width; a fixed column keeps the
 /// modifier pills and arrows vertically aligned across rows.
 #[allow(clippy::too_many_arguments)]
@@ -292,10 +274,8 @@ fn binding_row_content(
     // controls rather than dispatch an op guaranteed to fail with a stray toast.
     let bound = input_label != "(unbound)";
 
-    // Column gap (design `.brow` gap: 8px).
     ui.spacing_mut().item_spacing.x = 8.0;
 
-    // Input name in its fixed column (design `.when-input`: 12px/600).
     ui.allocate_ui_with_layout(
         egui::vec2(name_w, 22.0),
         egui::Layout::left_to_right(egui::Align::Center),
@@ -312,7 +292,6 @@ fn binding_row_content(
         },
     );
 
-    // Modifier pill — quiet for a plain "normal" (design `.mod-pill.quiet`).
     let (pill, pill_color) = mod_pill_style(palette, modifier, row_hovered);
     pill.show(ui, |ui| {
         ui.label(
@@ -323,11 +302,9 @@ fn binding_row_content(
         );
     });
 
-    // Arrow.
     ui.label(egui::RichText::new("→").monospace().color(palette.ink_3));
 
-    // Filled output button stretched across the remaining column, leaving the
-    // 24px clear column at the row's end (design `.brow` `2fr 24px`).
+    // Reserve the trailing clear column so the output button cannot eat it.
     let out_w = (ui.available_width() - 30.0).max(60.0);
     ui.add_enabled_ui(bound, |ui| {
         ui.allocate_ui_with_layout(
@@ -344,8 +321,6 @@ fn binding_row_content(
         );
     });
 
-    // Trailing clear "x": removes this exact (input, modifier) via the existing
-    // clear-binding op. Right-aligned so it pins to the row's end.
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         ui.add_enabled_ui(bound, |ui| {
             if clear_button(ui, palette).clicked() {
@@ -360,7 +335,7 @@ fn binding_row_content(
     action
 }
 
-/// A borderless "×" clear control (design `.brow-x`): `ink_3` resting, `ink_1` hover.
+/// A borderless "×" clear control (design `.brow-x`).
 fn clear_button(ui: &mut egui::Ui, palette: &crate::theme::Palette) -> egui::Response {
     ui.add(
         egui::Button::new(
@@ -374,8 +349,6 @@ fn clear_button(ui: &mut egui::Ui, palette: &crate::theme::Palette) -> egui::Res
     .on_hover_text("Remove this binding")
 }
 
-/// Render an input header row and return any action triggered by the
-/// per-input buttons (add / clear-all) or the empty bind button.
 fn roster_input_header(
     ui: &mut egui::Ui,
     palette: &crate::theme::Palette,
@@ -412,7 +385,6 @@ fn roster_input_header(
     action
 }
 
-/// Render one chord sub-row and return any action triggered.
 #[allow(clippy::too_many_arguments)]
 fn roster_chord_row(
     ui: &mut egui::Ui,
@@ -461,9 +433,8 @@ fn roster_chord_row(
     action
 }
 
-/// Render the scrollable input roster and return the single deferred action
-/// (if any) the user triggered. Borrows only palette and display data —
-/// `app` is not touched here so the caller can dispatch after.
+/// Borrows only palette and display data — `app` is not touched here, so the
+/// caller can dispatch the returned action afterwards.
 fn show_roster(
     ui: &mut egui::Ui,
     palette: &crate::theme::Palette,
@@ -552,10 +523,8 @@ fn dispatch_action(app: &mut YokeApp, sub_idx: usize, action: Option<RosterActio
     }
 }
 
-/// A short display glyph for an output, derived from its CSV id. Known outputs
-/// map to the design's compact codes (`LMB`, `Wh↑`, cursor arrows, gamepad
-/// codes); everything else falls back to the leading token of the id so the
-/// glyph is always derived from real data, never fabricated.
+/// A short display glyph for an output. Unrecognized ids fall back to their own
+/// leading token, so a glyph is always derived from real data, never fabricated.
 pub(crate) fn output_glyph(csv: &str) -> String {
     let mapped = match csv {
         "mouse_left_button" => "LMB",
@@ -584,21 +553,18 @@ pub(crate) fn output_glyph(csv: &str) -> String {
     if !mapped.is_empty() {
         return mapped.to_owned();
     }
-    // Keyboard keys: drop the `kb_` prefix and show a compact form.
     if let Some(key) = csv.strip_prefix("kb_") {
         return short_token(key);
     }
-    // D-pad direction (`dpad_NE`) -> the cardinal letters.
+    // `dpad_NE` already carries the cardinal letters; shortening would lose them.
     if let Some(dir) = csv.strip_prefix("dpad_") {
         return dir.to_owned();
     }
-    // Joystick axes, gamepad letter buttons, and any unknown id: leading token.
     short_token(csv)
 }
 
-/// Reduce a snake/word token to a compact glyph: a recognized short form for a
-/// handful of common tokens, else the uppercased leading 1-3 characters of the
-/// first word. Pure formatting over an existing id — introduces no new meaning.
+/// Reduce a snake/word token to a compact glyph. Pure formatting over an
+/// existing id — introduces no new meaning.
 fn short_token(token: &str) -> String {
     match token {
         "left_shift" | "right_shift" => return "⇧".to_owned(),

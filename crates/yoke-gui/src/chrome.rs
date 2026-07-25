@@ -1,5 +1,4 @@
-//! Custom window chrome: the design `.win-chrome` strip and, on Windows,
-//! caption buttons plus edge-resize zones for the undecorated window.
+//! Custom window chrome (design `.win-chrome`).
 
 use egui::{
     Align, Align2, Color32, CornerRadius, FontId, Layout, PointerButton, Rect, Sense, Stroke,
@@ -12,15 +11,12 @@ pub const HEIGHT: f32 = 40.0;
 
 const CLOSE_HOVER: Color32 = Color32::from_rgb(0xC4, 0x2B, 0x1C);
 
-/// Panel frame for the chrome strip: `--bg-3` fill, no margins (the caption
-/// buttons must sit flush against the window edge). The panel's own separator
-/// line draws the 1px `--line` bottom hairline.
+/// Panel frame for the chrome strip. No margins: the caption buttons must sit
+/// flush against the window edge.
 pub fn frame() -> egui::Frame {
     egui::Frame::new().fill(BG_3)
 }
 
-/// The `.win-chrome` strip: centered title, right-aligned connection pill,
-/// Windows caption buttons, and titlebar drag/double-click behavior.
 pub fn strip(ui: &mut egui::Ui, status_text: &str, dot_color: Color32) {
     let rect = ui.max_rect();
     // Registered before the pill and buttons so those, added later, win
@@ -31,9 +27,8 @@ pub fn strip(ui: &mut egui::Ui, status_text: &str, dot_color: Color32) {
         Sense::click_and_drag(),
     );
 
-    // Centered on the full strip so the title sits at the window's center,
-    // not the center of the space left over by the pill (design `.win-title`:
-    // 13px/600).
+    // Centered on the full strip so the title sits at the window's center, not
+    // the center of the space left over by the pill.
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
@@ -71,9 +66,8 @@ fn toggle_maximized(ctx: &egui::Context) {
     ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized));
 }
 
-/// Connection pill (design `.conn`): `--bg-2` fill, `--line` border, fully
-/// rounded, a 7px state dot and mono 11px `--ink-2` text. Painted directly so
-/// the layout is direction-independent (the strip lays out right-to-left).
+/// Connection pill (design `.conn`). Painted directly so the layout is
+/// direction-independent (the strip lays out right-to-left).
 fn conn_pill(ui: &mut egui::Ui, text: &str, dot_color: Color32) {
     const PAD_X: f32 = 10.0;
     const PAD_Y: f32 = 4.0;

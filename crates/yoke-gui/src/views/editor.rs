@@ -4,9 +4,8 @@ use yoke_config::model::SubProfile;
 use crate::app::{SubProfileUi, YokeApp};
 use crate::theme::{self, Palette, card_frame, strip_frame};
 
-// One sub-profile chip: name + binding count (design `.sub-tab-name` +
-// `.sub-tab-count`). The sublabel feeds only the selected-layer caption below
-// the strip, not the chip itself.
+// (name, sublabel, binding count). The sublabel feeds only the selected-layer
+// caption below the strip, not the chip itself.
 type Tab = (String, String, usize);
 
 // Deferred action from the strip; dispatched after all immutable borrows end.
@@ -104,7 +103,6 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     }
     dispatch_toolbar(app, &actions);
 
-    // Section rhythm (design `.ed` gap: 16px).
     ui.add_space(8.0);
 
     // Always show the strip — management requires it even for a single layer.
@@ -113,10 +111,9 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
 
     ui.add_space(8.0);
 
-    // Two-pane grid (design `.ed-grid`: 1.15fr 1fr, 16px gap). Explicit child
-    // rects, not allocate_ui: a child allocated inside a horizontal layout
-    // inherits its left-to-right flow and ignores the desired width once
-    // content overflows.
+    // Explicit child rects, not allocate_ui: a child allocated inside a
+    // horizontal layout inherits its left-to-right flow and ignores the desired
+    // width once content overflows.
     let gap = 16.0;
     let rect = ui.available_rect_before_wrap();
     let left_w = (rect.width() - gap) * (1.15 / 2.15);
@@ -142,9 +139,6 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     ui.allocate_rect(rect, egui::Sense::hover());
 }
 
-/// Render the back button, title block (eyebrow + bold heading), inline stats,
-/// and the right-aligned toolbar (ghost undo/redo/preview/save, primary
-/// save-to-qs) — one row, matching the design `.ed-top`.
 fn show_header(
     ui: &mut egui::Ui,
     header: &HeaderState,
@@ -155,8 +149,6 @@ fn show_header(
     let mut actions = ToolbarActions::default();
 
     ui.horizontal(|ui| {
-        // "‹ Library" back button (design `.back-btn`): transparent fill,
-        // `--line` border, 12px SemiBold `--ink-2` label.
         if ui
             .add(
                 egui::Button::new(
@@ -172,20 +164,16 @@ fn show_header(
         }
         ui.add_space(6.0);
 
-        // Title block: breadcrumb eyebrow over the bold title
-        // (design `.ed-eyebrow` + `.ed-title`, 18px/700).
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             ui.add(egui::Label::new(theme::eyebrow(&header.breadcrumb)));
             ui.label(theme::display_title(title, 18.0));
         });
 
-        // Inline stats (design `.ed-stats`): binding count, amber "unsaved".
         ui.add_space(10.0);
         stat(ui, palette, total_bindings, "bindings");
         if header.dirty {
             ui.add_space(6.0);
-            // Design `.stat.unsaved b`: mono-bold amber.
             ui.label(
                 egui::RichText::new("unsaved")
                     .font(theme::mono_bold(12.0))
@@ -301,7 +289,6 @@ fn show_strip(
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    // Chip gap (design `.sub-tabs` gap: 6px).
                     ui.spacing_mut().item_spacing.x = 6.0;
                     show_chips(
                         ui,
@@ -380,7 +367,6 @@ fn show_strip(
     action
 }
 
-/// Render the chip row: name+count chips + the quiet "Add layer" chip.
 /// Rename/clone/delete are NOT in this row — they live in `show_chip_buttons`.
 fn show_chips(
     ui: &mut egui::Ui,
@@ -402,8 +388,6 @@ fn show_chips(
         }
     }
 
-    // "Add layer" chip — quiet frameless text (design `.sub-tab.add`);
-    // opens the Adding form.
     if matches!(ui_state, SubProfileUi::Closed) {
         let add_resp = ui.add(
             egui::Button::new(
@@ -424,10 +408,8 @@ fn show_chips(
     }
 }
 
-/// Render one sub-profile chip (design `.sub-tab`): the name and the trailing
-/// binding count. Returns `true` when clicked this frame. Selected chips carry
-/// a `--bg-2` fill and `--line` border (design `.sub-tab.on`); resting chips
-/// are transparent.
+/// Render one sub-profile chip (design `.sub-tab`). Returns `true` when clicked
+/// this frame.
 fn show_chip(
     ui: &mut egui::Ui,
     palette: &Palette,
@@ -693,7 +675,6 @@ fn dispatch_strip_action(app: &mut YokeApp, action: Option<StripAction>) {
     }
 }
 
-// One design `.stat`: mono-bold count in `--ink-1`, 12px `--ink-2` label.
 fn stat(ui: &mut egui::Ui, palette: &Palette, n: usize, label: &str) {
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing.x = 5.0;

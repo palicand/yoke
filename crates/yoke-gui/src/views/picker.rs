@@ -38,7 +38,6 @@ pub fn show(
     outcome
 }
 
-/// Two-part modal header: a mono uppercase eyebrow above a serif title.
 fn picker_header(ui: &mut egui::Ui, palette: &Palette, eyebrow: &str, title: &str) {
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 1.0;
@@ -73,7 +72,6 @@ fn output_body(
 
     ui.separator();
 
-    // Modifier sub-control on add: the new chord's key (default normal).
     if matches!(state.target, PickerTarget::AddBinding { .. }) {
         modifier_subcontrol(ui, state, palette);
     }
@@ -88,7 +86,6 @@ fn output_body(
     PickerOutcome::Open
 }
 
-/// Thin footer under the list (design `.picker-foot`): the filtered count.
 fn output_footer(ui: &mut egui::Ui, palette: &Palette, matches: usize) {
     ui.add_space(4.0);
     ui.label(
@@ -165,7 +162,6 @@ fn capture_banner(
     }
 }
 
-/// Framed search field + category chips row.
 fn search_bar(ui: &mut egui::Ui, state: &mut PickerState, palette: &Palette) {
     egui::Frame::new()
         .fill(ui.visuals().faint_bg_color)
@@ -187,7 +183,6 @@ fn search_bar(ui: &mut egui::Ui, state: &mut PickerState, palette: &Palette) {
         });
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
-        // "All" chip first: selected when no category filter is active.
         if category_chip(ui, palette, "All", None, state.category.is_none()).clicked() {
             state.category = None;
         }
@@ -201,8 +196,6 @@ fn search_bar(ui: &mut egui::Ui, state: &mut PickerState, palette: &Palette) {
     });
 }
 
-/// One category pill: an optional leading colored dot and the label. Selected
-/// pills lift to a tinted fill + the category color border.
 fn category_chip(
     ui: &mut egui::Ui,
     palette: &Palette,
@@ -267,8 +260,7 @@ fn output_list(
                 matches += 1;
                 let color = theme::output_color(palette, &output);
                 let glyph = output_glyph(&id);
-                // Full-width clickable row: a fixed-width colored glyph column
-                // (design `.picker-glyph`) so the csv codes align (the catalog
+                // Fixed-width glyph column so the csv codes align (the catalog
                 // exposes no human label distinct from the id).
                 let row_resp = egui::Frame::new()
                     .corner_radius(egui::CornerRadius::same(5))
@@ -299,7 +291,6 @@ fn output_list(
                     })
                     .response;
 
-                // Hover tint over the whole row frame.
                 let row_resp = ui.interact(
                     row_resp.rect,
                     egui::Id::new("picker_row").with(&id),

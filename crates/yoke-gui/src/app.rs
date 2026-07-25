@@ -180,6 +180,11 @@ pub struct YokeApp {
     /// a close on a dirty session; the modal forces an explicit choice before
     /// any data is discarded. Silently discarding edits is a critical bug class.
     pub(crate) confirm_discard: bool,
+    /// Whether the pending `confirm_discard` decision came from a window-close
+    /// request rather than an in-app close, so Discard must also quit the app.
+    /// Without it the cancelled close would leave the window open with nothing
+    /// to re-request it, and the user would have to click close twice.
+    pub(crate) quit_after_discard: bool,
     /// Library search text; filters both device and community card grids.
     lib_search: String,
     /// Library kind-filter index: 0 = All, 1 = `MouseKeys`, 2 = Gamepad, 3 = Mixed.
@@ -223,6 +228,7 @@ impl YokeApp {
             community_available,
             requested_initial: false,
             confirm_discard: false,
+            quit_after_discard: false,
             pending_save: None,
             preview_csv: None,
             lib_search: String::new(),
@@ -254,6 +260,7 @@ impl YokeApp {
             community_available,
             requested_initial: false,
             confirm_discard: false,
+            quit_after_discard: false,
             pending_save: None,
             preview_csv: None,
             lib_search: String::new(),
@@ -315,8 +322,10 @@ impl YokeApp {
                 self.selected_station = None;
                 self.selected_subprofile = 0;
                 self.subprofile_ui = SubProfileUi::Closed;
-                // A stale discard prompt must not appear over a newly opened profile.
+                // A stale discard prompt must not appear over a newly opened
+                // profile, nor may its quit intent outlive it.
                 self.confirm_discard = false;
+                self.quit_after_discard = false;
                 self.open_profile = Some(OpenProfile {
                     source,
                     session: crate::edit::EditSession::new(*parsed),
@@ -421,6 +430,12 @@ impl eframe::App for YokeApp {
         }
 
         let ctx = ui.ctx().clone();
+        // Must be answered in the same frame the request arrives: eframe quits
+        // after this frame unless CancelClose lands first.
+        if ctx.input(|i| i.viewport().close_requested()) && self.on_close_requested() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        }
+
         let style = ctx.global_style();
         // Design paddings: `.side` 14px 10px, `.main` 24px 32px.
         let rail_frame =
@@ -452,8 +467,6 @@ impl eframe::App for YokeApp {
                     self.request_close_profile();
                 }
                 ui.add_space(10.0);
-                // Rail section caption (design `.side-cap`): 10px/700
-                // uppercase sans with 0.08em tracking.
                 ui.label(
                     egui::RichText::new("DEVICE")
                         .font(theme::bold(10.0))
@@ -516,8 +529,10 @@ impl eframe::App for YokeApp {
                 // the fallback so Escape can never fall through to deeper steps.
                 self.preview_csv = None;
             } else if self.confirm_discard {
-                // Dismiss the confirm prompt; the profile remains open.
+                // Dismiss the confirm prompt; the profile remains open and the
+                // cancelled quit is abandoned with it.
                 self.confirm_discard = false;
+                self.quit_after_discard = false;
             } else if !matches!(self.subprofile_ui, SubProfileUi::Closed) {
                 self.subprofile_ui = SubProfileUi::Closed;
             } else if self.selected_station.is_some() {
@@ -543,8 +558,6 @@ impl YokeApp {
                 .circle_filled(dot_rect.center(), 3.0, dot_color);
 
             ui.add_space(4.0);
-            // One phrase, mount path first when present (design `.st-l`,
-            // "/Volumes/QuadStick · in sync").
             #[cfg(not(target_arch = "wasm32"))]
             let status_line = match &self.volume {
                 Some(MountState::Present { mount_point, .. }) => {
@@ -561,7 +574,6 @@ impl YokeApp {
                     .color(self.palette.ink_2),
             );
 
-            // Right edge: app version (design `.st-i.mono`).
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
                     egui::RichText::new(concat!("v ", env!("CARGO_PKG_VERSION")))
@@ -683,15 +695,22 @@ impl YokeApp {
                 ui.horizontal(|ui| {
                     if ui.button("Keep editing").clicked() {
                         self.confirm_discard = false;
+                        self.quit_after_discard = false;
                     }
                     if ui.button("Discard").clicked() {
-                        self.confirm_discard = false;
+                        let quit = std::mem::take(&mut self.quit_after_discard);
                         self.close_profile();
+                        // Re-issue the close the interception cancelled. The next
+                        // frame sees no dirty profile, so it is not cancelled again.
+                        if quit {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
                     }
                 });
             });
             if response.should_close() {
                 self.confirm_discard = false;
+                self.quit_after_discard = false;
             }
         }
     }
@@ -875,6 +894,24 @@ impl YokeApp {
         // "Saved to …" or call mark_saved on a gone session; drop the pending save.
         self.pending_save = None;
         self.preview_csv = None;
+    }
+
+    /// Intercept a window-close request. Returns `true` when the close must be
+    /// cancelled so the confirm-discard modal can run first: quitting is a close
+    /// path like any other, and silently dropping edits on quit is the same
+    /// critical bug class `request_close_profile` guards against.
+    pub(crate) fn on_close_requested(&mut self) -> bool {
+        if self
+            .open_profile
+            .as_ref()
+            .is_some_and(|o| o.session.is_dirty())
+        {
+            self.confirm_discard = true;
+            self.quit_after_discard = true;
+            true
+        } else {
+            false
+        }
     }
 
     /// Close the profile, but if the session is dirty, show the confirm-discard
@@ -1318,6 +1355,70 @@ mod tests {
         app.request_close_profile();
         assert!(app.open_profile.is_none());
         assert!(!app.confirm_discard);
+    }
+
+    #[test]
+    fn window_close_with_dirty_session_is_cancelled_and_prompts() {
+        let mut app = open_app_with(a_profile());
+        app.open_profile
+            .as_mut()
+            .unwrap()
+            .session
+            .add_binding(0, "lip", "kb_b", None)
+            .unwrap();
+        assert!(app.on_close_requested(), "dirty quit must be cancelled");
+        assert!(app.open_profile.is_some(), "dirty quit must not discard");
+        assert!(app.confirm_discard);
+        assert!(app.quit_after_discard);
+    }
+
+    #[test]
+    fn window_close_clean_session_is_not_cancelled() {
+        let mut app = open_app_with(a_profile());
+        assert!(!app.on_close_requested(), "clean quit must proceed");
+        assert!(!app.confirm_discard);
+        assert!(!app.quit_after_discard);
+    }
+
+    #[test]
+    fn in_app_close_does_not_arm_quit() {
+        let mut app = open_app_with(a_profile());
+        app.open_profile
+            .as_mut()
+            .unwrap()
+            .session
+            .add_binding(0, "lip", "kb_b", None)
+            .unwrap();
+        app.request_close_profile();
+        assert!(app.confirm_discard);
+        // Discarding from an in-app close returns to the library; it must never
+        // also quit the app.
+        assert!(!app.quit_after_discard);
+    }
+
+    #[test]
+    fn opening_a_profile_clears_a_pending_quit_intent() {
+        let mut app = open_app_with(a_profile());
+        app.open_profile
+            .as_mut()
+            .unwrap()
+            .session
+            .add_binding(0, "lip", "kb_b", None)
+            .unwrap();
+        assert!(app.on_close_requested());
+        // An open started before the quit request lands afterwards; the stale
+        // quit intent must not survive onto the newly opened profile.
+        app.opening = Some(OpenInFlight {
+            req: 7,
+            label: "Halo".into(),
+        });
+        app.apply_event(DataEvent::ProfileOpened {
+            req: 7,
+            source: ProfileSource::File("/halo.csv".into()),
+            parsed: a_profile(),
+        });
+        assert!(!app.confirm_discard);
+        assert!(!app.quit_after_discard);
     }
 
     #[test]

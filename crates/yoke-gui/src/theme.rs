@@ -104,9 +104,6 @@ pub const R_MD: u8 = 10; // --r-md
 pub const R_FULL: u8 = 99; // fully-rounded pill
 
 /// Console dark `egui::Visuals` from the design `--bg-*` / `--ink-*` tokens.
-///
-/// Widgets are styled as the design's ghost buttons: `--bg-2` fill, a `--line`
-/// border, `--r-sm` corners, lifting to `--bg-3`/`--bg-4` on hover/press.
 #[must_use]
 pub fn console_visuals() -> egui::Visuals {
     use egui::{CornerRadius, Stroke};
@@ -137,7 +134,6 @@ pub fn console_visuals() -> egui::Visuals {
     w.inactive.bg_stroke = Stroke::new(1.0, LINE);
     w.inactive.fg_stroke = Stroke::new(1.0, INK_1);
     w.inactive.corner_radius = radius;
-    // Hover.
     w.hovered.bg_fill = BG_3;
     w.hovered.weak_bg_fill = BG_3;
     w.hovered.bg_stroke = Stroke::new(1.0, LINE_STRONG);
@@ -159,10 +155,6 @@ pub fn console_visuals() -> egui::Visuals {
 }
 
 /// Build the full Console `Style`.
-///
-/// Layers the design typography scale (Manrope Bold display headings, Manrope
-/// body/buttons, `JetBrains` Mono eyebrows/labels) and roomier spacing on
-/// `console_visuals`.
 #[must_use]
 pub fn console_style() -> egui::Style {
     use egui::{FontFamily, FontId, TextStyle};
@@ -206,7 +198,7 @@ pub fn apply(ctx: &egui::Context) {
 }
 
 /// Surface card for the editor's device/bindings panes (design
-/// `.dev-pane`/`.bind-pane`): `--bg-2` fill, `--line` border, `--r-md` corners.
+/// `.dev-pane`/`.bind-pane`).
 pub fn card_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_2)
@@ -215,8 +207,7 @@ pub fn card_frame() -> egui::Frame {
         .inner_margin(egui::Margin::symmetric(16, 14))
 }
 
-/// Small rounded pill (design `.mod-pill`): `--bg-2` fill, `--line` border,
-/// 12px corners, 3px 8px padding.
+/// Small rounded pill (design `.mod-pill`).
 pub fn pill_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_2)
@@ -225,8 +216,7 @@ pub fn pill_frame() -> egui::Frame {
         .inner_margin(egui::Margin::symmetric(8, 3))
 }
 
-/// Bordered binding-row container (design `.brow`): `--bg-1`, `--line` border,
-/// 8px corners, 8px 10px padding.
+/// Bordered binding-row container (design `.brow`).
 pub fn row_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_1)
@@ -252,12 +242,8 @@ pub fn clickable_frame<R>(
 
 /// Filled, bordered output button (design `.brow-out.set`).
 ///
-/// `--bg-binding` fill and a solid `--line` border with `--r-sm` corners,
-/// containing a category-colored output glyph and an `--ink-1` label. `min_w`
-/// stretches the chip to a column width (CSS grid items stretch to their
-/// cell); pass 0.0 to hug content. Returns the button's response so the
-/// caller can wire it to the existing edit-output picker. Visual container
-/// only — it carries no mutation itself.
+/// `min_w` stretches the chip to a column width (CSS grid items stretch to
+/// their cell); pass 0.0 to hug content.
 pub fn output_button(
     ui: &mut egui::Ui,
     glyph: &str,
@@ -294,8 +280,8 @@ pub fn output_button(
     })
 }
 
-/// Unset output button (design `.brow-out.empty`): a faint solid border (egui
-/// has no dashed strokes) around `--ink-3` "+ Bind output" text.
+/// Unset output button (design `.brow-out.empty`). The border is solid because
+/// egui has no dashed strokes.
 pub fn empty_output_button(ui: &mut egui::Ui, id_salt: impl std::hash::Hash) -> egui::Response {
     let frame = egui::Frame::new()
         .stroke(egui::Stroke::new(1.0, LINE))
@@ -306,11 +292,7 @@ pub fn empty_output_button(ui: &mut egui::Ui, id_salt: impl std::hash::Hash) -> 
     })
 }
 
-/// Modifier pill frame + text color.
-///
-/// A plain `normal` modifier renders borderless and dimmed, brightening while
-/// the pointer is over its row (design `.mod-pill.quiet`); any other modifier
-/// keeps the standard pill (design `.mod-pill`).
+/// Modifier pill frame + text color (design `.mod-pill` / `.mod-pill.quiet`).
 pub fn mod_pill_style(
     palette: &Palette,
     modifier: &str,
@@ -332,8 +314,7 @@ pub fn mod_pill_style(
     }
 }
 
-/// A small keycap hint (design `kbd`): `--bg-3` fill, `--line` border, mono
-/// `--ink-3` glyph. Display-only label for keyboard affordances like "esc".
+/// A small keycap hint (design `kbd`).
 pub fn kbd_hint(ui: &mut egui::Ui, label: &str, palette: &Palette) {
     egui::Frame::new()
         .fill(BG_3)
@@ -350,16 +331,15 @@ pub fn kbd_hint(ui: &mut egui::Ui, label: &str, palette: &Palette) {
         });
 }
 
-/// Bottom status bar (design `.status`): `--bg-3` fill, `--line` stroke.
-/// Callers add `inner_margin` to control padding.
+/// Bottom status bar (design `.status`). Carries no `inner_margin`; callers
+/// set their own padding.
 pub fn status_bar_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_3)
         .stroke(egui::Stroke::new(1.0, LINE))
 }
 
-/// Segmented container for the sub-profile tab strip (design `.sub-tabs`):
-/// `--bg-3` fill, `--line` border, `--r-md` corners.
+/// Segmented container for the sub-profile tab strip (design `.sub-tabs`).
 pub fn strip_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_3)
@@ -368,8 +348,7 @@ pub fn strip_frame() -> egui::Frame {
         .inner_margin(egui::Margin::same(4))
 }
 
-/// Mono uppercase eyebrow label (design `.eyebrow`): 11px `SemiBold`, 0.1em
-/// tracking, `INK_3`.
+/// Mono uppercase eyebrow label (design `.eyebrow`).
 #[must_use]
 pub fn eyebrow(text: &str) -> egui::RichText {
     egui::RichText::new(text.to_uppercase())
@@ -378,23 +357,19 @@ pub fn eyebrow(text: &str) -> egui::RichText {
         .color(INK_3)
 }
 
-/// Filled primary action button (design `.btn-primary`): `INK_1` fill and
-/// border, `BG_1` label at 13px `SemiBold`.
+/// Filled primary action button (design `.btn-primary`).
 pub fn primary_button(text: &str) -> egui::Button<'_> {
     egui::Button::new(egui::RichText::new(text).font(semibold(13.0)).color(BG_1))
         .fill(INK_1)
         .stroke(egui::Stroke::new(1.0, INK_1))
 }
 
-/// Small quiet action button (design `.btn-mini`): `--bg-3` fill, `--line`
-/// border, 12px Medium `--ink-2` label.
+/// Small quiet action button (design `.btn-mini`).
 pub fn mini_button(text: &str) -> egui::Button<'_> {
     egui::Button::new(egui::RichText::new(text).font(medium(12.0)).color(INK_2)).fill(BG_3)
 }
 
-/// One sub-profile chip container (design `.sub-tab` / `.sub-tab.on`):
-/// transparent when resting, a `--bg-2` fill with a `--line` border when
-/// selected. 6px corners, 6px×10px padding.
+/// One sub-profile chip container (design `.sub-tab` / `.sub-tab.on`).
 pub fn sub_tab_frame(selected: bool) -> egui::Frame {
     let (fill, stroke) = if selected {
         (BG_2, egui::Stroke::new(1.0, LINE))
@@ -408,8 +383,7 @@ pub fn sub_tab_frame(selected: bool) -> egui::Frame {
         .inner_margin(egui::Margin::symmetric(10, 6))
 }
 
-/// Neutral profile-kind tag (design `.kind-tag`): `--bg-3` fill, mono
-/// `--ink-2` text, 4px corners.
+/// Neutral profile-kind tag (design `.kind-tag`).
 pub fn kind_badge(ui: &mut egui::Ui, label: &str) {
     egui::Frame::new()
         .fill(BG_3)
@@ -424,11 +398,11 @@ pub fn kind_badge(ui: &mut egui::Ui, label: &str) {
         });
 }
 
-/// Segmented selector (design `.seg`): `--bg-3` strip, `--line` border, 3px padding.
+/// Segmented selector (design `.seg`). Returns the newly-selected index when
+/// the selection changes.
 ///
 /// Chips are painted directly so the selected state uses the design's
 /// `--bg-2` + `--line` look instead of egui's global selection tint.
-/// Returns the newly-selected index when the selection changes.
 pub fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize) -> Option<usize> {
     let mut changed = None;
     egui::Frame::new()
@@ -476,9 +450,7 @@ fn seg_chip(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// Left-rail navigation item (design `.side-item` / `.side-item.active`):
-/// active = `--bg-2` fill + `--line` border + `--ink-1`; inactive =
-/// transparent + `--ink-2`, hover `--bg-4`. Spans the rail width.
+/// Left-rail navigation item (design `.side-item` / `.side-item.active`).
 pub fn nav_item(ui: &mut egui::Ui, label: &str, active: bool) -> egui::Response {
     let color = if active { INK_1 } else { INK_2 };
     let galley = ui
@@ -507,7 +479,6 @@ pub fn nav_item(ui: &mut egui::Ui, label: &str, active: bool) -> egui::Response 
 
 /// Search input in a design pill (design `.search-pill`).
 ///
-/// Fixed 280x32, `--bg-2` fill, `--line` border, painted magnifier glyph.
 /// The `TextEdit` is frameless so egui's accent focus ring never shows.
 pub fn search_pill(ui: &mut egui::Ui, text: &mut String, hint: &str) {
     egui::Frame::new()

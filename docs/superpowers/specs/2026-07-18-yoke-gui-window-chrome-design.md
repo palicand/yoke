@@ -49,19 +49,42 @@ status text), per design `.win-chrome`:
   (undecorated winit windows have no native resize borders on Windows).
   Known, accepted losses: Win11 snap-layout flyout on the maximize button
   and the system window menu.
-- **Linux** is not shipped; it takes the Windows path if ever built.
+- **Linux** is not shipped and takes neither branch: `main.rs` leaves the
+  native decorations in place, and both the caption buttons and the edge-resize
+  zones are gated on `target_os = "windows"`. The result is a natively
+  decorated window with the chrome strip inside it (drag and double-click
+  still work). Shipping Linux means broadening all three gates together.
 
 Platform branching uses `cfg!(target_os = ...)` runtime checks wherever the
 code is portable (everything except the `ViewportBuilder` calls), so all
 branches typecheck on every host — the Windows path cannot rot invisibly on
 a macOS dev machine.
 
-`ViewportCommand::Close` feeds the existing `close_requested` /
-discard-changes flow unchanged.
+## Quitting with unsaved edits
+
+The caption close button sends `ViewportCommand::Close`, the same request the
+macOS traffic light and the Linux native close produce. Before this spec
+nothing intercepted it, so quitting a dirty profile discarded the edits
+silently — a loss the in-app close paths have always guarded with the
+confirm-discard modal.
+
+`YokeApp::ui` must answer the request in the frame it arrives —
+[`ViewportInfo::close_requested`][vi] is documented as "the application will
+exit after this frame unless you send `CancelClose`", and eframe checks the root
+viewport's commands for it only after `App::ui` returns. If the open session is
+dirty it sends [`ViewportCommand::CancelClose`][vc] and raises the
+existing confirm-discard modal. "Keep editing" (and Escape, and a backdrop
+click) abandons the quit; "Discard" closes the profile and re-issues
+`ViewportCommand::Close`, which is not cancelled the second time because
+nothing dirty remains. This is app-wide, not Windows-only — the caption button
+is one caller among three.
 
 ## Testing
 
 - Full gate set (fmt, clippy `-D warnings`, tests, wasm build).
+- Unit tests over `on_close_requested`: dirty quit cancels and prompts, clean
+  quit proceeds, an in-app close never arms the quit intent, and a profile
+  opening afterwards clears a stale one.
 - Manual on macOS: traffic lights, drag, double-click zoom, no title text.
 - Windows behavior is compile-verified only (`ViewportCommand` is a
   cross-platform egui type); functional verification deferred to the first
@@ -75,4 +98,5 @@ discard-changes flow unchanged.
 
 [vb]: https://docs.rs/egui/0.34/egui/viewport/struct.ViewportBuilder.html
 [vc]: https://docs.rs/egui/0.34/egui/viewport/enum.ViewportCommand.html
+[vi]: https://docs.rs/egui/0.34/egui/viewport/struct.ViewportInfo.html#method.close_requested
 [cwf]: https://github.com/emilk/egui/blob/main/examples/custom_window_frame/src/main.rs
