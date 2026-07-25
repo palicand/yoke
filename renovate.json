@@ -5,6 +5,9 @@
     "group:allNonMajor"
   ],
   "separateMajorMinor": true,
+  "lockFileMaintenance": {
+    "enabled": true
+  },
   "packageRules": [
     {
       "description": "Cargo treats a 0.x minor bump as breaking, so it must not ride along in the grouped non-major PR.",
@@ -33,6 +36,26 @@
         "minor"
       ],
       "groupName": "egui"
+    },
+    {
+      "description": "A toolchain bump can break the build on newly-added lints alone, so it must land on its own rather than take a batch of crate updates down with it.",
+      "matchManagers": [
+        "rust-toolchain"
+      ],
+      "groupName": null
+    },
+    {
+      "description": "wasm-bindgen-futures depends on an exact wasm-bindgen version, which Renovate's one-crate-at-a-time `cargo update --precise` can never satisfy; lockFileMaintenance moves the family as a unit instead.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "wasm-bindgen",
+        "wasm-bindgen-**",
+        "js-sys",
+        "web-sys"
+      ],
+      "enabled": false
     }
   ]
 }
