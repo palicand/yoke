@@ -32,13 +32,8 @@
             pkgs.trunk
             pkgs.pkg-config
 
-            # Windows cross-compile from macOS, e.g.
-            #   cargo xwin build --release -p yoke-gui --target aarch64-pc-windows-msvc
-            # cargo-xwin fetches the MSVC CRT + Windows SDK on first run; lld
-            # supplies lld-link (the MSVC-target linker); llvm supplies llvm-lib
-            # (the MSVC librarian cc-rs invokes). clang + cmake build the C
-            # dependencies reqwest's rustls stack pulls in (aws-lc-sys). nasm is
-            # only needed when cross-building the x86_64 target, not aarch64.
+            # `cargo xwin build --target aarch64-pc-windows-msvc`; lld/llvm
+            # supply lld-link and llvm-lib, clang+cmake build aws-lc-sys.
             pkgs.cargo-xwin
             pkgs.lld
             pkgs.llvm
