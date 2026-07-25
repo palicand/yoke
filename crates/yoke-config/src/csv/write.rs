@@ -134,6 +134,12 @@ fn write_canonical(profile: &Profile) -> Vec<u8> {
     write_raw(&raw)
 }
 
+// The template path must be byte-faithful: a model that came straight out of the
+// parser has to write back to the exact input bytes. Rebuilding a row from the
+// model alone cannot do that, because the model is a lossy view of the row --
+// cells past the modelled columns (and the source's own column count) exist only
+// in the template. So each row is emitted from its template row with just the
+// cells whose model value actually changed overwritten.
 fn rebuild_sub_profile(sp: &SubProfile, template: &RawSection) -> RawSection {
     let mut header_rows: Vec<RawRow> = template.rows.iter().take(3).cloned().collect();
     // Persist the model's profile name into the verbatim-copied header. The name is the
@@ -149,19 +155,122 @@ fn rebuild_sub_profile(sp: &SubProfile, template: &RawSection) -> RawSection {
         }
         first.cells[1].clone_from(&sp.header.profile_name);
     }
-    let body_template_width = template.rows.first().map_or(4, |r| r.cells.len());
+    let data = template.rows.get(3..).unwrap_or_default();
+    let fresh_width = data.first().map_or_else(
+        || template.rows.first().map_or(4, |r| r.cells.len()),
+        |r| r.cells.len(),
+    );
 
     let mut rows = header_rows;
-    for row in &sp.rows {
-        rows.push(match row {
-            SubProfileRow::Binding(b) => binding_row(b, body_template_width),
-            SubProfileRow::Override(o) => override_row(o, body_template_width),
-        });
+    let mut cursor = 0usize;
+    for trow in data {
+        let key = trow.cells.first().map_or("", String::as_str);
+        // The parser skips rows with a blank output cell, so they have no model
+        // counterpart and are carried through in place.
+        if key.is_empty() {
+            rows.push(trow.clone());
+            continue;
+        }
+        let Some(matched) =
+            (cursor..sp.rows.len()).find(|&i| sub_profile_row_key(&sp.rows[i]) == key)
+        else {
+            // The model no longer carries this row: the edit deleted it.
+            continue;
+        };
+        for row in &sp.rows[cursor..matched] {
+            rows.push(fresh_sub_profile_row(row, fresh_width));
+        }
+        rows.push(merge_sub_profile_row(&sp.rows[matched], trow));
+        cursor = matched + 1;
+    }
+    for row in &sp.rows[cursor..] {
+        rows.push(fresh_sub_profile_row(row, fresh_width));
     }
     RawSection { rows }
 }
 
+fn sub_profile_row_key(row: &SubProfileRow) -> String {
+    match row {
+        SubProfileRow::Binding(b) => b.output.to_csv(),
+        SubProfileRow::Override(o) => o.key.as_csv(),
+    }
+}
+
+fn fresh_sub_profile_row(row: &SubProfileRow, width: usize) -> RawRow {
+    match row {
+        SubProfileRow::Binding(b) => binding_row(b, width),
+        SubProfileRow::Override(o) => override_row(o, width),
+    }
+}
+
+fn merge_sub_profile_row(row: &SubProfileRow, template: &RawRow) -> RawRow {
+    let mut cells = template.cells.clone();
+    match row {
+        SubProfileRow::Binding(b) => {
+            set_cell(&mut cells, 0, &b.output.to_csv());
+            set_cell(&mut cells, 1, &b.modifier.to_csv());
+            set_cell(
+                &mut cells,
+                VALUE_COL,
+                &b.input
+                    .as_ref()
+                    .map(crate::catalog::Input::to_csv)
+                    .unwrap_or_default(),
+            );
+            merge_comment(&mut cells, b.comment.as_deref());
+        }
+        SubProfileRow::Override(o) => {
+            set_cell(&mut cells, 0, &o.key.as_csv());
+            // Column 1 is left verbatim: the parser does not read a modifier for
+            // an override row, so the model has no value to write back.
+            set_cell(&mut cells, VALUE_COL, &o.value);
+            merge_comment(&mut cells, o.comment.as_deref());
+        }
+    }
+    RawRow { cells }
+}
+
+// Writes `value` only when it differs from what the parser read out of this cell,
+// so an unchanged field never widens the row or rewrites the source's own spelling.
+// A missing cell reads as empty, matching the parser.
+fn set_cell(cells: &mut Vec<String>, idx: usize, value: &str) {
+    if cells.get(idx).map_or("", String::as_str) == value {
+        return;
+    }
+    if cells.len() <= idx {
+        cells.resize(idx + 1, String::new());
+    }
+    value.clone_into(&mut cells[idx]);
+}
+
+// Mirrors the parser's comment fold: every non-empty cell from COMMENT_COL on,
+// joined by a space.
+fn template_comment(cells: &[String]) -> Option<String> {
+    let mut c = String::new();
+    for cell in cells.iter().skip(COMMENT_COL).filter(|s| !s.is_empty()) {
+        if !c.is_empty() {
+            c.push(' ');
+        }
+        c.push_str(cell);
+    }
+    (!c.is_empty()).then_some(c)
+}
+
+// The comment spans every cell from COMMENT_COL on, so a changed comment has to
+// replace the whole run rather than just its first cell.
+fn merge_comment(cells: &mut Vec<String>, comment: Option<&str>) {
+    if template_comment(cells).as_deref() == comment {
+        return;
+    }
+    cells.truncate(COMMENT_COL.min(cells.len()));
+    if let Some(c) = comment {
+        place_comment(cells, c);
+    }
+}
+
 const COMMENT_COL: usize = 10;
+// The column a vertical device CSV keeps binding inputs and override values in.
+const VALUE_COL: usize = 2;
 
 // Place a column-K (index 10) comment, padding earlier cells as needed.
 fn place_comment(cells: &mut Vec<String>, comment: &str) {
@@ -282,36 +391,75 @@ fn rebuild_preferences(profile: &Profile, template: &RawSection) -> RawSection {
     let Some(prefs) = &profile.preferences else {
         return RawSection { rows: header_rows };
     };
-    // Width must come from data rows, not the title row which is typically 1 cell.
-    let width = template
-        .rows
-        .iter()
-        .map(|r| r.cells.len())
-        .max()
-        .unwrap_or(5)
-        .max(5);
+    let data = template.rows.get(3..).unwrap_or_default();
+    // Width for rows the model adds; existing rows keep their own.
+    let fresh_width = data.first().map_or(5, |r| r.cells.len()).max(5);
+
     let mut rows = header_rows;
-    for (id, entry) in &prefs.entries {
-        let mut cells = vec![
-            id.clone(),
-            entry.value.clone(),
-            entry.units.clone(),
-            entry.description.clone(),
-        ];
-        pad_to(&mut cells, width);
-        if let Some(c) = &entry.comment {
-            if cells.len() > 4 {
-                cells[4].clone_from(c);
-            } else {
-                while cells.len() < 4 {
-                    cells.push(String::new());
-                }
-                cells.push(c.clone());
-            }
+    let mut cursor = 0usize;
+    let mut trailing: &[RawRow] = &[];
+    for (i, trow) in data.iter().enumerate() {
+        let key = trow.cells.first().map_or("", String::as_str);
+        // The parser stops at the first blank id, so nothing from here on is
+        // modelled and all of it has to survive verbatim.
+        if key.is_empty() {
+            trailing = &data[i..];
+            break;
         }
-        rows.push(RawRow { cells });
+        let Some(matched) = (cursor..prefs.entries.len()).find(|&i| prefs.entries[i].0 == key)
+        else {
+            continue;
+        };
+        for (id, entry) in &prefs.entries[cursor..matched] {
+            rows.push(fresh_preference_row(id, entry, fresh_width));
+        }
+        let (id, entry) = &prefs.entries[matched];
+        rows.push(merge_preference_row(id, entry, trow));
+        cursor = matched + 1;
     }
+    for (id, entry) in &prefs.entries[cursor..] {
+        rows.push(fresh_preference_row(id, entry, fresh_width));
+    }
+    rows.extend(trailing.iter().cloned());
     RawSection { rows }
+}
+
+fn merge_preference_row(
+    id: &str,
+    entry: &crate::model::PreferenceEntry,
+    template: &RawRow,
+) -> RawRow {
+    let mut cells = template.cells.clone();
+    set_cell(&mut cells, 0, id);
+    set_cell(&mut cells, 1, &entry.value);
+    set_cell(&mut cells, 2, &entry.units);
+    set_cell(&mut cells, 3, &entry.description);
+    // The parser trims the comment cell, so compare trimmed before deciding the
+    // model changed it.
+    let existing = cells.get(4).map(|s| s.trim()).filter(|s| !s.is_empty());
+    if existing != entry.comment.as_deref() {
+        set_cell(&mut cells, 4, entry.comment.as_deref().unwrap_or(""));
+    }
+    RawRow { cells }
+}
+
+fn fresh_preference_row(id: &str, entry: &crate::model::PreferenceEntry, width: usize) -> RawRow {
+    let mut cells = vec![
+        id.to_owned(),
+        entry.value.clone(),
+        entry.units.clone(),
+        entry.description.clone(),
+    ];
+    pad_to(&mut cells, width);
+    if let Some(c) = &entry.comment {
+        if cells.len() > 4 {
+            cells[4].clone_from(c);
+        } else {
+            cells.resize(4, String::new());
+            cells.push(c.clone());
+        }
+    }
+    RawRow { cells }
 }
 
 fn top_line_to_cells(profile: &Profile) -> Vec<String> {
@@ -450,6 +598,96 @@ volume,40,,,note-here\r\n\
         pretty_assertions::assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
             std::str::from_utf8(WITH_COMMENT).unwrap()
+        );
+    }
+
+    // An unescaped comma in a preference description splits into extra cells that the
+    // model does not carry. They live in the template and must survive the write.
+    const SPLIT_DESCRIPTION: &[u8] = b"QuadStick Configuration,Version 1.4,abc,Mac\r\n\
+Preferences,\r\n\
+prefs.csv,,,,\r\n\
+Preference,Value,Units,Description,\r\n\
+enable_DS3_emulation,3,,0=Normal composite device mode, 1=DS3 emulation, 2=X360CE mode,\r\n\
+volume,40,,,\r\n\
+\r\n";
+
+    #[test]
+    fn preference_row_with_split_description_round_trips() {
+        let r = parse(SPLIT_DESCRIPTION).expect("parse");
+        let bytes = write(&r.model, Some(&r.raw)).expect("write");
+        pretty_assertions::assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            std::str::from_utf8(SPLIT_DESCRIPTION).unwrap()
+        );
+    }
+
+    #[test]
+    fn editing_a_preference_value_keeps_the_rest_of_its_row() {
+        let r = parse(SPLIT_DESCRIPTION).expect("parse");
+        let mut model = r.model.clone();
+        let prefs = model.preferences.as_mut().expect("prefs");
+        "5".clone_into(&mut prefs.entries[0].1.value);
+        let bytes = write(&model, Some(&r.raw)).expect("write");
+        let out = std::str::from_utf8(&bytes).unwrap();
+        assert!(
+            out.contains(
+                "enable_DS3_emulation,5,,0=Normal composite device mode, 1=DS3 emulation, 2=X360CE mode,\r\n"
+            ),
+            "row was: {out}"
+        );
+    }
+
+    const MIXED_WIDTHS: &[u8] = b"QuadStick Configuration,Version 1.4,abc,Mac\r\n\
+Profile Name,,Mouse Mode,\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_wheel_up,normal,\r\n\
+mouse_left,normal,left,\r\n\
+,,,\r\n\
+\r\n";
+
+    #[test]
+    fn rows_keep_their_own_column_count() {
+        // A 3-cell binding row must not be padded out to the header's width, and the
+        // all-empty row the parser skips has to stay where it was.
+        let r = parse(MIXED_WIDTHS).expect("parse");
+        let bytes = write(&r.model, Some(&r.raw)).expect("write");
+        pretty_assertions::assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            std::str::from_utf8(MIXED_WIDTHS).unwrap()
+        );
+    }
+
+    #[test]
+    fn deleting_a_binding_drops_only_its_row() {
+        let r = parse(MIXED_WIDTHS).expect("parse");
+        let mut model = r.model.clone();
+        model.sub_profiles[0].rows.remove(0);
+        let bytes = write(&model, Some(&r.raw)).expect("write");
+        let out = std::str::from_utf8(&bytes).unwrap();
+        assert!(!out.contains("mouse_wheel_up"), "stale row leaked: {out}");
+        assert!(out.contains("mouse_left,normal,left,\r\n"), "out: {out}");
+    }
+
+    #[test]
+    fn multi_cell_binding_comment_round_trips() {
+        // The parser folds every cell from column 10 on into one comment; writing it
+        // back as a single cell would drop the split.
+        const WIDE_COMMENT: &[u8] = b"QuadStick Configuration,Version 1.4,abc,Mac\r\n\
+Profile Name,,Mouse Mode,\r\n\
+,,Normal,\r\n\
+Output or Function,Function,usb,\r\n\
+mouse_left,normal,left,,,,,,,,note1,note2\r\n\
+\r\n";
+        let r = parse(WIDE_COMMENT).expect("parse");
+        assert_eq!(
+            r.model.sub_profiles[0].bindings().next().unwrap().comment,
+            Some("note1 note2".to_owned())
+        );
+        let bytes = write(&r.model, Some(&r.raw)).expect("write");
+        pretty_assertions::assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            std::str::from_utf8(WIDE_COMMENT).unwrap()
         );
     }
 
