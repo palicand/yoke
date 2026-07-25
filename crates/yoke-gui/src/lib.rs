@@ -1,4 +1,5 @@
 pub mod app;
+pub(crate) mod chrome;
 pub mod data;
 pub mod edit;
 pub mod state;

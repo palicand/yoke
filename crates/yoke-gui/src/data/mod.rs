@@ -56,9 +56,7 @@ pub struct ProfileEntryView {
     pub name: ProfileName,
     pub label: String,
     pub kind: Option<ProfileKind>,
-    pub bindings: usize,
     pub sub_profiles: usize,
-    pub modes: Vec<String>,
 }
 
 impl ProfileEntryView {
@@ -73,19 +71,12 @@ impl ProfileEntryView {
             .iter()
             .map(|s| s.header.mode.canonical_csv())
             .collect();
-        let bindings = profile
-            .sub_profiles
-            .iter()
-            .map(|s| s.bindings().count())
-            .sum();
         let kind = kind_from_mode_names(&mode_names);
         Self {
             name,
             label,
             kind,
-            bindings,
             sub_profiles: profile.sub_profiles.len(),
-            modes: mode_names,
         }
     }
 
@@ -95,9 +86,7 @@ impl ProfileEntryView {
             name,
             label,
             kind: None,
-            bindings: 0,
             sub_profiles: 0,
-            modes: Vec::new(),
         }
     }
 }

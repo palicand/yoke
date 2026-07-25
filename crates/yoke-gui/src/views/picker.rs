@@ -38,7 +38,6 @@ pub fn show(
     outcome
 }
 
-/// Two-part modal header: a mono uppercase eyebrow above a serif title.
 fn picker_header(ui: &mut egui::Ui, palette: &Palette, eyebrow: &str, title: &str) {
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 1.0;
@@ -73,7 +72,6 @@ fn output_body(
 
     ui.separator();
 
-    // Modifier sub-control on add: the new chord's key (default normal).
     if matches!(state.target, PickerTarget::AddBinding { .. }) {
         modifier_subcontrol(ui, state, palette);
     }
@@ -88,25 +86,14 @@ fn output_body(
     PickerOutcome::Open
 }
 
-/// Thin footer: navigation hint on the left, filtered match count on the right.
-/// Keyboard navigation is not wired here; the hint is informational, matching
-/// the design.
 fn output_footer(ui: &mut egui::Ui, palette: &Palette, matches: usize) {
     ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.add(egui::Label::new(
-            egui::RichText::new("\u{2195} navigate   \u{21b5} select")
-                .small()
-                .color(palette.ink_3),
-        ));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add(egui::Label::new(
-                egui::RichText::new(format!("{matches} matches"))
-                    .small()
-                    .color(palette.ink_3),
-            ));
-        });
-    });
+    let noun = if matches == 1 { "output" } else { "outputs" };
+    ui.label(
+        egui::RichText::new(format!("{matches} {noun}"))
+            .small()
+            .color(palette.ink_3),
+    );
 }
 
 /// Key-capture banner + capture event handler. Returns a commit outcome when a
@@ -176,7 +163,6 @@ fn capture_banner(
     }
 }
 
-/// Framed search field + category chips row.
 fn search_bar(ui: &mut egui::Ui, state: &mut PickerState, palette: &Palette) {
     egui::Frame::new()
         .fill(ui.visuals().faint_bg_color)
@@ -198,7 +184,6 @@ fn search_bar(ui: &mut egui::Ui, state: &mut PickerState, palette: &Palette) {
         });
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
-        // "All" chip first: selected when no category filter is active.
         if category_chip(ui, palette, "All", None, state.category.is_none()).clicked() {
             state.category = None;
         }
@@ -212,8 +197,6 @@ fn search_bar(ui: &mut egui::Ui, state: &mut PickerState, palette: &Palette) {
     });
 }
 
-/// One category pill: an optional leading colored dot and the label. Selected
-/// pills lift to a tinted fill + the category color border.
 fn category_chip(
     ui: &mut egui::Ui,
     palette: &Palette,
@@ -278,9 +261,8 @@ fn output_list(
                 matches += 1;
                 let color = theme::output_color(palette, &output);
                 let glyph = output_glyph(&id);
-                // Full-width clickable row: leading glyph badge, the csv code
-                // (the catalog exposes no human label distinct from the id),
-                // a category tag, and a trailing enter hint.
+                // Fixed-width glyph column so the csv codes align (the catalog
+                // exposes no human label distinct from the id).
                 let row_resp = egui::Frame::new()
                     .corner_radius(egui::CornerRadius::same(5))
                     .inner_margin(egui::Margin::symmetric(8, 4))
@@ -288,7 +270,15 @@ fn output_list(
                         ui.set_min_width(ui.available_width());
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 8.0;
-                            theme::glyph_box(ui, &glyph, color);
+                            ui.add_sized(
+                                egui::vec2(40.0, 18.0),
+                                egui::Label::new(
+                                    egui::RichText::new(&glyph)
+                                        .monospace()
+                                        .size(13.0)
+                                        .color(color),
+                                ),
+                            );
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(&id)
@@ -298,18 +288,10 @@ fn output_list(
                                 )
                                 .truncate(),
                             );
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(egui::RichText::new("\u{21b5}").color(palette.ink_3));
-                                    theme::category_tag(ui, cat, color);
-                                },
-                            );
                         });
                     })
                     .response;
 
-                // Hover tint over the whole row frame.
                 let row_resp = ui.interact(
                     row_resp.rect,
                     egui::Id::new("picker_row").with(&id),

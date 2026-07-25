@@ -32,8 +32,8 @@ impl Palette {
     #[must_use]
     pub const fn console() -> Self {
         Self {
-            accent: rgb(0x6E_D2_74),
-            accent_2: rgb(0x1E_3B_1F),
+            accent: rgb(0x84_C4_85),
+            accent_2: rgb(0x21_33_21),
             keyboard: rgb(0x6F_BE_FF),
             mouse: rgb(0xF9_B6_4F),
             gamepad: rgb(0x75_D8_7A),
@@ -46,18 +46,6 @@ impl Palette {
             ink_3: rgb(0x5E_64_6C),
             line: rgb(0x2A_2F_36),
         }
-    }
-}
-
-/// Map a `StationKind` to its palette color for legend dots and tints.
-#[must_use]
-pub const fn station_kind_color(palette: &Palette, kind: crate::stations::StationKind) -> Color32 {
-    use crate::stations::StationKind;
-    match kind {
-        StationKind::Joystick => palette.joystick,
-        StationKind::Mouthpiece => palette.mouse,
-        StationKind::Lip => palette.keyboard,
-        StationKind::Side => palette.system,
     }
 }
 
@@ -97,15 +85,17 @@ pub fn category_color(palette: &Palette, category: &str) -> Color32 {
 // Console surface tokens (design `[data-theme="console"]`).
 const BG_0: Color32 = rgb(0x0A_0B_0D); // app frame
 const BG_1: Color32 = rgb(0x14_16_1A); // canvas / panels
-const BG_2: Color32 = rgb(0x1B_1E_23); // surface / ghost-button fill
-const BG_3: Color32 = rgb(0x20_24_2A); // subtle surface / hover
-const BG_4: Color32 = rgb(0x2A_2F_36); // depressed / active
-const INK_1: Color32 = rgb(0xE8_E6_E0);
-const INK_2: Color32 = rgb(0x9A_A0_A8);
-const LINE: Color32 = rgb(0x2A_2F_36);
+pub(crate) const BG_2: Color32 = rgb(0x1B_1E_23); // surface / ghost-button fill
+pub(crate) const BG_3: Color32 = rgb(0x20_24_2A); // subtle surface / hover
+pub(crate) const BG_4: Color32 = rgb(0x2A_2F_36); // depressed / active
+pub(crate) const INK_1: Color32 = rgb(0xE8_E6_E0);
+pub(crate) const INK_2: Color32 = rgb(0x9A_A0_A8);
+const INK_3: Color32 = rgb(0x5E_64_6C);
+pub(crate) const LINE: Color32 = rgb(0x2A_2F_36);
 const LINE_STRONG: Color32 = rgb(0x3A_40_48);
-const ACCENT: Color32 = rgb(0x6E_D2_74);
-const ACCENT_2: Color32 = rgb(0x1E_3B_1F);
+const ACCENT: Color32 = rgb(0x84_C4_85);
+const ACCENT_2: Color32 = rgb(0x21_33_21);
+const BG_BINDING: Color32 = rgb(0x2A_2A_1E);
 
 // Corner-radius scale; widgets read u8. One source of truth for the values
 // used in more than one place.
@@ -114,9 +104,6 @@ pub const R_MD: u8 = 10; // --r-md
 pub const R_FULL: u8 = 99; // fully-rounded pill
 
 /// Console dark `egui::Visuals` from the design `--bg-*` / `--ink-*` tokens.
-///
-/// Widgets are styled as the design's ghost buttons: `--bg-2` fill, a `--line`
-/// border, `--r-sm` corners, lifting to `--bg-3`/`--bg-4` on hover/press.
 #[must_use]
 pub fn console_visuals() -> egui::Visuals {
     use egui::{CornerRadius, Stroke};
@@ -147,7 +134,6 @@ pub fn console_visuals() -> egui::Visuals {
     w.inactive.bg_stroke = Stroke::new(1.0, LINE);
     w.inactive.fg_stroke = Stroke::new(1.0, INK_1);
     w.inactive.corner_radius = radius;
-    // Hover.
     w.hovered.bg_fill = BG_3;
     w.hovered.weak_bg_fill = BG_3;
     w.hovered.bg_stroke = Stroke::new(1.0, LINE_STRONG);
@@ -169,31 +155,27 @@ pub fn console_visuals() -> egui::Visuals {
 }
 
 /// Build the full Console `Style`.
-///
-/// Layers the design typography scale (Instrument serif display headings,
-/// `JetBrains` Mono eyebrows/labels, Manrope body) and roomier spacing on
-/// `console_visuals`.
 #[must_use]
 pub fn console_style() -> egui::Style {
     use egui::{FontFamily, FontId, TextStyle};
 
-    let mut style = egui::Style::default();
-    let serif = FontFamily::Name("Instrument".into());
-    style.text_styles = [
-        (TextStyle::Heading, FontId::new(30.0, serif)),
-        (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
-        (
-            TextStyle::Button,
-            FontId::new(13.0, FontFamily::Proportional),
-        ),
-        (
-            TextStyle::Monospace,
-            FontId::new(12.5, FontFamily::Monospace),
-        ),
-        // Eyebrows/captions render mono, matching the design's small labels.
-        (TextStyle::Small, FontId::new(11.0, FontFamily::Monospace)),
-    ]
-    .into();
+    let mut style = egui::Style {
+        text_styles: [
+            // Dialog/picker headings (design `.picker-title`, 18px/700).
+            (TextStyle::Heading, bold(18.0)),
+            (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
+            // Design buttons are 13px at weight 500 (`.btn-ghost`).
+            (TextStyle::Button, medium(13.0)),
+            (
+                TextStyle::Monospace,
+                FontId::new(12.5, FontFamily::Monospace),
+            ),
+            // Eyebrows/captions render mono, matching the design's small labels.
+            (TextStyle::Small, FontId::new(11.0, FontFamily::Monospace)),
+        ]
+        .into(),
+        ..egui::Style::default()
+    };
 
     let s = &mut style.spacing;
     s.item_spacing = egui::vec2(8.0, 8.0);
@@ -207,12 +189,16 @@ pub fn console_style() -> egui::Style {
 }
 
 /// Install the Console theme on a context. Call once at startup.
+///
+/// Force dark: egui's `theme_preference` defaults to `System`, so pin it to Dark
+/// and set the dark slot directly — the app has no light palette to fall back to.
 pub fn apply(ctx: &egui::Context) {
-    ctx.set_global_style(console_style());
+    ctx.set_theme(egui::ThemePreference::Dark);
+    ctx.set_style_of(egui::Theme::Dark, console_style());
 }
 
 /// Surface card for the editor's device/bindings panes (design
-/// `.dev-pane`/`.bind-pane`): `--bg-2` fill, `--line` border, `--r-md` corners.
+/// `.dev-pane`/`.bind-pane`).
 pub fn card_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_2)
@@ -221,46 +207,22 @@ pub fn card_frame() -> egui::Frame {
         .inner_margin(egui::Margin::symmetric(16, 14))
 }
 
-/// Small rounded pill (design `.mod-pill`): `--bg-2` fill, `--line` border.
+/// Small rounded pill (design `.mod-pill`).
 pub fn pill_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_2)
         .stroke(egui::Stroke::new(1.0, LINE))
-        .corner_radius(egui::CornerRadius::same(8))
-        .inner_margin(egui::Margin::symmetric(7, 2))
+        .corner_radius(egui::CornerRadius::same(12))
+        .inner_margin(egui::Margin::symmetric(8, 3))
 }
 
-/// Bordered binding-row container (design `.brow`): `--bg-1`, `--line` border.
+/// Bordered binding-row container (design `.brow`).
 pub fn row_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_1)
         .stroke(egui::Stroke::new(1.0, LINE))
         .corner_radius(egui::CornerRadius::same(8))
-        .inner_margin(egui::Margin::symmetric(10, 7))
-}
-
-/// Leading short-code glyph box (design `.evt-short`): a 20x16px bordered box,
-/// `--bg-3` fill, `--line` border, holding a short mono glyph. Display-only; the
-/// glyph is a label, not a control.
-pub fn glyph_box(ui: &mut egui::Ui, glyph: &str, color: egui::Color32) {
-    egui::Frame::new()
-        .fill(BG_3)
-        .stroke(egui::Stroke::new(1.0, LINE))
-        .corner_radius(egui::CornerRadius::same(R_SM))
-        .inner_margin(egui::Margin::symmetric(6, 4))
-        .show(ui, |ui| {
-            // Min square footprint; render the glyph directly. Do NOT justify to
-            // available width: in a horizontal row that expands the box across the
-            // whole pane and pushes the rest of the row off-screen.
-            ui.set_min_size(egui::vec2(20.0, 16.0));
-            ui.add(egui::Label::new(
-                egui::RichText::new(glyph)
-                    .monospace()
-                    .strong()
-                    .size(12.0)
-                    .color(color),
-            ));
-        });
+        .inner_margin(egui::Margin::symmetric(10, 8))
 }
 
 /// Show a frame, then promote its whole rect to a pointer-cursor click target.
@@ -280,40 +242,79 @@ pub fn clickable_frame<R>(
 
 /// Filled, bordered output button (design `.brow-out.set`).
 ///
-/// A category-color-tinted fill and border with `--r-sm` corners, containing a
-/// leading output glyph, the output label, and a trailing category tag. Returns
-/// the button's response so the caller can wire it to the existing edit-output
-/// picker. Visual container only — it carries no mutation itself.
+/// `min_w` stretches the chip to a column width (CSS grid items stretch to
+/// their cell); pass 0.0 to hug content.
 pub fn output_button(
     ui: &mut egui::Ui,
     glyph: &str,
     label: &str,
-    category: &str,
     color: egui::Color32,
+    min_w: f32,
 ) -> egui::Response {
     let frame = egui::Frame::new()
-        .fill(color.gamma_multiply(0.14))
-        .stroke(egui::Stroke::new(1.0, color.gamma_multiply(0.55)))
+        .fill(BG_BINDING)
+        .stroke(egui::Stroke::new(1.0, LINE))
         .corner_radius(egui::CornerRadius::same(R_SM))
-        .inner_margin(egui::Margin::symmetric(8, 5));
+        .inner_margin(egui::Margin::symmetric(10, 6));
     clickable_frame(ui, frame, label, |ui| {
+        if min_w > 0.0 {
+            ui.set_min_width(min_w - 22.0);
+        }
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 7.0;
-            ui.add(egui::Label::new(
-                egui::RichText::new(glyph)
-                    .monospace()
-                    .strong()
-                    .size(12.0)
-                    .color(color),
-            ));
-            ui.add(egui::Label::new(egui::RichText::new(label).color(color).size(12.5)).truncate());
-            category_tag(ui, category, color);
+            ui.spacing_mut().item_spacing.x = 8.0;
+            // Fixed 28px glyph column (design `.evt-glyph`) so labels align
+            // across rows regardless of glyph width.
+            ui.allocate_ui_with_layout(
+                egui::vec2(28.0, 18.0),
+                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                |ui| {
+                    ui.add(egui::Label::new(
+                        egui::RichText::new(glyph)
+                            .font(mono_bold(14.0))
+                            .color(color),
+                    ));
+                },
+            );
+            ui.add(egui::Label::new(egui::RichText::new(label).color(INK_1).size(14.0)).truncate());
         });
     })
 }
 
-/// A small keycap hint (design `kbd`): `--bg-3` fill, `--line` border, mono
-/// `--ink-3` glyph. Display-only label for keyboard affordances like "esc".
+/// Unset output button (design `.brow-out.empty`). The border is solid because
+/// egui has no dashed strokes.
+pub fn empty_output_button(ui: &mut egui::Ui, id_salt: impl std::hash::Hash) -> egui::Response {
+    let frame = egui::Frame::new()
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(R_SM))
+        .inner_margin(egui::Margin::symmetric(10, 6));
+    clickable_frame(ui, frame, id_salt, |ui| {
+        ui.label(egui::RichText::new("+ Bind output").size(14.0).color(INK_3));
+    })
+}
+
+/// Modifier pill frame + text color (design `.mod-pill` / `.mod-pill.quiet`).
+pub fn mod_pill_style(
+    palette: &Palette,
+    modifier: &str,
+    row_hovered: bool,
+) -> (egui::Frame, Color32) {
+    if modifier != "normal" {
+        return (pill_frame(), palette.ink_2);
+    }
+    let quiet = egui::Frame::new()
+        .corner_radius(egui::CornerRadius::same(12))
+        .inner_margin(egui::Margin::symmetric(8, 3));
+    if row_hovered {
+        (
+            quiet.stroke(egui::Stroke::new(1.0, LINE)),
+            palette.ink_2.gamma_multiply(0.8),
+        )
+    } else {
+        (quiet, palette.ink_2.gamma_multiply(0.4))
+    }
+}
+
+/// A small keycap hint (design `kbd`).
 pub fn kbd_hint(ui: &mut egui::Ui, label: &str, palette: &Palette) {
     egui::Frame::new()
         .fill(BG_3)
@@ -330,33 +331,15 @@ pub fn kbd_hint(ui: &mut egui::Ui, label: &str, palette: &Palette) {
         });
 }
 
-/// Small uppercase category tag (design output category pill): a 14%-tinted
-/// category-color fill and dimmed (80%) category-color text, no border.
-pub fn category_tag(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
-    egui::Frame::new()
-        .fill(color.gamma_multiply(0.14))
-        .corner_radius(egui::CornerRadius::same(4))
-        .inner_margin(egui::Margin::symmetric(5, 2))
-        .show(ui, |ui| {
-            ui.label(
-                egui::RichText::new(label.to_uppercase())
-                    .monospace()
-                    .size(10.0)
-                    .color(color.gamma_multiply(0.8)),
-            );
-        });
-}
-
-/// Bottom status bar (design `.status`): `--bg-3` fill, `--line` stroke.
-/// Callers add `inner_margin` to control padding.
+/// Bottom status bar (design `.status`). Carries no `inner_margin`; callers
+/// set their own padding.
 pub fn status_bar_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_3)
         .stroke(egui::Stroke::new(1.0, LINE))
 }
 
-/// Segmented container for the sub-profile tab strip (design `.sub-tabs`):
-/// `--bg-3` fill, `--line` border, `--r-md` corners.
+/// Segmented container for the sub-profile tab strip (design `.sub-tabs`).
 pub fn strip_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(BG_3)
@@ -365,23 +348,28 @@ pub fn strip_frame() -> egui::Frame {
         .inner_margin(egui::Margin::same(4))
 }
 
-/// Mono uppercase eyebrow label at 11px in `INK_2`.
+/// Mono uppercase eyebrow label (design `.eyebrow`).
 #[must_use]
 pub fn eyebrow(text: &str) -> egui::RichText {
     egui::RichText::new(text.to_uppercase())
-        .monospace()
-        .size(11.0)
-        .color(INK_2)
+        .font(mono_semibold(11.0))
+        .extra_letter_spacing(1.1)
+        .color(INK_3)
 }
 
-/// Filled primary action button: `ACCENT` background, `BG_1` label.
+/// Filled primary action button (design `.btn-primary`).
 pub fn primary_button(text: &str) -> egui::Button<'_> {
-    egui::Button::new(egui::RichText::new(text).color(BG_1).strong()).fill(ACCENT)
+    egui::Button::new(egui::RichText::new(text).font(semibold(13.0)).color(BG_1))
+        .fill(INK_1)
+        .stroke(egui::Stroke::new(1.0, INK_1))
 }
 
-/// One sub-profile chip container (design `.sub-tab` / `.sub-tab.on`):
-/// transparent when resting, a `--bg-2` fill with a `--line` border when
-/// selected. 6px corners, 6px×10px padding.
+/// Small quiet action button (design `.btn-mini`).
+pub fn mini_button(text: &str) -> egui::Button<'_> {
+    egui::Button::new(egui::RichText::new(text).font(medium(12.0)).color(INK_2)).fill(BG_3)
+}
+
+/// One sub-profile chip container (design `.sub-tab` / `.sub-tab.on`).
 pub fn sub_tab_frame(selected: bool) -> egui::Frame {
     let (fill, stroke) = if selected {
         (BG_2, egui::Stroke::new(1.0, LINE))
@@ -395,80 +383,189 @@ pub fn sub_tab_frame(selected: bool) -> egui::Frame {
         .inner_margin(egui::Margin::symmetric(10, 6))
 }
 
-/// Sub-profile index badge (design `.sub-tab-i`): bold mono label on the
-/// `--accent-2` fill, `--bg-1` text in the console theme, 3px corners.
-pub fn index_badge(ui: &mut egui::Ui, label: &str) {
+/// Neutral profile-kind tag (design `.kind-tag`).
+pub fn kind_badge(ui: &mut egui::Ui, label: &str) {
     egui::Frame::new()
-        .fill(ACCENT_2)
-        .corner_radius(egui::CornerRadius::same(3))
-        .inner_margin(egui::Margin::symmetric(5, 2))
-        .show(ui, |ui| {
-            ui.label(
-                egui::RichText::new(label)
-                    .monospace()
-                    .size(9.5)
-                    .strong()
-                    .color(BG_1),
-            );
-        });
-}
-
-/// Inline colored kind badge: tinted fill at 18% opacity, 4px corners.
-pub fn kind_badge(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
-    egui::Frame::new()
-        .fill(color.gamma_multiply(0.18))
+        .fill(BG_3)
         .corner_radius(egui::CornerRadius::same(4))
         .inner_margin(egui::Margin::symmetric(6, 2))
         .show(ui, |ui| {
             ui.label(
                 egui::RichText::new(label)
-                    .monospace()
-                    .size(10.5)
-                    .color(color),
+                    .font(mono_semibold(10.5))
+                    .color(INK_2),
             );
         });
 }
 
-/// Segmented selector rendered as a strip of `selectable_label`s.
-/// Returns the newly-selected index when the selection changes.
+/// Segmented selector (design `.seg`). Returns the newly-selected index when
+/// the selection changes.
+///
+/// Chips are painted directly so the selected state uses the design's
+/// `--bg-2` + `--line` look instead of egui's global selection tint.
 pub fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize) -> Option<usize> {
     let mut changed = None;
-    strip_frame().show(ui, |ui| {
-        ui.horizontal(|ui| {
-            for (i, l) in labels.iter().enumerate() {
-                if ui.selectable_label(i == selected, *l).clicked() && i != selected {
-                    changed = Some(i);
+    egui::Frame::new()
+        .fill(BG_3)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(R_SM))
+        .inner_margin(egui::Margin::same(3))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                for (i, l) in labels.iter().enumerate() {
+                    if seg_chip(ui, l, i == selected).clicked() && i != selected {
+                        changed = Some(i);
+                    }
                 }
-            }
+            });
         });
-    });
     changed
+}
+
+/// One segmented-control chip (design `.seg button` / `.seg button.on`).
+fn seg_chip(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
+    let color = if on { INK_1 } else { INK_2 };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), medium(12.5), color);
+    let size = galley.size() + egui::vec2(24.0, 8.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        if on {
+            painter.rect(
+                rect,
+                egui::CornerRadius::same(4),
+                BG_2,
+                egui::Stroke::new(1.0, LINE),
+                egui::StrokeKind::Inside,
+            );
+        } else if response.hovered() {
+            // BG_3 would vanish against the BG_3 strip; one step up instead.
+            painter.rect_filled(rect, egui::CornerRadius::same(4), BG_4);
+        }
+        painter.galley(rect.center() - galley.size() / 2.0, galley, color);
+    }
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Left-rail navigation item (design `.side-item` / `.side-item.active`).
+pub fn nav_item(ui: &mut egui::Ui, label: &str, active: bool) -> egui::Response {
+    let color = if active { INK_1 } else { INK_2 };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), medium(13.0), color);
+    let size = egui::vec2(ui.available_width(), galley.size().y + 16.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        if active {
+            painter.rect(
+                rect,
+                egui::CornerRadius::same(R_SM),
+                BG_2,
+                egui::Stroke::new(1.0, LINE),
+                egui::StrokeKind::Inside,
+            );
+        } else if response.hovered() {
+            painter.rect_filled(rect, egui::CornerRadius::same(R_SM), BG_4);
+        }
+        let pos = egui::pos2(rect.left() + 10.0, rect.center().y - galley.size().y / 2.0);
+        painter.galley(pos, galley, color);
+    }
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Search input in a design pill (design `.search-pill`).
+///
+/// The `TextEdit` is frameless so egui's accent focus ring never shows.
+pub fn search_pill(ui: &mut egui::Ui, text: &mut String, hint: &str) {
+    egui::Frame::new()
+        .fill(BG_2)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(egui::CornerRadius::same(R_SM))
+        .inner_margin(egui::Margin::symmetric(10, 0))
+        .show(ui, |ui| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(260.0, 32.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    magnifier_icon(ui);
+                    // A custom frame suppresses egui's own fill and accent
+                    // focus ring (design: the pill is the only chrome).
+                    ui.add(
+                        egui::TextEdit::singleline(text)
+                            .frame(egui::Frame::new())
+                            .hint_text(hint)
+                            .desired_width(ui.available_width()),
+                    );
+                },
+            );
+        });
+}
+
+/// Stroked magnifier glyph matching the design's inline SVG.
+fn magnifier_icon(ui: &mut egui::Ui) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+    let stroke = egui::Stroke::new(1.2, INK_2);
+    let dir = egui::vec2(
+        std::f32::consts::FRAC_1_SQRT_2,
+        std::f32::consts::FRAC_1_SQRT_2,
+    );
+    // Nudge the lens up-left so the handle stays inside the icon box.
+    let center = rect.center() - egui::vec2(1.5, 1.5);
+    let painter = ui.painter();
+    painter.circle_stroke(center, 4.5, stroke);
+    painter.line_segment([center + 4.5 * dir, center + 8.0 * dir], stroke);
 }
 
 /// Embed OFL-licensed fonts and register them with egui. Call once at startup,
 /// before `apply`, so visuals reference the correct families.
+///
+/// egui cannot synthesize weights, so each design weight (Manrope 500/600/700,
+/// `JetBrains` Mono 600/700) ships as its own font under a named family. Every
+/// named family keeps the default fallback chain so symbol glyphs still render.
 pub fn install_fonts(ctx: &egui::Context) {
     use egui::{FontData, FontDefinitions, FontFamily};
     let mut fonts = FontDefinitions::default();
 
-    fonts.font_data.insert(
-        "Manrope".to_owned(),
-        std::sync::Arc::new(FontData::from_static(include_bytes!(
-            "../assets/fonts/manrope/Manrope-Regular.ttf"
-        ))),
-    );
-    fonts.font_data.insert(
-        "JetBrainsMono".to_owned(),
-        std::sync::Arc::new(FontData::from_static(include_bytes!(
-            "../assets/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"
-        ))),
-    );
-    fonts.font_data.insert(
-        "InstrumentSerif".to_owned(),
-        std::sync::Arc::new(FontData::from_static(include_bytes!(
-            "../assets/fonts/instrument-serif/InstrumentSerif-Regular.ttf"
-        ))),
-    );
+    let faces: [(&str, &[u8]); 7] = [
+        (
+            "Manrope",
+            include_bytes!("../assets/fonts/manrope/Manrope-Regular.ttf"),
+        ),
+        (
+            "ManropeMedium",
+            include_bytes!("../assets/fonts/manrope/Manrope-Medium.ttf"),
+        ),
+        (
+            "ManropeSemiBold",
+            include_bytes!("../assets/fonts/manrope/Manrope-SemiBold.ttf"),
+        ),
+        (
+            "ManropeBold",
+            include_bytes!("../assets/fonts/manrope/Manrope-Bold.ttf"),
+        ),
+        (
+            "JetBrainsMono",
+            include_bytes!("../assets/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"),
+        ),
+        (
+            "JetBrainsMonoSemiBold",
+            include_bytes!("../assets/fonts/jetbrains-mono/JetBrainsMono-SemiBold.ttf"),
+        ),
+        (
+            "JetBrainsMonoBold",
+            include_bytes!("../assets/fonts/jetbrains-mono/JetBrainsMono-Bold.ttf"),
+        ),
+    ];
+    for (name, bytes) in faces {
+        fonts.font_data.insert(
+            name.to_owned(),
+            std::sync::Arc::new(FontData::from_static(bytes)),
+        );
+    }
 
     fonts
         .families
@@ -480,13 +577,64 @@ pub fn install_fonts(ctx: &egui::Context) {
         .entry(FontFamily::Monospace)
         .or_default()
         .insert(0, "JetBrainsMono".to_owned());
-    // Named family for display headings; not a standard egui family.
-    fonts.families.insert(
-        FontFamily::Name("Instrument".into()),
-        vec!["InstrumentSerif".to_owned()],
-    );
+
+    let proportional = fonts.families[&FontFamily::Proportional].clone();
+    let monospace = fonts.families[&FontFamily::Monospace].clone();
+    for (family, base) in [
+        ("ManropeMedium", &proportional),
+        ("ManropeSemiBold", &proportional),
+        ("ManropeBold", &proportional),
+        ("JetBrainsMonoSemiBold", &monospace),
+        ("JetBrainsMonoBold", &monospace),
+    ] {
+        let mut chain = vec![family.to_owned()];
+        chain.extend(base.iter().cloned());
+        fonts
+            .families
+            .insert(FontFamily::Name(family.into()), chain);
+    }
 
     ctx.set_fonts(fonts);
+}
+
+/// Manrope Medium (design weight 500) at `size`.
+#[must_use]
+pub fn medium(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("ManropeMedium".into()))
+}
+
+/// Manrope `SemiBold` (design weight 600) at `size`.
+#[must_use]
+pub fn semibold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("ManropeSemiBold".into()))
+}
+
+/// Manrope Bold (design weight 700) at `size`.
+#[must_use]
+pub fn bold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("ManropeBold".into()))
+}
+
+/// `JetBrains` Mono `SemiBold` (design mono weight 600) at `size`.
+#[must_use]
+pub fn mono_semibold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("JetBrainsMonoSemiBold".into()))
+}
+
+/// `JetBrains` Mono Bold (design mono weight 700) at `size`.
+#[must_use]
+pub fn mono_bold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("JetBrainsMonoBold".into()))
+}
+
+/// Display heading (design `.lib-title`/`.ed-title`/`.bind-title`): Manrope
+/// Bold with the design's negative tracking (-0.01em).
+#[must_use]
+pub fn display_title(text: &str, size: f32) -> egui::RichText {
+    egui::RichText::new(text)
+        .font(bold(size))
+        .extra_letter_spacing(size * -0.01)
+        .color(INK_1)
 }
 
 #[cfg(test)]
@@ -496,6 +644,7 @@ mod tests {
     #[test]
     fn console_palette_accent_is_the_expected_green() {
         let p = Palette::console();
-        assert_eq!(p.accent, Color32::from_rgb(0x6E, 0xD2, 0x74));
+        assert_eq!(p.accent, Color32::from_rgb(0x84, 0xC4, 0x85));
+        assert_eq!(p.accent_2, Color32::from_rgb(0x21, 0x33, 0x21));
     }
 }

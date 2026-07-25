@@ -3,7 +3,7 @@ use crate::data::{AppCommand, ProfileEntryView, ProfileKind};
 use crate::state::CommunityLoad;
 use crate::theme;
 
-const CARD_HEIGHT: f32 = 150.0;
+const CARD_HEIGHT: f32 = 112.0;
 const CARD_ROW_GAP: f32 = 8.0;
 const COLS: usize = 3;
 
@@ -30,9 +30,7 @@ const LIB_COMMUNITY_DISPLAY_CAP: usize = 48;
 struct CardView<'a> {
     label: &'a str,
     kind: Option<ProfileKind>,
-    bindings: usize,
     sub_profiles: usize,
-    modes: &'a [String],
 }
 
 impl<'a> CardView<'a> {
@@ -40,9 +38,7 @@ impl<'a> CardView<'a> {
         Self {
             label: &e.label,
             kind: e.kind,
-            bindings: e.bindings,
             sub_profiles: e.sub_profiles,
-            modes: &e.modes,
         }
     }
 
@@ -50,9 +46,7 @@ impl<'a> CardView<'a> {
         Self {
             label,
             kind: None,
-            bindings: 0,
             sub_profiles: 0,
-            modes: &[],
         }
     }
 }
@@ -64,14 +58,15 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
     let palette = *app.palette();
 
     // --- Header (pinned, not scrolled) ---
-    ui.label(theme::eyebrow("Profile Library"));
-    ui.add_space(4.0);
-    ui.heading("Your profiles");
+    ui.label(theme::display_title("Profiles", 24.0).extra_letter_spacing(-0.48));
     ui.horizontal(|ui| {
         let count = app.device_profiles().len();
         let status = app.device_status_text();
+        let noun = if count == 1 { "profile" } else { "profiles" };
         ui.label(
-            egui::RichText::new(format!("{count} on QuadStick · {status}")).color(palette.ink_2),
+            egui::RichText::new(format!("{count} {noun} · {status}"))
+                .size(13.0)
+                .color(palette.ink_2),
         );
         // Import only makes sense on native (no file dialog on wasm).
         #[cfg(not(target_arch = "wasm32"))]
@@ -82,26 +77,20 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
         });
     });
 
-    ui.add_space(8.0);
+    ui.add_space(14.0);
 
     // --- Toolbar (pinned, not scrolled) ---
     ui.horizontal(|ui| {
-        ui.add(
-            egui::TextEdit::singleline(app.lib_search_mut())
-                .desired_width(260.0)
-                .hint_text("Search profiles\u{2026}"),
-        );
-        ui.add_space(8.0);
+        theme::search_pill(ui, app.lib_search_mut(), "Search profiles");
+        ui.add_space(2.0);
         let kind_labels: Vec<&str> = KIND_FILTERS.iter().map(|&(label, _)| label).collect();
         if let Some(i) = theme::segmented(ui, &kind_labels, app.lib_kind_filter()) {
             app.set_lib_kind_filter(i);
         }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(theme::eyebrow("Sorted by name"));
-        });
     });
+    ui.add_space(6.0);
     ui.separator();
-    ui.add_space(8.0);
+    ui.add_space(10.0);
 
     // --- Collect filtered display data before any &mut app calls ---
     let search = app.lib_search().to_lowercase();
@@ -288,72 +277,58 @@ fn profile_card(ui: &mut egui::Ui, palette: &crate::theme::Palette, card: &CardV
     if ui.is_rect_visible(rect) {
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
         theme::card_frame().show(&mut child, |ui| {
-            // Top row: kind badge left, filename right. The muted filename is
-            // shown only for kinded (device) cards; community cards have no kind
-            // and would duplicate their mono-bold title here.
-            if let Some(kind) = card.kind {
-                ui.horizontal(|ui| {
-                    let color = kind_color(palette, kind);
-                    theme::kind_badge(ui, kind.label(), color);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                        ui.label(
-                            egui::RichText::new(card.label)
-                                .monospace()
-                                .size(11.0)
-                                .color(palette.ink_3),
-                        );
-                    });
-                });
-            }
+            // The frame hugs content; force the full card rect (minus the
+            // frame's 14px vertical margins) so footer-less cards match.
+            ui.set_min_size(egui::vec2(ui.available_width(), CARD_HEIGHT - 28.0));
 
-            ui.add_space(6.0);
-
-            // Title is the filename in monospace bold, matching the design.
             ui.label(
                 egui::RichText::new(card.label)
-                    .monospace()
-                    .strong()
-                    .size(15.0),
+                    .font(theme::bold(15.0))
+                    .color(palette.ink_1),
             );
 
-            ui.add_space(6.0);
-
-            // Mode chips (up to 3).
-            if !card.modes.is_empty() {
-                ui.horizontal_wrapped(|ui| {
-                    for mode in card.modes.iter().take(3) {
-                        theme::pill_frame().show(ui, |ui| {
-                            ui.label(egui::RichText::new(mode).monospace().size(10.5));
-                        });
-                    }
+            if card.kind.is_some() || card.sub_profiles > 1 {
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    ui.horizontal(|ui| {
+                        if let Some(kind) = card.kind {
+                            theme::kind_badge(ui, kind.label());
+                        }
+                        // Singular "1 layers" reads wrong, so the count shows
+                        // only for multi-layer profiles.
+                        if card.sub_profiles > 1 {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{} layers",
+                                            card.sub_profiles
+                                        ))
+                                        .monospace()
+                                        .size(11.0)
+                                        .color(palette.ink_3),
+                                    );
+                                },
+                            );
+                        }
+                    });
+                    ui.add_space(10.0);
+                    let (line_rect, _) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 1.0),
+                        egui::Sense::hover(),
+                    );
+                    ui.painter().hline(
+                        line_rect.x_range(),
+                        line_rect.center().y,
+                        egui::Stroke::new(1.0, palette.line),
+                    );
                 });
-                ui.add_space(2.0);
-            }
-
-            // Binding / sub-profile count.
-            if card.bindings > 0 || card.sub_profiles > 0 {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "{} bindings \u{00B7} {} sub-profiles",
-                        card.bindings, card.sub_profiles
-                    ))
-                    .size(11.0)
-                    .color(palette.ink_3),
-                );
             }
         });
     }
 
     response.clicked()
-}
-
-/// Map a `ProfileKind` to the palette color for its badge.
-const fn kind_color(palette: &crate::theme::Palette, kind: ProfileKind) -> egui::Color32 {
-    match kind {
-        ProfileKind::MouseKeys => palette.keyboard,
-        ProfileKind::Gamepad => palette.joystick,
-        ProfileKind::Mixed => palette.accent,
-    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

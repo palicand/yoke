@@ -2,7 +2,6 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 
 use crate::app::YokeApp;
 use crate::stations::{FPS_STATIONS, StationKind, VIEWBOX_H, VIEWBOX_W, binding_counts};
-use crate::theme::{eyebrow, pill_frame, station_kind_color};
 
 // Cluster label + padding (viewbox units), drawn as a dashed region box.
 const REGIONS: &[(StationKind, &str, f32)] = &[
@@ -13,33 +12,63 @@ const REGIONS: &[(StationKind, &str, f32)] = &[
 ];
 
 pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
-    let counts = app
-        .open_profile()
-        .and_then(|op| {
-            op.session
-                .current()
-                .sub_profiles
-                .get(app.selected_subprofile())
-        })
-        .map(binding_counts)
-        .unwrap_or_default();
+    let sub = app.open_profile().and_then(|op| {
+        op.session
+            .current()
+            .sub_profiles
+            .get(app.selected_subprofile())
+    });
+    let total_bindings = sub.map_or(0, |s| s.bindings().count());
+    let counts = sub.map(binding_counts).unwrap_or_default();
 
     let palette = *app.palette();
 
-    // Dev-meta header row above the map canvas.
+    let mut clear_filter = false;
     ui.horizontal(|ui| {
-        ui.add(egui::Label::new(eyebrow("FPS / Original")));
+        ui.label(
+            egui::RichText::new("Click an input to filter bindings")
+                .monospace()
+                .size(11.0)
+                .color(palette.ink_3),
+        );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add(egui::Label::new(
-                egui::RichText::new("click any input to filter")
-                    .size(11.0)
-                    .color(palette.ink_3),
-            ));
+            if app.selected_station().is_some() {
+                if ui
+                    .add(crate::theme::mini_button("Clear filter \u{2715}"))
+                    .clicked()
+                {
+                    clear_filter = true;
+                }
+            } else {
+                ui.label(
+                    egui::RichText::new(format!("showing all {total_bindings} bindings"))
+                        .monospace()
+                        .size(11.0)
+                        .color(palette.ink_3),
+                );
+            }
         });
     });
+    ui.add_space(2.0);
+    let (rule, _) =
+        ui.allocate_exact_size(egui::Vec2::new(ui.available_width(), 1.0), Sense::hover());
+    ui.painter().extend(Shape::dashed_line(
+        &[rule.left_center(), rule.right_center()],
+        Stroke::new(1.0, palette.line),
+        3.0,
+        3.0,
+    ));
     ui.add_space(4.0);
 
-    let width = ui.available_width().min(560.0);
+    // Cap the sketch by remaining pane height too (design `.dev-svg-wrap`
+    // flexes; the legend row below must stay visible), reserving room for the
+    // wrapped legend chips.
+    let chip_reserve = 76.0;
+    let max_h = (ui.available_height() - chip_reserve).max(160.0);
+    let width = ui
+        .available_width()
+        .min(560.0)
+        .min(max_h * (VIEWBOX_W / VIEWBOX_H));
     let (rect, _resp) = ui.allocate_exact_size(
         Vec2::new(width, width * (VIEWBOX_H / VIEWBOX_W)),
         Sense::hover(),
@@ -55,14 +84,6 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
 
     let clicked = draw_stations(app, ui, &painter, &to_screen, scale, &counts, &palette);
 
-    painter.text(
-        rect.left_bottom() + Vec2::new(4.0, -4.0),
-        Align2::LEFT_BOTTOM,
-        "QS · FPS · INPUT MAP",
-        FontId::monospace(10.0),
-        palette.ink_3,
-    );
-
     // Station-filter chips below the map; clicking one reuses the same
     // selected-station filter the map dots drive.
     ui.add_space(6.0);
@@ -70,7 +91,9 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
 
     // A map-dot click and a chip click feed the same toggle path; the chip is
     // resolved last so a frame with both does not double-toggle.
-    if let Some(id) = chip_clicked.or(clicked) {
+    if clear_filter {
+        app.set_selected_station(None);
+    } else if let Some(id) = chip_clicked.or(clicked) {
         // Toggle: clicking the selected station clears the filter.
         let next = if app.selected_station() == Some(id) {
             None
@@ -157,21 +180,8 @@ fn draw_stations(
     clicked
 }
 
-/// Compact glyph per station kind (design `kindGlyph`).
-const fn kind_glyph(kind: StationKind) -> &'static str {
-    match kind {
-        StationKind::Joystick => "✛",
-        StationKind::Mouthpiece => "◍",
-        StationKind::Lip => "⏛",
-        StationKind::Side => "⌇",
-    }
-}
-
-/// Draw the bottom row of station-filter chips (design `.dev-legend`/`.leg-chip`):
-/// one chip per station showing a kind glyph, the station label, and the count of
-/// bindings on that station. Clicking a chip filters the bindings pane to that
-/// station; the active station's chip renders selected. Returns the clicked
-/// station id, if any — the caller routes it through the shared filter toggle.
+/// Draw the bottom row of station-filter chips (design
+/// `.dev-legend`/`.leg-chip`). Returns the clicked station id, if any.
 fn draw_station_chips(
     ui: &mut egui::Ui,
     palette: &crate::theme::Palette,
@@ -180,10 +190,15 @@ fn draw_station_chips(
 ) -> Option<&'static str> {
     let mut clicked = None;
     ui.horizontal_wrapped(|ui| {
+        // Zeroed interact_size: egui's 30px minimum would overrule the design's
+        // shorter chip height (`.leg-chip`).
+        ui.spacing_mut().item_spacing = Vec2::splat(6.0);
+        ui.spacing_mut().button_padding = egui::vec2(9.0, 4.0);
+        ui.spacing_mut().interact_size.y = 0.0;
         for st in FPS_STATIONS {
             let is_selected = selected == Some(st.id);
             let count = counts.get(st.id).copied().unwrap_or(0);
-            if station_chip(ui, palette, st.kind, st.label, count, is_selected) {
+            if station_chip(ui, palette, st.label, count, is_selected) {
                 clicked = Some(st.id);
             }
         }
@@ -192,47 +207,54 @@ fn draw_station_chips(
 }
 
 /// Render one station-filter chip and return `true` when clicked this frame.
-/// Selected chips carry the accent-2 fill + accent text (design `.leg-chip.on`).
+///
+/// A `Button` (not a framed child ui) so `horizontal_wrapped` can pre-measure
+/// it and wrap the row like the design's flex-wrap; framed uis are sized only
+/// after placement and overflow the pane instead of wrapping.
 fn station_chip(
     ui: &mut egui::Ui,
     palette: &crate::theme::Palette,
-    kind: StationKind,
     label: &str,
     count: usize,
     selected: bool,
 ) -> bool {
-    let kind_color = station_kind_color(palette, kind);
-    let (text_color, count_color) = if selected {
-        (palette.accent, palette.accent)
+    let (text_color, count_color, fill, stroke) = if selected {
+        (
+            palette.accent,
+            palette.accent,
+            palette.accent_2,
+            Stroke::new(1.0, palette.accent.gamma_multiply(0.5)),
+        )
     } else {
-        (palette.ink_2, palette.ink_3)
+        (
+            palette.ink_2,
+            palette.ink_3,
+            crate::theme::BG_3,
+            Stroke::new(1.0, palette.line),
+        )
     };
-    let frame = if selected {
-        pill_frame()
-            .fill(palette.accent_2)
-            .stroke(Stroke::new(1.0, palette.accent))
-    } else {
-        pill_frame()
-    };
-    crate::theme::clickable_frame(ui, frame, label, |ui| {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            ui.label(
-                egui::RichText::new(kind_glyph(kind))
-                    .monospace()
-                    .size(11.0)
-                    .color(if selected { palette.accent } else { kind_color }),
-            );
-            ui.label(egui::RichText::new(label).size(12.0).color(text_color));
-            ui.label(
-                egui::RichText::new(count.to_string())
-                    .monospace()
-                    .size(10.0)
-                    .color(count_color),
-            );
-        });
-    })
-    .clicked()
+    let mut job = egui::text::LayoutJob::default();
+    job.append(
+        label,
+        0.0,
+        egui::TextFormat {
+            font_id: crate::theme::medium(12.0),
+            color: text_color,
+            ..Default::default()
+        },
+    );
+    job.append(
+        &count.to_string(),
+        6.0,
+        egui::TextFormat {
+            font_id: egui::FontId::monospace(10.0),
+            color: count_color,
+            ..Default::default()
+        },
+    );
+    ui.add(egui::Button::new(job).fill(fill).stroke(stroke))
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .clicked()
 }
 
 fn short_label(id: &str) -> &'static str {
