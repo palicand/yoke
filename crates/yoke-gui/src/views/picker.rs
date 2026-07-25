@@ -88,8 +88,9 @@ fn output_body(
 
 fn output_footer(ui: &mut egui::Ui, palette: &Palette, matches: usize) {
     ui.add_space(4.0);
+    let noun = if matches == 1 { "output" } else { "outputs" };
     ui.label(
-        egui::RichText::new(format!("{matches} outputs"))
+        egui::RichText::new(format!("{matches} {noun}"))
             .small()
             .color(palette.ink_3),
     );

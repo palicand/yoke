@@ -180,10 +180,8 @@ pub struct YokeApp {
     /// a close on a dirty session; the modal forces an explicit choice before
     /// any data is discarded. Silently discarding edits is a critical bug class.
     pub(crate) confirm_discard: bool,
-    /// Whether the pending `confirm_discard` decision came from a window-close
-    /// request rather than an in-app close, so Discard must also quit the app.
-    /// Without it the cancelled close would leave the window open with nothing
-    /// to re-request it, and the user would have to click close twice.
+    /// A native close cancelled to raise the prompt has nothing else to
+    /// re-request it, so Discard must re-issue it or the user clicks close twice.
     pub(crate) quit_after_discard: bool,
     /// Library search text; filters both device and community card grids.
     lib_search: String,
@@ -684,10 +682,12 @@ impl YokeApp {
     ///
     /// Dismissal (Keep editing) is the safe default, so backdrop-click and
     /// Escape — surfaced together by `ModalResponse::should_close` — only ever
-    /// keep the profile open, never discard. Escape is also handled by the global
-    /// chain in `ui`; both paths just clear `confirm_discard`, so the duplicate is
-    /// idempotent. `should_close` additionally covers the backdrop-click case the
-    /// global chain does not see.
+    /// keep the profile open, never discard.
+    ///
+    /// Must run before the global Escape chain in `ui`: `should_close` takes the
+    /// Escape via `consume_key`, so the chain cannot act on the same press and
+    /// step back a second layer. When the modal is not topmost it does not
+    /// consume, and the chain's `confirm_discard` step dismisses instead.
     fn show_confirm_discard(&mut self, ctx: &egui::Context) {
         if self.confirm_discard {
             let response = egui::Modal::new(egui::Id::new("yoke_discard")).show(ctx, |ui| {
@@ -896,10 +896,9 @@ impl YokeApp {
         self.preview_csv = None;
     }
 
-    /// Intercept a window-close request. Returns `true` when the close must be
-    /// cancelled so the confirm-discard modal can run first: quitting is a close
-    /// path like any other, and silently dropping edits on quit is the same
-    /// critical bug class `request_close_profile` guards against.
+    /// `true` means cancel the close: quitting is a close path like any other,
+    /// and silently dropping edits on quit is the same critical bug class
+    /// `request_close_profile` guards against.
     pub(crate) fn on_close_requested(&mut self) -> bool {
         if self
             .open_profile
