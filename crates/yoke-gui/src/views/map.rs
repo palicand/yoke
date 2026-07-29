@@ -54,7 +54,7 @@ pub fn show(app: &mut YokeApp, ui: &mut egui::Ui) {
         ui.allocate_exact_size(egui::Vec2::new(ui.available_width(), 1.0), Sense::hover());
     ui.painter().extend(Shape::dashed_line(
         &[rule.left_center(), rule.right_center()],
-        Stroke::new(1.0, palette.line),
+        Stroke::new(1.0_f32, palette.line),
         3.0,
         3.0,
     ));
@@ -148,9 +148,9 @@ fn draw_stations(
         } else {
             palette.ink_2
         };
-        painter.circle(center, radius, fill, Stroke::new(1.0, stroke_color));
+        painter.circle(center, radius, fill, Stroke::new(1.0_f32, stroke_color));
         if selected {
-            painter.circle_stroke(center, radius + 3.0, Stroke::new(1.0, palette.accent));
+            painter.circle_stroke(center, radius + 3.0, Stroke::new(1.0_f32, palette.accent));
         }
         if count > 0 && !selected {
             painter.text(
@@ -223,14 +223,14 @@ fn station_chip(
             palette.accent,
             palette.accent,
             palette.accent_2,
-            Stroke::new(1.0, palette.accent.gamma_multiply(0.5)),
+            Stroke::new(1.0_f32, palette.accent.gamma_multiply(0.5)),
         )
     } else {
         (
             palette.ink_2,
             palette.ink_3,
             crate::theme::BG_3,
-            Stroke::new(1.0, palette.line),
+            Stroke::new(1.0_f32, palette.line),
         )
     };
     let mut job = egui::text::LayoutJob::default();
@@ -304,7 +304,7 @@ fn draw_regions(
         let max_y = pts.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max) + pad;
         let r = Rect::from_min_max(to_screen(min_x, min_y), to_screen(max_x, max_y));
         painter.rect_filled(r, 4.0, Color32::from_white_alpha(4));
-        dashed_rect(painter, r, Stroke::new(1.0, line));
+        dashed_rect(painter, r, Stroke::new(1.0_f32, line));
         painter.text(
             r.left_top() + Vec2::new(0.0, -3.0),
             Align2::LEFT_BOTTOM,
@@ -336,7 +336,7 @@ fn draw_mouthpiece_rail(
     let right = mp.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     painter.extend(Shape::dashed_line(
         &[to_screen(left, y), to_screen(right, y)],
-        Stroke::new(1.0, ink_3.gamma_multiply(0.6)),
+        Stroke::new(1.0_f32, ink_3.gamma_multiply(0.6)),
         3.0,
         3.0,
     ));

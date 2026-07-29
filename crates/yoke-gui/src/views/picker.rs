@@ -110,9 +110,9 @@ fn capture_banner(
         egui::Color32::TRANSPARENT
     };
     let banner_stroke = if state.capture_armed {
-        egui::Stroke::new(1.0, palette.accent)
+        egui::Stroke::new(1.0_f32, palette.accent)
     } else {
-        egui::Stroke::new(1.0, palette.line)
+        egui::Stroke::new(1.0_f32, palette.line)
     };
     egui::Frame::new()
         .fill(banner_fill)
@@ -166,7 +166,7 @@ fn capture_banner(
 fn search_bar(ui: &mut egui::Ui, state: &mut PickerState, palette: &Palette) {
     egui::Frame::new()
         .fill(ui.visuals().faint_bg_color)
-        .stroke(egui::Stroke::new(1.0, palette.line))
+        .stroke(egui::Stroke::new(1.0_f32, palette.line))
         .corner_radius(egui::CornerRadius::same(theme::R_SM))
         .inner_margin(egui::Margin::symmetric(10, 6))
         .show(ui, |ui| {
@@ -206,11 +206,14 @@ fn category_chip(
 ) -> egui::Response {
     let accent = dot.unwrap_or(palette.ink_2);
     let (fill, stroke) = if selected {
-        (accent.gamma_multiply(0.14), egui::Stroke::new(1.0, accent))
+        (
+            accent.gamma_multiply(0.14),
+            egui::Stroke::new(1.0_f32, accent),
+        )
     } else {
         (
             egui::Color32::TRANSPARENT,
-            egui::Stroke::new(1.0, palette.line),
+            egui::Stroke::new(1.0_f32, palette.line),
         )
     };
     let frame = egui::Frame::new()

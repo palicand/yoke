@@ -321,7 +321,7 @@ fn profile_card(ui: &mut egui::Ui, palette: &crate::theme::Palette, card: &CardV
                     ui.painter().hline(
                         line_rect.x_range(),
                         line_rect.center().y,
-                        egui::Stroke::new(1.0, palette.line),
+                        egui::Stroke::new(1.0_f32, palette.line),
                     );
                 });
             }
