@@ -16,7 +16,7 @@ name = "yoke-gui"
 path = "src/main.rs"
 
 [dependencies]
-egui = "0.34"
+egui = "0.36"
 thiserror = "2"
 tracing = "0.1"
 yoke-config = { version = "0.1.0", path = "../yoke-config" }
@@ -27,7 +27,7 @@ workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 anyhow = "1"
-eframe = { version = "0.34", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
+eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
 rfd = "0.17"
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 tracing-subscriber = "0.3"
@@ -40,7 +40,7 @@ yoke-volume-macos = { version = "0.1.0", path = "../yoke-volume-macos" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1"
-eframe = { version = "0.34", default-features = false, features = ["glow", "default_fonts"] }
+eframe = { version = "0.36", default-features = false, features = ["glow", "default_fonts"] }
 tracing-wasm = "0.2"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
